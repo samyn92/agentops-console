@@ -147,6 +147,12 @@ export interface SessionUsage {
   cache_read_tokens: number
 }
 
+export interface TurnUsage {
+  usage: SessionUsage
+  model: string
+  steps: number
+}
+
 export interface Session {
   id: string
   title: string
@@ -155,6 +161,7 @@ export interface Session {
   message_count: number
   total_usage?: SessionUsage
   model?: string
+  turn_usages?: TurnUsage[]
 }
 
 // ---- Runtime Messages (from GET /sessions/{id}/messages) ----

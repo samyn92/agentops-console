@@ -176,32 +176,37 @@ export async function loadSessionMessages(sessionId: string) {
 
     const chatMsgs = mapRuntimeMessages(runtimeMsgs, createdTs, updatedTs);
 
-    // If the session has persisted usage, inject a synthetic step-finish into the
-    // last assistant message so the TokenBadge renders in the footer.
-    if (session?.total_usage && chatMsgs.length > 0) {
-      const lastMsg = chatMsgs[chatMsgs.length - 1];
-      if (lastMsg.role === 'assistant' && lastMsg.parts) {
-        const syntheticUsage: Usage = {
-          input_tokens: session.total_usage.input_tokens,
-          output_tokens: session.total_usage.output_tokens,
-          total_tokens: session.total_usage.total_tokens,
-          reasoning_tokens: session.total_usage.reasoning_tokens,
-          cache_creation_tokens: session.total_usage.cache_creation_tokens,
-          cache_read_tokens: session.total_usage.cache_read_tokens,
-        };
-        lastMsg.parts.push({
-          type: 'step-finish',
-          stepNumber: 0,
-          usage: syntheticUsage,
-          finishReason: 'stop',
-          toolCallCount: 0,
-        } as StepFinishPart);
+    // Inject per-turn usage into each assistant message so TokenBadge renders
+    // after a browser refresh. turn_usages[i] corresponds to the i-th assistant
+    // message (each user prompt produces exactly one assistant response).
+    const turnUsages = session?.turn_usages;
+    if (turnUsages && turnUsages.length > 0) {
+      let turnIdx = 0;
+      for (const msg of chatMsgs) {
+        if (msg.role === 'assistant' && msg.parts && turnIdx < turnUsages.length) {
+          const tu = turnUsages[turnIdx];
+          msg.parts.push({
+            type: 'step-finish',
+            stepNumber: tu.steps || 0,
+            usage: {
+              input_tokens: tu.usage.input_tokens,
+              output_tokens: tu.usage.output_tokens,
+              total_tokens: tu.usage.total_tokens,
+              reasoning_tokens: tu.usage.reasoning_tokens,
+              cache_creation_tokens: tu.usage.cache_creation_tokens,
+              cache_read_tokens: tu.usage.cache_read_tokens,
+            },
+            finishReason: 'stop',
+            toolCallCount: 0,
+          } as StepFinishPart);
+          turnIdx++;
+        }
       }
     }
 
     batch(() => {
       state.messages[1](chatMsgs);
-      // Restore usage and model signals from session metadata
+      // Restore usage and model signals from session metadata (for Header display)
       if (session?.total_usage) {
         state.totalUsage[1]({
           input_tokens: session.total_usage.input_tokens,
