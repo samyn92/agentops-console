@@ -91,10 +91,15 @@ export function onPromptCompleted(cb: PromptCompletedCallback) {
   onPromptCompletedCallback = cb;
 }
 
-/** Notify that a prompt completed — triggers session list refetch. */
+/** Notify that a prompt completed — triggers session list refetch.
+ *  Does an immediate refetch + a delayed one (3s) to pick up AI-generated
+ *  titles that are produced asynchronously by the runtime. */
 export function notifyPromptCompleted() {
   setRefetchTrigger((n) => n + 1);
   onPromptCompletedCallback?.();
+
+  // Delayed refetch to catch AI-generated title (runtime background goroutine)
+  setTimeout(() => setRefetchTrigger((n) => n + 1), 3000);
 }
 
 /** Get the current session object. */
