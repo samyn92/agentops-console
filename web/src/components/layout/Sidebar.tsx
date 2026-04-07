@@ -10,7 +10,6 @@ import {
   deleteSession,
 } from '../../stores/sessions';
 import { streaming, streamingSessionIds } from '../../stores/chat';
-import { connected } from '../../stores/events';
 import AgentStatusBadge from '../agents/AgentStatusBadge';
 import NeuralTrace from '../shared/NeuralTrace';
 import Spinner from '../shared/Spinner';
@@ -53,18 +52,12 @@ export default function Sidebar(props: SidebarProps) {
       style={{ width: `${sidebarWidth()}px`, 'min-width': `${sidebarWidth()}px` }}
     >
       {/* Header */}
-      <div class="flex items-center gap-2 px-4 py-3 border-b border-border">
+      <div class="flex items-center gap-2 px-4 h-12 border-b border-border">
         <div class="flex items-center gap-2 min-w-0 flex-1">
           <div class="w-6 h-6 rounded-md bg-primary flex items-center justify-center">
             <span class="text-primary-foreground text-xs font-bold">A</span>
           </div>
           <span class="text-sm font-semibold text-text truncate">AgentOps</span>
-        </div>
-        <div class="flex items-center gap-1">
-          <span
-            class={`w-2 h-2 rounded-full ${connected() ? 'bg-success' : 'bg-error'}`}
-            title={connected() ? 'Connected' : 'Disconnected'}
-          />
         </div>
       </div>
 
@@ -172,6 +165,7 @@ export default function Sidebar(props: SidebarProps) {
                       class={`w-2 h-2 rounded-full flex-shrink-0 ${
                         status().isOnline ? 'bg-success' : 'bg-text-muted'
                       }`}
+                      title={status().isOnline ? 'Online' : 'Offline'}
                     />
                     <span class="truncate flex-1">{name}</span>
                     <Show when={agent.runtime}>

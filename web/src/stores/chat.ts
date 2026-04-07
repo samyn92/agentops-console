@@ -350,13 +350,23 @@ function mapRuntimeMessages(runtimeMsgs: RuntimeMessage[], createdTs: number, up
     }
   }
 
-  // Assign updatedTs to the last assistant message
-  if (updatedTs) {
-    for (let i = chatMsgs.length - 1; i >= 0; i--) {
-      if (chatMsgs[i].role === 'assistant') {
-        chatMsgs[i] = { ...chatMsgs[i], timestamp: updatedTs };
-        break;
-      }
+  // Assign timestamps to all assistant messages.
+  // We only have created_at / updated_at on the session, so distribute:
+  // first assistant → createdTs, last assistant → updatedTs,
+  // any in between → linear interpolation.
+  const assistantIdxs: number[] = [];
+  for (let i = 0; i < chatMsgs.length; i++) {
+    if (chatMsgs[i].role === 'assistant') assistantIdxs.push(i);
+  }
+  if (assistantIdxs.length > 0) {
+    const startTs = createdTs || updatedTs;
+    const endTs = updatedTs || createdTs;
+    for (let j = 0; j < assistantIdxs.length; j++) {
+      const idx = assistantIdxs[j];
+      const t = assistantIdxs.length === 1
+        ? endTs
+        : startTs + (endTs - startTs) * (j / (assistantIdxs.length - 1));
+      chatMsgs[idx] = { ...chatMsgs[idx], timestamp: Math.round(t) };
     }
   }
 
@@ -539,11 +549,27 @@ function handleFEPEvent(state: SessionChatState, sessionId: string, event: FEPEv
       notifyPromptCompleted();
       break;
 
-    case 'step_start':
-      // Just update the step counter signal — don't append a visual part.
-      // This eliminates a redundant array mutation + re-render per step.
-      setStep(event.step_number || 0);
+    case 'step_start': {
+      const stepNum = event.step_number || 0;
+      setStep(stepNum);
+
+      // On step > 0, the previous step is done (step_finish already appended its
+      // usage part). Create a new assistant message so each step gets its own
+      // bubble + TokenBadge — matching the post-refresh structure where the runtime
+      // stores one assistant message per step.
+      if (stepNum > 0) {
+        batch(() => {
+          finalizeActiveText(state);
+          finalizeActiveReasoning(state);
+          state.activeToolInput[1](null);
+          setMsgs((prev) => [
+            ...prev,
+            { role: 'assistant' as const, parts: [], timestamp: Date.now() },
+          ]);
+        });
+      }
       break;
+    }
 
     case 'step_finish':
       // Only append a visual part when there's usage data worth showing.
@@ -620,25 +646,35 @@ function handleFEPEvent(state: SessionChatState, sessionId: string, event: FEPEv
           metadata = JSON.parse(event.metadata) as ToolMetadata;
         } catch { /* skip */ }
       }
+      // Scan backwards through assistant messages to find the matching tool call.
+      // Normally the tool is on the last assistant message, but with per-step
+      // message splitting a late result could target a previous one.
       setMsgs((prev) => {
         const updated = [...prev];
-        const lastAssistant = updated[updated.length - 1];
-        if (lastAssistant?.role === 'assistant' && lastAssistant.parts) {
-          updated[updated.length - 1] = {
-            ...lastAssistant,
-            parts: lastAssistant.parts.map((p) => {
-              if (p.type === 'tool' && (p as ToolPart).id === toolId) {
-                return {
-                  ...p,
-                  output: event.output || '',
-                  isError: event.is_error || false,
-                  metadata,
-                  status: event.is_error ? 'error' : 'completed',
-                } as ToolPart;
-              }
-              return p;
-            }),
-          };
+        for (let idx = updated.length - 1; idx >= 0; idx--) {
+          const m = updated[idx];
+          if (m.role !== 'assistant' || !m.parts) continue;
+          const hasMatch = m.parts.some(
+            (p) => p.type === 'tool' && (p as ToolPart).id === toolId,
+          );
+          if (hasMatch) {
+            updated[idx] = {
+              ...m,
+              parts: m.parts.map((p) => {
+                if (p.type === 'tool' && (p as ToolPart).id === toolId) {
+                  return {
+                    ...p,
+                    output: event.output || '',
+                    isError: event.is_error || false,
+                    metadata,
+                    status: event.is_error ? 'error' : 'completed',
+                  } as ToolPart;
+                }
+                return p;
+              }),
+            };
+            break;
+          }
         }
         return updated;
       });

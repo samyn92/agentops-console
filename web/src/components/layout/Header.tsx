@@ -1,11 +1,9 @@
 // Header — breadcrumb + agent status bar + neural trace
 import { Show } from 'solid-js';
-import { selectedAgent, getAgentStatus } from '../../stores/agents';
+import { selectedAgent } from '../../stores/agents';
 import { currentSession } from '../../stores/sessions';
-import { streaming, currentStep, totalUsage, activeModel } from '../../stores/chat';
-import AgentStatusBadge from '../agents/AgentStatusBadge';
+import { streaming } from '../../stores/chat';
 import NeuralTrace from '../shared/NeuralTrace';
-import CostDisplay from '../shared/CostDisplay';
 
 interface HeaderProps {
   onMenuClick?: () => void;
@@ -14,16 +12,11 @@ interface HeaderProps {
 
 export default function Header(props: HeaderProps) {
   const agent = () => selectedAgent();
-  const status = () => {
-    const a = agent();
-    if (!a) return null;
-    return getAgentStatus(a.namespace, a.name);
-  };
   const session = () => currentSession();
 
   return (
-    <header class={`flex flex-col border-b border-border bg-background ${props.class || ''}`}>
-      <div class="flex items-center gap-3 px-4 py-2.5 min-h-[48px]">
+    <header class={`relative flex flex-col bg-background ${props.class || ''}`}>
+      <div class="flex items-center gap-3 px-4 h-12 border-b border-border">
         {/* Mobile menu button */}
         <Show when={props.onMenuClick}>
           <button
@@ -54,33 +47,10 @@ export default function Header(props: HeaderProps) {
             </Show>
           </Show>
         </div>
-
-        {/* Status area */}
-        <div class="flex items-center gap-2 flex-shrink-0">
-          <Show when={streaming()}>
-            <span class="text-xs text-accent">
-              Step {currentStep()}
-            </span>
-          </Show>
-
-          <Show when={status()}>
-            <AgentStatusBadge
-              phase={status()!.phase}
-              isOnline={status()!.isOnline}
-            />
-          </Show>
-        </div>
       </div>
 
-      {/* Neural trace bar — shows when streaming */}
+      {/* Neural trace bar — overlays below the border when streaming */}
       <NeuralTrace active={streaming()} size="sm" />
-
-      {/* Usage bar — shows after completion */}
-      <Show when={!streaming() && totalUsage()}>
-        <div class="px-4 py-1.5 border-t border-border-subtle">
-          <CostDisplay usage={totalUsage()!} model={activeModel()} compact />
-        </div>
-      </Show>
     </header>
   );
 }

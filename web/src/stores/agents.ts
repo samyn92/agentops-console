@@ -41,11 +41,15 @@ export function getAgentStatus(ns: string, name: string) {
   const key = `${ns}/${name}`;
   const sseStatus = agentStatuses()[key];
   const agent = agentList()?.find((a) => a.namespace === ns && a.name === name);
+  const phase = agent?.phase || 'Unknown';
+
+  // Online if SSE reports online, OR if the CRD phase indicates the agent is running
+  const isOnline = sseStatus === 'online' || phase === 'Running';
 
   return {
-    phase: agent?.phase || 'Unknown',
+    phase,
     sseStatus: sseStatus || 'unknown',
-    isOnline: sseStatus === 'online',
+    isOnline,
     runtime: agent?.runtime || 'unknown',
     model: agent?.model || '',
   };

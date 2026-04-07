@@ -230,7 +230,7 @@ function ToolInputSection(props: { input: string }) {
   });
 
   return (
-    <div class="border-b border-inherit">
+    <div>
       <button
         onClick={(e) => { e.stopPropagation(); setShowInput((v) => !v); }}
         class="flex items-center gap-1.5 w-full px-3 py-1.5 text-left hover:bg-surface-hover/30 transition-colors"

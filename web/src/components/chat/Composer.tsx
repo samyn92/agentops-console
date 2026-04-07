@@ -1,8 +1,9 @@
 // Composer — input area with send/stop/steer functionality
 import { createSignal, Show } from 'solid-js';
-import { streaming } from '../../stores/chat';
+import { streaming, totalUsage } from '../../stores/chat';
 import { sendMessage, abortStream, steerAgent } from '../../stores/chat';
 import { selectedAgent } from '../../stores/agents';
+import { formatTokens } from '../../lib/format';
 import MCPBrowser from '../resources/MCPBrowser';
 
 interface ComposerProps {
@@ -78,7 +79,7 @@ export default function Composer(props: ComposerProps) {
   };
 
   return (
-    <div class={`border-t border-border bg-background px-4 py-3 ${props.class || ''}`}>
+    <div class={`bg-background px-4 py-3 ${props.class || ''}`}>
       <div class="max-w-3xl mx-auto">
         <div
           class={`composer-input flex items-end gap-2 border border-border rounded-xl px-3 py-2 ${
@@ -194,6 +195,9 @@ export default function Composer(props: ComposerProps) {
             <Show when={streaming() && mode() === 'steer'}>
               <span class="text-accent">Steer mode</span>
               {' — guide the agent\'s next action'}
+            </Show>
+            <Show when={!streaming() && totalUsage()}>
+              <span class="text-text-muted/60">{formatTokens(totalUsage()!.total_tokens)} tokens</span>
             </Show>
           </span>
           <span class="text-[11px] text-text-muted">
