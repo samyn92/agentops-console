@@ -1,0 +1,30 @@
+# Go
+console
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Node / Web
+web/node_modules/
+web/dist/
+web/.vite/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Build
+*.log

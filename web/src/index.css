@@ -1,0 +1,999 @@
+@import "tailwindcss";
+
+@theme {
+  /* Semantic Colors */
+  --color-background: var(--bg-main);
+  --color-surface: var(--bg-secondary);
+  --color-surface-2: var(--bg-tertiary);
+  --color-surface-hover: var(--bg-hover);
+  
+  --color-border: var(--border-main);
+  --color-border-hover: var(--border-hover);
+  --color-border-subtle: var(--border-subtle);
+  
+  --color-text: var(--text-main);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+
+  /* Brand Colors */
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-light: var(--primary-light);
+  
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-error: var(--error);
+  --color-info: var(--info);
+
+  /* Accent for interactive elements */
+  --color-accent: var(--accent);
+  --color-accent-muted: var(--accent-muted);
+
+  /* ===== DESIGN SYSTEM TOKENS ===== */
+
+  /* Transition: single standard duration (Pajamas: 200ms) */
+  --transition-default: 200ms;
+
+  /* Shadows: 3 elevation tiers */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+/* Base Styles & Variables */
+@layer base {
+  :root {
+    /* Vercel Light Theme — refined */
+    --bg-main: #ffffff;
+    --bg-secondary: #fafafa;
+    --bg-tertiary: #f5f5f5;
+    --bg-hover: #ebebeb;
+    
+    --border-main: #e5e5e5;
+    --border-hover: #999999;
+    --border-subtle: #f0f0f0;
+    
+    --text-main: #171717;
+    --text-secondary: #525252;
+    --text-muted: #737373;
+    
+    /* Primary Action: Black in Light Mode */
+    --primary: #171717;
+    --primary-foreground: #ffffff;
+    --primary-hover: #404040;
+    --primary-light: #f5f5f5;
+    
+    --success: #22c55e;
+    --warning: #eab308;
+    --error: #ef4444;
+    --info: #3b82f6;
+
+    --accent: #3b82f6;
+    --accent-muted: #3b82f620;
+
+    color-scheme: light;
+  }
+
+  :root.dark {
+    /* Vercel Dark Theme — refined */
+    --bg-main: #09090b;
+    --bg-secondary: #0c0c0e;
+    --bg-tertiary: #18181b;
+    --bg-hover: #222225;
+    
+    --border-main: #27272a;
+    --border-hover: #3f3f46;
+    --border-subtle: #1e1e22;
+    
+    --text-main: #fafafa;
+    --text-secondary: #a1a1aa;
+    --text-muted: #71717a;
+    
+    /* Primary Action: White in Dark Mode */
+    --primary: #fafafa;
+    --primary-foreground: #09090b;
+    --primary-hover: #d4d4d8;
+    --primary-light: #18181b;
+
+    --success: #22c55e;
+    --warning: #eab308;
+    --error: #ef4444;
+    --info: #3b82f6;
+
+    --accent: #3b82f6;
+    --accent-muted: #3b82f618;
+
+    color-scheme: dark;
+  }
+
+  html {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    background-color: var(--bg-main);
+    color: var(--text-main);
+  }
+
+  /* ===== Focus ring: accent-colored ring for keyboard navigation ===== */
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  /* Suppress default outline for elements that handle focus via ring-* utilities */
+  [class*="focus:"]:focus,
+  [class*="focus-within"]:focus-within {
+    outline: none;
+  }
+
+  /* ===== Disabled: standard opacity + cursor ===== */
+  button:disabled,
+  input:disabled,
+  select:disabled,
+  textarea:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  /* Scrollbar — minimal, only visible on hover */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+
+  *:hover {
+    scrollbar-color: var(--border-main) transparent;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 3px;
+    transition: background 0.2s;
+  }
+
+  *:hover::-webkit-scrollbar-thumb {
+    background: var(--border-main);
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
+  }
+}
+
+/* ===== Tab Bar ===== */
+.tab-item {
+  flex: 0 1 200px;
+  min-width: 100px;
+  max-width: 200px;
+}
+
+/* ===== Agent Panel - Slide Down ===== */
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    max-height: 0;
+  }
+  to {
+    opacity: 1;
+    max-height: 80vh;
+  }
+}
+
+/* ===== Capability Browser - Expand/Collapse ===== */
+.capability-expand-enter {
+  animation: capability-expand-in 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  transform-origin: top;
+}
+
+@keyframes capability-expand-in {
+  from {
+    opacity: 0;
+    max-height: 0;
+    transform: scaleY(0.97);
+  }
+  to {
+    opacity: 1;
+    max-height: 80vh;
+    transform: scaleY(1);
+  }
+}
+
+/* ===== Input composer focus glow ===== */
+.composer-input {
+  transition: box-shadow var(--transition-default) ease, border-color var(--transition-default) ease;
+}
+
+.composer-input:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-muted), 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+}
+
+/* ===== Composer Processing Glow — ambient breathing border + shadow ===== */
+/* A unified 2.4s breathing rhythm creates a calm "alive" feel when the agent
+   is processing. The border color and outer glow pulse in sync. */
+.composer-input.composer-processing {
+  animation: composer-border-breathe 2.4s ease-in-out infinite;
+}
+
+@keyframes composer-border-breathe {
+  0%, 100% {
+    border-color: color-mix(in srgb, var(--accent) 25%, var(--border-main));
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--accent) 6%, transparent),
+      0 0 8px 0 color-mix(in srgb, var(--accent) 4%, transparent),
+      0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  }
+  50% {
+    border-color: color-mix(in srgb, var(--accent) 55%, var(--border-main));
+    box-shadow:
+      0 0 0 2px color-mix(in srgb, var(--accent) 12%, transparent),
+      0 0 20px 2px color-mix(in srgb, var(--accent) 10%, transparent),
+      0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  }
+}
+
+:root.dark .composer-input.composer-processing {
+  animation: composer-border-breathe-dark 2.4s ease-in-out infinite;
+}
+
+@keyframes composer-border-breathe-dark {
+  0%, 100% {
+    border-color: color-mix(in srgb, var(--accent) 30%, var(--border-main));
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--accent) 8%, transparent),
+      0 0 10px 0 color-mix(in srgb, var(--accent) 6%, transparent),
+      0 1px 2px 0 rgba(0, 0, 0, 0.15);
+  }
+  50% {
+    border-color: color-mix(in srgb, var(--accent) 60%, var(--border-main));
+    box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent),
+      0 0 24px 4px color-mix(in srgb, var(--accent) 12%, transparent),
+      0 1px 2px 0 rgba(0, 0, 0, 0.15);
+  }
+}
+
+/* Override focus-within when processing — let the breathing animation drive styles */
+.composer-input.composer-processing:focus-within {
+  box-shadow: inherit;
+  border-color: inherit;
+}
+
+/* ===== Session Row Processing Pulse — ambient background fade ===== */
+/* Matching 2.4s rhythm for sidebar session rows. The row background subtly
+   shifts with accent color, creating a cohesive "heartbeat" across the UI. */
+.session-row-processing {
+  animation: session-ambient-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes session-ambient-pulse {
+  0%, 100% {
+    background-color: color-mix(in srgb, var(--session-pulse-color, var(--accent)) 3%, var(--bg-hover, transparent));
+  }
+  50% {
+    background-color: color-mix(in srgb, var(--session-pulse-color, var(--accent)) 10%, var(--bg-hover, transparent));
+  }
+}
+
+:root.dark .session-row-processing {
+  animation: session-ambient-pulse-dark 2.4s ease-in-out infinite;
+}
+
+@keyframes session-ambient-pulse-dark {
+  0%, 100% {
+    background-color: color-mix(in srgb, var(--session-pulse-color, var(--accent)) 4%, var(--bg-hover, transparent));
+  }
+  50% {
+    background-color: color-mix(in srgb, var(--session-pulse-color, var(--accent)) 12%, var(--bg-hover, transparent));
+  }
+}
+
+/* Session pulse color variants */
+.session-row-processing--accent  { --session-pulse-color: var(--accent); }
+.session-row-processing--success { --session-pulse-color: var(--success); }
+.session-row-processing--warning { --session-pulse-color: var(--warning); }
+.session-row-processing--error   { --session-pulse-color: var(--error); }
+
+/* ===== Sidebar drag handle ===== */
+.sidebar-resize-handle {
+  transition: opacity 0.15s ease;
+  opacity: 0;
+}
+
+.sidebar-resize-handle:hover,
+.sidebar-resize-handle:active,
+.sidebar-resize-handle.active {
+  opacity: 1;
+}
+
+/* ===== Panel resize handle (three-panel layout) ===== */
+.panel-resize-handle {
+  transition: background-color 0.15s ease;
+  background-color: transparent;
+}
+
+.panel-resize-handle:hover {
+  background-color: var(--accent);
+}
+
+.panel-resize-handle.active {
+  background-color: var(--accent);
+}
+
+/* ===== Tab active indicator ===== */
+.tab-active-indicator {
+  position: absolute;
+  bottom: -1px;
+  left: 8px;
+  right: 8px;
+  height: 2px;
+  background: var(--primary);
+  border-radius: 1px 1px 0 0;
+}
+
+/* ===== Subtle fade for section headers ===== */
+/* Type scale: xs=12px, sm=14px, base=16px. Weights: 400 (normal), 600 (semibold) only. */
+.section-label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* ===== Markdown Prose ===== */
+.md-prose {
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--text-main);
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+/* Headings */
+.md-prose h1 { font-size: 1.35em; font-weight: 600; margin: 1em 0 0.5em; color: var(--text-main); }
+.md-prose h2 { font-size: 1.2em; font-weight: 600; margin: 1em 0 0.4em; color: var(--text-main); }
+.md-prose h3 { font-size: 1.1em; font-weight: 600; margin: 0.8em 0 0.35em; color: var(--text-main); }
+.md-prose h4 { font-size: 1em; font-weight: 600; margin: 0.6em 0 0.3em; color: var(--text-main); }
+
+.md-prose h1:first-child,
+.md-prose h2:first-child,
+.md-prose h3:first-child,
+.md-prose h4:first-child {
+  margin-top: 0;
+}
+
+/* Paragraphs */
+.md-prose p {
+  margin: 0.5em 0;
+}
+
+.md-prose p:first-child { margin-top: 0; }
+.md-prose p:last-child { margin-bottom: 0; }
+
+/* Lists */
+.md-prose ul,
+.md-prose ol {
+  margin: 0.5em 0;
+  padding-left: 1.5em;
+}
+
+.md-prose ul { list-style-type: disc; }
+.md-prose ol { list-style-type: decimal; }
+
+.md-prose li {
+  margin: 0.2em 0;
+}
+
+.md-prose li > ul,
+.md-prose li > ol {
+  margin: 0.15em 0;
+}
+
+/* Inline code */
+.md-prose code:not(.hljs) {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.9em;
+  padding: 0.15em 0.35em;
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+  color: var(--text-main);
+}
+
+/* Code blocks */
+.md-code-block {
+  margin: 0.6em 0;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border-main);
+  background: var(--bg-secondary);
+}
+
+.md-code-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 12px;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-main);
+}
+
+.md-code-lang {
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+/* Hide the header when there's no language label */
+.md-code-header:has(.md-code-lang:empty) {
+  display: none;
+}
+
+.md-code-block pre {
+  margin: 0;
+  padding: 12px 14px;
+  overflow-x: auto;
+}
+
+.md-code-block code.hljs {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.55;
+  background: transparent;
+  padding: 0;
+  color: var(--text-main);
+}
+
+/* Blockquotes */
+.md-prose blockquote {
+  margin: 0.5em 0;
+  padding: 0.25em 0 0.25em 1em;
+  border-left: 3px solid var(--border-main);
+  color: var(--text-secondary);
+}
+
+.md-prose blockquote p {
+  margin: 0.25em 0;
+}
+
+/* Tables */
+.md-prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.6em 0;
+  font-size: 13px;
+}
+
+.md-prose th,
+.md-prose td {
+  border: 1px solid var(--border-main);
+  padding: 6px 10px;
+  text-align: left;
+}
+
+.md-prose th {
+  background: var(--bg-tertiary);
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.md-prose td {
+  color: var(--text-secondary);
+}
+
+/* Horizontal rule */
+.md-prose hr {
+  border: none;
+  border-top: 1px solid var(--border-main);
+  margin: 1em 0;
+}
+
+/* Links */
+.md-prose a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.md-prose a:hover {
+  text-decoration: underline;
+}
+
+/* Strong & Emphasis */
+.md-prose strong { font-weight: 600; color: var(--text-main); }
+.md-prose em { font-style: italic; }
+
+/* Images */
+.md-prose img {
+  max-width: 100%;
+  border-radius: 6px;
+}
+
+/* ===== Highlight.js Theme (adapts to light/dark via CSS vars) ===== */
+/* Based on GitHub theme — uses the app's design tokens */
+
+.hljs-comment,
+.hljs-quote {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-addition {
+  color: #cf222e;
+}
+:root.dark .hljs-keyword,
+:root.dark .hljs-selector-tag,
+:root.dark .hljs-addition {
+  color: #ff7b72;
+}
+
+.hljs-string,
+.hljs-attribute,
+.hljs-meta .hljs-string,
+.hljs-regexp {
+  color: #0a3069;
+}
+:root.dark .hljs-string,
+:root.dark .hljs-attribute,
+:root.dark .hljs-meta .hljs-string,
+:root.dark .hljs-regexp {
+  color: #a5d6ff;
+}
+
+.hljs-number,
+.hljs-literal,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-tag .hljs-attr {
+  color: #0550ae;
+}
+:root.dark .hljs-number,
+:root.dark .hljs-literal,
+:root.dark .hljs-variable,
+:root.dark .hljs-template-variable,
+:root.dark .hljs-tag .hljs-attr {
+  color: #79c0ff;
+}
+
+.hljs-title,
+.hljs-section,
+.hljs-selector-id {
+  color: #8250df;
+}
+:root.dark .hljs-title,
+:root.dark .hljs-section,
+:root.dark .hljs-selector-id {
+  color: #d2a8ff;
+}
+
+.hljs-type,
+.hljs-built_in,
+.hljs-builtin-name,
+.hljs-selector-class {
+  color: #953800;
+}
+:root.dark .hljs-type,
+:root.dark .hljs-built_in,
+:root.dark .hljs-builtin-name,
+:root.dark .hljs-selector-class {
+  color: #ffa657;
+}
+
+.hljs-name,
+.hljs-tag {
+  color: #116329;
+}
+:root.dark .hljs-name,
+:root.dark .hljs-tag {
+  color: #7ee787;
+}
+
+.hljs-meta,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-link {
+  color: var(--text-secondary);
+}
+
+.hljs-deletion {
+  color: #82071e;
+  background: rgba(255, 129, 130, 0.15);
+}
+:root.dark .hljs-deletion {
+  color: #ffdcd7;
+  background: rgba(248, 81, 73, 0.15);
+}
+
+.hljs-emphasis { font-style: italic; }
+.hljs-strong { font-weight: 600; }
+
+/* ===== Smooth content transitions ===== */
+.fade-in {
+  animation: fadeIn 0.15s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(2px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ===== Resource Browser Popover — slide up from composer ===== */
+.animate-popover-in {
+  animation: popover-in 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  transform-origin: bottom left;
+}
+
+@keyframes popover-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Streaming text cursor — soft breathing glow */
+.streaming-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1.1em;
+  margin-left: 1px;
+  vertical-align: text-bottom;
+  border-radius: 1px;
+  background: var(--accent);
+  animation: cursor-breathe 1.2s ease-in-out infinite;
+}
+
+@keyframes cursor-breathe {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.2; }
+}
+
+/* ===== Typing Dots — subtle fade pulse ===== */
+/* Staggered opacity animation using the same ease-in-out rhythm family. */
+.typing-dot {
+  animation: typing-dot-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes typing-dot-pulse {
+  0%, 100% { opacity: 0.3; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1); }
+}
+
+/* ===== Status Dot Glow — gentle expanding ring ===== */
+/* Replaces aggressive animate-ping with a calm scale+fade that breathes. */
+.status-dot-glow {
+  animation: status-dot-breathe 2.4s ease-in-out infinite;
+}
+
+@keyframes status-dot-breathe {
+  0%, 100% { transform: scale(1); opacity: 0.5; }
+  50% { transform: scale(1.8); opacity: 0; }
+}
+
+/* ===== Neural Trace — Agent Activity Beam ===== */
+/* A luminous beam that sweeps back and forth along a rail,
+   inspired by OpenCode CLI's bouncing progress bar.
+   The beam has a tight hotspot with a comet-tail trail. */
+
+.neural-trace {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 1px;
+}
+
+/* Height variants */
+.neural-trace--sm { height: 2px; }
+.neural-trace--md { height: 3px; }
+
+/* The subtle rail/track the beam moves along */
+.neural-trace__rail {
+  position: absolute;
+  inset: 0;
+  background: var(--accent);
+  opacity: 0.06;
+  border-radius: inherit;
+}
+
+:root.dark .neural-trace__rail { opacity: 0.08; }
+
+/* The sweeping beam */
+.neural-trace__beam {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 40%;
+  border-radius: inherit;
+  animation: neural-sweep 1.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  /* Beam: tight bright center + soft fade on each side */
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--neural-color, var(--accent)) 30%,
+    var(--neural-color, var(--accent)) 50%,
+    transparent 100%
+  );
+  opacity: 0.8;
+}
+
+/* The phosphor afterglow — a fainter, wider trail that lingers */
+.neural-trace__glow {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 55%;
+  border-radius: inherit;
+  animation: neural-sweep 1.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  animation-delay: -0.12s;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--neural-color, var(--accent)) 40%,
+    transparent 100%
+  );
+  opacity: 0.15;
+  filter: blur(3px);
+}
+
+:root.dark .neural-trace__beam { opacity: 0.9; }
+:root.dark .neural-trace__glow { opacity: 0.2; }
+
+@keyframes neural-sweep {
+  0% { left: -40%; }
+  50% { left: 100%; }
+  100% { left: -40%; }
+}
+
+/* Color variants (via CSS custom property) */
+.neural-trace--accent { --neural-color: var(--accent); }
+.neural-trace--success { --neural-color: var(--success); }
+.neural-trace--warning { --neural-color: var(--warning); }
+.neural-trace--error { --neural-color: var(--error); }
+
+/* Compact inline variant for sidebar items — narrower beam, faster */
+.neural-trace--inline .neural-trace__beam {
+  width: 35%;
+  animation-duration: 1.4s;
+}
+.neural-trace--inline .neural-trace__glow {
+  width: 45%;
+  animation-duration: 1.4s;
+}
+
+/* Fade-in entrance when the trace appears */
+.neural-trace-enter {
+  animation: neural-trace-in 0.3s ease-out;
+}
+
+@keyframes neural-trace-in {
+  from { opacity: 0; transform: scaleX(0.8); }
+  to { opacity: 1; transform: scaleX(1); }
+}
+
+/* ===== Mobile Drawer ===== */
+/* Backdrop overlay — covers entire screen behind the drawer */
+.mobile-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+}
+
+.mobile-drawer-backdrop.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Drawer panel — slides in from left */
+.mobile-drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 50;
+  width: 85vw;
+  max-width: 380px;
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border-main);
+  transform: translateX(-100%);
+  transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  /* Safe area for notched devices */
+  padding-left: env(safe-area-inset-left, 0);
+}
+
+.mobile-drawer.open {
+  transform: translateX(0);
+}
+
+/* ===== Mobile Header Bar ===== */
+.mobile-header {
+  /* Safe area for notched devices (status bar) */
+  padding-top: max(0.625rem, env(safe-area-inset-top, 0.625rem));
+}
+
+/* ===== Touch Targets ===== */
+/* Ensure minimum 44x44px tap target on mobile per WCAG 2.5.8 */
+.touch-target {
+  min-width: 44px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ===== Reduced Motion ===== */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .mobile-drawer {
+    transition-duration: 0.01ms !important;
+  }
+
+  .mobile-drawer-backdrop {
+    transition-duration: 0.01ms !important;
+  }
+
+  .neural-trace__beam,
+  .neural-trace__glow {
+    animation: none !important;
+    opacity: 0.5;
+    left: 30%;
+  }
+
+  .streaming-cursor {
+    animation: none !important;
+    opacity: 1;
+  }
+
+  /* Ambient processing animations — show static accent tint instead */
+  .composer-input.composer-processing {
+    animation: none !important;
+    border-color: color-mix(in srgb, var(--accent) 40%, var(--border-main)) !important;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 10%, transparent) !important;
+  }
+
+  .session-row-processing {
+    animation: none !important;
+    background-color: color-mix(in srgb, var(--session-pulse-color, var(--accent)) 6%, var(--bg-hover, transparent)) !important;
+  }
+}
+
+/* ===== Material You Refinements ===== */
+/* When .material is on <html>, adjust shape, elevation, and motion to
+   match Material Design 3 language. Colors are applied inline by the
+   theme store — these rules handle everything else. */
+
+/* Shape — MD3 uses rounder corners */
+.material button,
+.material input,
+.material select,
+.material textarea,
+.material [class*="rounded"] {
+  border-radius: 12px;
+}
+
+.material .md-code-block {
+  border-radius: 12px;
+}
+
+.material .md-prose code:not(.hljs) {
+  border-radius: 6px;
+}
+
+/* Cards / panels — larger radius */
+.material .composer-input {
+  border-radius: 16px;
+}
+
+/* Pill buttons (e.g., primary action, chips) */
+.material button[class*="rounded-full"] {
+  border-radius: 9999px; /* keep pill shape */
+}
+
+/* Elevation — MD3 uses softer, more spread shadows with tonal surface tint */
+.material {
+  --shadow-sm: 0 1px 3px 1px rgba(0, 0, 0, 0.07), 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 2px 6px 2px rgba(0, 0, 0, 0.07), 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 4px 8px 3px rgba(0, 0, 0, 0.07), 0 1px 3px 0 rgba(0, 0, 0, 0.04);
+}
+
+.material.dark {
+  --shadow-sm: 0 1px 3px 1px rgba(0, 0, 0, 0.25), 0 1px 2px 0 rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 2px 6px 2px rgba(0, 0, 0, 0.25), 0 1px 2px 0 rgba(0, 0, 0, 0.2);
+  --shadow-lg: 0 4px 8px 3px rgba(0, 0, 0, 0.25), 0 1px 3px 0 rgba(0, 0, 0, 0.2);
+}
+
+/* Motion — MD3 standard duration is 300ms with emphasized decelerate */
+.material {
+  --transition-default: 300ms;
+}
+
+/* Scrollbar — slightly thicker, more rounded for Material feel */
+.material * {
+  scrollbar-width: auto;
+}
+
+.material ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.material ::-webkit-scrollbar-thumb {
+  border-radius: 4px;
+}
+
+/* Tab indicator — thicker, rounded like MD3 */
+.material .tab-active-indicator {
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+  background: var(--primary);
+}
+
+/* Neural trace — slightly softer in Material mode */
+.material .neural-trace__beam {
+  opacity: 0.6;
+}
+.material .neural-trace__glow {
+  opacity: 0.12;
+}
+
+.material.dark .neural-trace__beam {
+  opacity: 0.7;
+}
+.material.dark .neural-trace__glow {
+  opacity: 0.15;
+}
+
+/* ===== Mobile-specific scrolling fixes ===== */
+@media (max-width: 767px) {
+  /* Prevent overscroll bounce on iOS */
+  html, body {
+    overscroll-behavior: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Always show scrollbar on mobile (no hover needed) */
+  * {
+    scrollbar-color: var(--border-main) transparent;
+  }
+
+  /* Larger touch targets for sidebar items on mobile */
+  .mobile-drawer button {
+    min-height: 44px;
+  }
+}

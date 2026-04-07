@@ -1,0 +1,212 @@
+// AgentDetail — agent info panel (model, tools, MCP servers, system prompt)
+import { createResource, Show, For } from 'solid-js';
+import { agents as agentsAPI } from '../../lib/api';
+import { selectedAgent } from '../../stores/agents';
+import type { AgentCRD } from '../../types';
+import Badge from '../shared/Badge';
+import Spinner from '../shared/Spinner';
+import { formatDateTime } from '../../lib/format';
+
+interface AgentDetailProps {
+  class?: string;
+}
+
+export default function AgentDetail(props: AgentDetailProps) {
+  const agent = selectedAgent;
+
+  const [crd] = createResource(
+    () => {
+      const a = agent();
+      return a ? { ns: a.namespace, name: a.name } : null;
+    },
+    async (key) => {
+      if (!key) return null;
+      return agentsAPI.get(key.ns, key.name) as Promise<AgentCRD>;
+    },
+  );
+
+  return (
+    <div class={`space-y-4 ${props.class || ''}`}>
+      <Show when={crd.loading}>
+        <div class="flex items-center justify-center py-8">
+          <Spinner size="md" />
+        </div>
+      </Show>
+
+      <Show when={crd.error}>
+        <div class="text-sm text-error px-4 py-2">Failed to load agent details</div>
+      </Show>
+
+      <Show when={crd()}>
+        {(data) => {
+          const spec = () => data().spec;
+          const status = () => data().status;
+          const meta = () => data().metadata;
+
+          return (
+            <>
+              {/* Header */}
+              <div class="flex items-center gap-3 px-4 py-3 border-b border-border">
+                <div class="w-8 h-8 rounded-lg bg-accent/15 flex items-center justify-center">
+                  <span class="text-accent text-sm font-bold">
+                    {meta().name.charAt(0).toUpperCase()}
+                  </span>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <h2 class="text-sm font-semibold text-text truncate">{meta().name}</h2>
+                  <p class="text-xs text-text-muted">{meta().namespace}</p>
+                </div>
+                <Show when={status()?.phase}>
+                  <Badge variant={status()?.phase === 'Running' ? 'success' : 'muted'}>
+                    {status()!.phase}
+                  </Badge>
+                </Show>
+              </div>
+
+              {/* Properties */}
+              <div class="px-4 space-y-3">
+                <Section title="Configuration">
+                  <Property label="Mode" value={spec().mode} />
+                  <Property label="Runtime" value={spec().runtime} />
+                  <Show when={spec().fantasy}>
+                    <Property label="Model" value={spec().fantasy!.primaryModel} />
+                    <Show when={spec().fantasy!.temperature !== undefined}>
+                      <Property label="Temperature" value={String(spec().fantasy!.temperature)} />
+                    </Show>
+                    <Show when={spec().fantasy!.maxOutputTokens !== undefined}>
+                      <Property label="Max Tokens" value={String(spec().fantasy!.maxOutputTokens)} />
+                    </Show>
+                    <Show when={spec().fantasy!.maxSteps !== undefined}>
+                      <Property label="Max Steps" value={String(spec().fantasy!.maxSteps)} />
+                    </Show>
+                  </Show>
+                  <Show when={spec().replicas !== undefined}>
+                    <Property label="Replicas" value={String(spec().replicas)} />
+                  </Show>
+                </Section>
+
+                {/* Providers */}
+                <Show when={spec().fantasy?.providers?.length}>
+                  <Section title="Providers">
+                    <div class="flex flex-wrap gap-1.5">
+                      <For each={spec().fantasy!.providers}>
+                        {(p) => (
+                          <Badge variant="info">{p.name}</Badge>
+                        )}
+                      </For>
+                    </div>
+                  </Section>
+                </Show>
+
+                {/* Built-in Tools */}
+                <Show when={spec().fantasy?.builtinTools?.length}>
+                  <Section title="Built-in Tools">
+                    <div class="flex flex-wrap gap-1.5">
+                      <For each={spec().fantasy!.builtinTools}>
+                        {(tool) => (
+                          <Badge variant="muted">{tool}</Badge>
+                        )}
+                      </For>
+                    </div>
+                  </Section>
+                </Show>
+
+                {/* External Tools */}
+                <Show when={spec().fantasy?.tools?.length}>
+                  <Section title="External Tools">
+                    <For each={spec().fantasy!.tools}>
+                      {(tool) => (
+                        <div class="flex items-center gap-2 text-xs py-0.5">
+                          <span class="text-text font-mono">{tool.name}</span>
+                          <span class="text-text-muted truncate">{tool.path}</span>
+                        </div>
+                      )}
+                    </For>
+                  </Section>
+                </Show>
+
+                {/* MCP Servers */}
+                <Show when={spec().fantasy?.mcpServers?.length}>
+                  <Section title="MCP Servers">
+                    <div class="flex flex-wrap gap-1.5">
+                      <For each={spec().fantasy!.mcpServers}>
+                        {(mcp) => (
+                          <Badge variant="info">{mcp.name}</Badge>
+                        )}
+                      </For>
+                    </div>
+                  </Section>
+                </Show>
+
+                {/* Fallback Models */}
+                <Show when={spec().fantasy?.fallbackModels?.length}>
+                  <Section title="Fallback Models">
+                    <div class="flex flex-wrap gap-1.5">
+                      <For each={spec().fantasy!.fallbackModels}>
+                        {(model) => (
+                          <Badge variant="muted">{model}</Badge>
+                        )}
+                      </For>
+                    </div>
+                  </Section>
+                </Show>
+
+                {/* System Prompt */}
+                <Show when={spec().fantasy?.systemPrompt}>
+                  <Section title="System Prompt">
+                    <pre class="text-xs text-text-secondary font-mono whitespace-pre-wrap bg-surface-2 rounded-md p-2 max-h-[200px] overflow-y-auto border border-border-subtle">
+                      {spec().fantasy!.systemPrompt}
+                    </pre>
+                  </Section>
+                </Show>
+
+                {/* Conditions */}
+                <Show when={status()?.conditions?.length}>
+                  <Section title="Conditions">
+                    <For each={status()!.conditions}>
+                      {(c) => (
+                        <div class="flex items-center gap-2 text-xs py-0.5">
+                          <Badge variant={c.status === 'True' ? 'success' : 'muted'} class="text-[10px]">
+                            {c.type}
+                          </Badge>
+                          <Show when={c.message}>
+                            <span class="text-text-muted truncate">{c.message}</span>
+                          </Show>
+                        </div>
+                      )}
+                    </For>
+                  </Section>
+                </Show>
+
+                {/* Created timestamp */}
+                <div class="pt-2 border-t border-border-subtle">
+                  <p class="text-xs text-text-muted">
+                    Created {formatDateTime(meta().creationTimestamp)}
+                  </p>
+                </div>
+              </div>
+            </>
+          );
+        }}
+      </Show>
+    </div>
+  );
+}
+
+function Section(props: { title: string; children: any }) {
+  return (
+    <div class="space-y-1.5">
+      <h3 class="text-xs font-medium text-text-muted uppercase tracking-wide">{props.title}</h3>
+      {props.children}
+    </div>
+  );
+}
+
+function Property(props: { label: string; value: string }) {
+  return (
+    <div class="flex items-center gap-2 text-xs">
+      <span class="text-text-muted w-24 flex-shrink-0">{props.label}</span>
+      <span class="text-text font-mono">{props.value}</span>
+    </div>
+  );
+}

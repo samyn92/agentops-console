@@ -1,0 +1,61 @@
+// GenericCard — fallback tool result renderer (raw JSON output)
+import { createSignal, Show } from 'solid-js';
+import Badge from '../shared/Badge';
+
+interface GenericCardProps {
+  toolName: string;
+  input: string;
+  output: string;
+  isError: boolean;
+  class?: string;
+}
+
+export default function GenericCard(props: GenericCardProps) {
+  const [expanded, setExpanded] = createSignal(false);
+
+  const truncatedOutput = () => {
+    if (!props.output) return '';
+    if (props.output.length <= 500 || expanded()) return props.output;
+    return props.output.slice(0, 500) + '...';
+  };
+
+  const formattedInput = () => {
+    try {
+      return JSON.stringify(JSON.parse(props.input), null, 2);
+    } catch {
+      return props.input;
+    }
+  };
+
+  return (
+    <div class={`border border-border rounded-lg overflow-hidden my-1 ${props.class || ''}`}>
+      {/* Header */}
+      <div class="flex items-center gap-2 px-3 py-1.5 bg-surface-2 border-b border-border-subtle">
+        <span class="text-xs font-medium text-text-secondary">{props.toolName}</span>
+        <Badge variant={props.isError ? 'error' : 'success'} class="ml-auto">
+          {props.isError ? 'error' : 'done'}
+        </Badge>
+      </div>
+
+      {/* Output */}
+      <div class="px-3 py-2 bg-surface">
+        <Show when={props.output}>
+          <pre class="text-xs text-text-secondary font-mono whitespace-pre-wrap break-all overflow-hidden max-h-[300px] overflow-y-auto">
+            {truncatedOutput()}
+          </pre>
+          <Show when={props.output.length > 500 && !expanded()}>
+            <button
+              class="text-xs text-accent hover:underline mt-1"
+              onClick={() => setExpanded(true)}
+            >
+              Show all ({props.output.length} chars)
+            </button>
+          </Show>
+        </Show>
+        <Show when={!props.output}>
+          <span class="text-xs text-text-muted italic">No output</span>
+        </Show>
+      </div>
+    </div>
+  );
+}
