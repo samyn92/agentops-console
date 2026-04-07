@@ -72,10 +72,10 @@ function ToolIcon(props: { toolName: string; category: ToolCategory; class?: str
   const isThemed = () => props.category !== 'builtin';
   const theme = () => toolThemes[props.category];
 
-  // For non-builtin tools, use the branded category icon
+  // For non-builtin tools, use the branded category icon (slightly larger for clarity)
   if (isThemed()) {
     const Icon = getCategoryIcon(props.category);
-    return <Icon class={`${props.class || 'w-4 h-4'} ${theme().iconColor}`} />;
+    return <Icon class={`${props.class || 'w-5 h-5'} ${theme().iconColor}`} />;
   }
 
   // Built-in tool icons
