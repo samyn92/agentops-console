@@ -176,49 +176,63 @@ export async function loadSessionMessages(sessionId: string) {
 
     const chatMsgs = mapRuntimeMessages(runtimeMsgs, createdTs, updatedTs);
 
-    // Inject per-turn usage so TokenBadge renders on each assistant turn after
-    // a browser refresh. A "turn" = everything from a user message to the next
-    // user message (or end). The usage goes on the LAST assistant message of
-    // each turn — that's the final text response the user sees.
+    // Inject per-step usage into each assistant message so TokenBadge renders
+    // after a browser refresh. Each turn has step_usages[0..N] matching the N
+    // assistant messages within that turn. If step_usages is unavailable (old
+    // sessions), fall back to putting the turn total on the last assistant message.
     const turnUsages = session?.turn_usages;
     if (turnUsages && turnUsages.length > 0) {
-      // Identify the last assistant message index for each turn.
-      // Turn boundaries are user messages (skip the first one which starts turn 0).
-      const turnLastAssistantIdx: number[] = [];
-      let lastAssistantIdx = -1;
+      // Group assistant message indices by turn.
+      // Turn boundaries: user messages separate turns.
+      const turns: number[][] = []; // turns[i] = [assistantMsgIdx, ...]
+      let currentTurn: number[] = [];
       for (let i = 0; i < chatMsgs.length; i++) {
-        if (chatMsgs[i].role === 'assistant') {
-          lastAssistantIdx = i;
-        } else if (chatMsgs[i].role === 'user' && lastAssistantIdx >= 0) {
-          // This user message starts a new turn — flush the previous turn
-          turnLastAssistantIdx.push(lastAssistantIdx);
-          lastAssistantIdx = -1;
+        if (chatMsgs[i].role === 'user') {
+          if (currentTurn.length > 0) {
+            turns.push(currentTurn);
+            currentTurn = [];
+          }
+        } else if (chatMsgs[i].role === 'assistant') {
+          currentTurn.push(i);
         }
       }
-      // Flush the final turn
-      if (lastAssistantIdx >= 0) {
-        turnLastAssistantIdx.push(lastAssistantIdx);
+      if (currentTurn.length > 0) {
+        turns.push(currentTurn);
       }
 
-      // Inject synthetic step-finish on each turn's last assistant message
-      for (let t = 0; t < Math.min(turnLastAssistantIdx.length, turnUsages.length); t++) {
-        const msg = chatMsgs[turnLastAssistantIdx[t]];
-        if (msg.parts) {
-          const tu = turnUsages[t];
-          msg.parts.push({
-            type: 'step-finish',
-            stepNumber: tu.steps || 0,
-            usage: {
-              input_tokens: tu.usage.input_tokens,
-              output_tokens: tu.usage.output_tokens,
-              total_tokens: tu.usage.total_tokens,
-              reasoning_tokens: tu.usage.reasoning_tokens,
-              cache_creation_tokens: tu.usage.cache_creation_tokens,
-              cache_read_tokens: tu.usage.cache_read_tokens,
-            },
-            finishReason: 'stop',
-            toolCallCount: 0,
-          } as StepFinishPart);
+      // Inject step usages per turn
+      for (let t = 0; t < Math.min(turns.length, turnUsages.length); t++) {
+        const tu = turnUsages[t];
+        const assistantIdxs = turns[t];
+        const stepUsages = tu.step_usages;
+
+        if (stepUsages && stepUsages.length > 0) {
+          // Per-step breakdown available: inject each step's usage into its assistant message
+          for (let s = 0; s < Math.min(assistantIdxs.length, stepUsages.length); s++) {
+            const msg = chatMsgs[assistantIdxs[s]];
+            if (msg.parts) {
+              msg.parts.push({
+                type: 'step-finish',
+                stepNumber: s + 1,
+                usage: stepUsages[s] as Usage,
+                finishReason: 'stop',
+                toolCallCount: 0,
+              } as StepFinishPart);
+            }
+          }
+        } else {
+          // Fallback: only turn total available, put it on the last assistant message
+          const lastIdx = assistantIdxs[assistantIdxs.length - 1];
+          const msg = chatMsgs[lastIdx];
+          if (msg.parts) {
+            msg.parts.push({
+              type: 'step-finish',
+              stepNumber: tu.steps || 0,
+              usage: tu.usage as Usage,
+              finishReason: 'stop',
+              toolCallCount: 0,
+            } as StepFinishPart);
+          }
         }
       }
     }

@@ -70,33 +70,15 @@ function groupParts(parts: MessagePart[]): PartGroup[] {
   return groups;
 }
 
-/** Sum all step-finish usages in this message (one per LLM step within the turn) */
-function totalUsageFromParts(parts: MessagePart[] | undefined): Usage | undefined {
+/** Extract the last step-finish usage for this message (per-step, not summed) */
+function lastUsage(parts: MessagePart[] | undefined): Usage | undefined {
   if (!parts) return undefined;
-  let found = false;
-  const sum: Usage = {
-    input_tokens: 0,
-    output_tokens: 0,
-    total_tokens: 0,
-    reasoning_tokens: 0,
-    cache_creation_tokens: 0,
-    cache_read_tokens: 0,
-  };
-  for (const p of parts) {
-    if (p.type === 'step-finish') {
-      const u = (p as StepFinishPart).usage;
-      if (u) {
-        sum.input_tokens += u.input_tokens;
-        sum.output_tokens += u.output_tokens;
-        sum.total_tokens += u.total_tokens;
-        sum.reasoning_tokens += u.reasoning_tokens;
-        sum.cache_creation_tokens += u.cache_creation_tokens;
-        sum.cache_read_tokens += u.cache_read_tokens;
-        found = true;
-      }
+  for (let i = parts.length - 1; i >= 0; i--) {
+    if (parts[i].type === 'step-finish') {
+      return (parts[i] as StepFinishPart).usage;
     }
   }
-  return found ? sum : undefined;
+  return undefined;
 }
 
 export default function MessageBubble(props: MessageBubbleProps) {
@@ -122,7 +104,7 @@ export default function MessageBubble(props: MessageBubbleProps) {
 
   // ── Assistant message ──
   const groups = createMemo(() => groupParts(msg().parts || []));
-  const usage = createMemo(() => totalUsageFromParts(msg().parts));
+  const usage = createMemo(() => lastUsage(msg().parts));
 
   // Determine if there's any visible content to show
   const hasVisibleContent = createMemo(() => {

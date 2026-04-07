@@ -151,6 +151,7 @@ export interface TurnUsage {
   usage: SessionUsage
   model: string
   steps: number
+  step_usages?: SessionUsage[]
 }
 
 export interface Session {
