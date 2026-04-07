@@ -12,7 +12,7 @@ import type { Component } from "solid-js";
 // =============================================================================
 
 export const KubernetesIcon: Component<{ class?: string }> = (props) => (
-  <svg viewBox="0 0 777 754" class={props.class} fill="none">
+  <svg viewBox="0 160 777 754" class={props.class} fill="none">
     {/* Blue heptagon shield */}
     <path d="M386.93 178.6a48.9 48.9 0 0 0-18.75 4.74L112.31 305.6a48.9 48.9 0 0 0-26.48 32.92L22.71 613.15a48.9 48.9 0 0 0 9.42 41.07L209.24 874.42a48.9 48.9 0 0 0 38.26 18.26l284.02-.07a48.9 48.9 0 0 0 38.25-18.23L746.81 654.15a48.9 48.9 0 0 0 9.46-41.07L693.04 338.46a48.9 48.9 0 0 0-26.47-32.92L410.66 183.34a48.9 48.9 0 0 0-23.73-4.74z" fill="currentColor" opacity="0.15" />
     {/* White wheel — spokes, hub, heptagonal ring */}
