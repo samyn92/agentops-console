@@ -30,6 +30,10 @@
   --color-accent: var(--accent);
   --color-accent-muted: var(--accent-muted);
 
+  /* Assistant message bubble */
+  --color-assistant-bubble: var(--assistant-bubble);
+  --color-assistant-bubble-border: var(--assistant-bubble-border);
+
   /* ===== DESIGN SYSTEM TOKENS ===== */
 
   /* Transition: single standard duration (Pajamas: 200ms) */
@@ -57,6 +61,10 @@
     --text-main: #171717;
     --text-secondary: #525252;
     --text-muted: #737373;
+    
+    /* Assistant Bubble */
+    --assistant-bubble: #f4f4f5;
+    --assistant-bubble-border: #e4e4e7;
     
     /* Primary Action: Black in Light Mode */
     --primary: #171717;
@@ -89,6 +97,10 @@
     --text-main: #fafafa;
     --text-secondary: #a1a1aa;
     --text-muted: #71717a;
+    
+    /* Assistant Bubble */
+    --assistant-bubble: #18181b;
+    --assistant-bubble-border: #27272a;
     
     /* Primary Action: White in Dark Mode */
     --primary: #fafafa;

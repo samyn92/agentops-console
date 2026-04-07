@@ -1,12 +1,13 @@
 // MessageBubble — single message (user or assistant) with rich chat styling,
 // asymmetric corners, role indicators, timestamps, and proper alignment.
-import { For, Show, Switch, Match, createSignal } from 'solid-js';
+import { For, Show, Switch, Match } from 'solid-js';
 import type { ChatMessage, MessagePart, TextPart, ReasoningPart, ToolPart, StepFinishPart, SourcePart, ErrorPart } from '../../types';
 import StreamingText from './StreamingText';
 import ReasoningBlock from './ReasoningBlock';
 import ToolCallCard from './ToolCallCard';
 import TokenBadge from './TokenBadge';
 import SourceReference from './SourceReference';
+import ToolInputPreview from './ToolInputPreview';
 
 interface MessageBubbleProps {
   message: ChatMessage;
@@ -17,34 +18,39 @@ interface MessageBubbleProps {
   class?: string;
 }
 
-// Lazy import to avoid circular dependency
-import ToolInputPreview from './ToolInputPreview';
-
-/** Format timestamp to short time string */
-function formatTime(ts: number): string {
-  const d = new Date(ts);
+/** Format a timestamp (ms epoch or ISO string) to local time HH:MM */
+function formatTime(ts: number | string): string {
+  if (!ts) return '';
+  const d = typeof ts === 'string' ? new Date(ts) : new Date(ts);
+  if (isNaN(d.getTime())) return '';
   return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+}
+
+/** Collect the last step-finish part's usage from the parts array */
+function lastUsage(parts: MessagePart[] | undefined) {
+  if (!parts) return undefined;
+  for (let i = parts.length - 1; i >= 0; i--) {
+    if (parts[i].type === 'step-finish') {
+      return (parts[i] as StepFinishPart).usage;
+    }
+  }
+  return undefined;
 }
 
 export default function MessageBubble(props: MessageBubbleProps) {
   const msg = () => props.message;
-  const [hovered, setHovered] = createSignal(false);
 
   // ── User message ──
   if (msg().role === 'user') {
     return (
-      <div
-        class={`flex justify-end mb-4 group ${props.class || ''}`}
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-      >
-        <div class="flex flex-col items-end gap-0.5 max-w-[85%] md:max-w-[70%]">
+      <div class={`flex justify-end mb-5 ${props.class || ''}`}>
+        <div class="flex flex-col items-end gap-1 max-w-[85%] md:max-w-[70%]">
           <div class="px-4 py-2.5 bg-primary text-primary-foreground rounded-2xl rounded-br-sm text-sm leading-relaxed shadow-sm">
             {msg().content || ''}
           </div>
-          {/* Timestamp — visible on hover */}
-          <Show when={hovered() && msg().timestamp}>
-            <span class="text-[10px] text-text-muted/60 px-1 select-none fade-in">
+          {/* Timestamp — right-aligned under user bubble */}
+          <Show when={msg().timestamp}>
+            <span class="text-[11px] text-text-muted/50 px-1 select-none">
               {formatTime(msg().timestamp)}
             </span>
           </Show>
@@ -54,24 +60,16 @@ export default function MessageBubble(props: MessageBubbleProps) {
   }
 
   // ── Assistant message ──
-  return (
-    <div
-      class={`mb-4 group ${props.class || ''}`}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-    >
-      <div class="flex gap-2.5 items-start">
-        {/* Agent avatar — subtle accent dot */}
-        <div class="shrink-0 mt-1.5">
-          <div class="w-5 h-5 rounded-full bg-accent/15 flex items-center justify-center">
-            <svg class="w-3 h-3 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
-          </div>
-        </div>
+  // Collect usage from step-finish parts (rendered in footer, not inline)
+  const usage = () => lastUsage(msg().parts);
+  const hasFooter = () => !!(msg().timestamp || usage());
 
-        <div class="max-w-[95%] md:max-w-[85%] min-w-0">
-          {/* Render finalized parts */}
+  return (
+    <div class={`mb-5 ${props.class || ''}`}>
+      <div class="max-w-[95%] md:max-w-[85%]">
+        {/* Bubble container — grey background with asymmetric corners */}
+        <div class="bg-assistant-bubble border border-assistant-bubble-border rounded-2xl rounded-bl-sm px-4 py-3 shadow-sm">
+          {/* Render finalized parts (except step-finish — shown in footer) */}
           <For each={msg().parts || []}>
             {(part) => (
               <Switch>
@@ -87,9 +85,7 @@ export default function MessageBubble(props: MessageBubbleProps) {
                   <ToolCallCard part={part as ToolPart} />
                 </Match>
 
-                <Match when={part.type === 'step-finish'}>
-                  <TokenBadge usage={(part as StepFinishPart).usage} />
-                </Match>
+                {/* step-finish parts are rendered in the footer row, not inline */}
 
                 <Match when={part.type === 'error'}>
                   <div class="flex items-start gap-2 border border-error/30 bg-error/5 rounded-lg px-3 py-2 my-1">
@@ -113,7 +109,6 @@ export default function MessageBubble(props: MessageBubbleProps) {
 
           {/* Active streaming content (not yet finalized into parts) */}
           <Show when={props.isLastAssistant}>
-            {/* Active reasoning stream */}
             <Show when={props.activeReasoning}>
               <ReasoningBlock
                 content={props.activeReasoning!.content}
@@ -121,7 +116,6 @@ export default function MessageBubble(props: MessageBubbleProps) {
               />
             </Show>
 
-            {/* Active text stream */}
             <Show when={props.activeText}>
               <StreamingText
                 content={props.activeText!.content}
@@ -129,7 +123,6 @@ export default function MessageBubble(props: MessageBubbleProps) {
               />
             </Show>
 
-            {/* Active tool input stream (Fantasy-only feature!) */}
             <Show when={props.activeToolInput}>
               <ToolInputPreview
                 toolName={props.activeToolInput!.toolName}
@@ -137,14 +130,21 @@ export default function MessageBubble(props: MessageBubbleProps) {
               />
             </Show>
           </Show>
-
-          {/* Timestamp — visible on hover */}
-          <Show when={hovered() && msg().timestamp}>
-            <span class="text-[10px] text-text-muted/60 px-0.5 select-none fade-in">
-              {formatTime(msg().timestamp)}
-            </span>
-          </Show>
         </div>
+
+        {/* Footer row — timestamp left, token count right */}
+        <Show when={hasFooter()}>
+          <div class="flex items-center justify-between mt-1 px-1">
+            <Show when={msg().timestamp} fallback={<span />}>
+              <span class="text-[11px] text-text-muted/50 select-none">
+                {formatTime(msg().timestamp)}
+              </span>
+            </Show>
+            <Show when={usage()}>
+              <TokenBadge usage={usage()} />
+            </Show>
+          </div>
+        </Show>
       </div>
     </div>
   );

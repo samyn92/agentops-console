@@ -1,5 +1,5 @@
-// TokenBadge — minimal inline token count for step-finish parts.
-// Replaces the old StepIndicator with just a compact "2.1k tokens" text.
+// TokenBadge — compact token count display for message footers.
+// Sits right-aligned in the footer row below assistant bubbles.
 import { Show } from 'solid-js';
 import type { Usage } from '../../types';
 import { formatTokens } from '../../lib/format';
@@ -14,11 +14,9 @@ export default function TokenBadge(props: TokenBadgeProps) {
 
   return (
     <Show when={total() > 0}>
-      <div class={`flex items-center py-0.5 my-0.5 ${props.class || ''}`}>
-        <span class="text-[11px] text-text-muted/50">
-          {formatTokens(total())} tokens
-        </span>
-      </div>
+      <span class={`text-xs text-text-muted/60 select-none ${props.class || ''}`}>
+        {formatTokens(total())} tokens
+      </span>
     </Show>
   );
 }

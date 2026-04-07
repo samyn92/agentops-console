@@ -34,7 +34,8 @@ const (
 
 // Event is the top-level FEP envelope. The Type field is the discriminator.
 type Event struct {
-	Type string `json:"type"`
+	Type      string `json:"type"`
+	Timestamp string `json:"timestamp,omitempty"` // RFC3339 UTC — set by the runtime on every event
 
 	// Agent lifecycle
 	SessionID string `json:"session_id,omitempty"`

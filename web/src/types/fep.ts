@@ -51,14 +51,23 @@ export interface Warning {
 // NOTE: Event type strings use underscore format (e.g. "agent_start") to match
 // the Go runtime's actual SSE output. PLAN.md specifies dot format but the
 // runtime was built with underscores. These will be aligned in a future pass.
+//
+// Every FEP event carries an optional `timestamp` field (RFC3339 UTC) set by
+// the runtime. The frontend converts this to local time for display.
 
-export interface AgentStartEvent {
+/** Common fields present on every FEP event. */
+interface FEPEventBase {
+  /** RFC3339 UTC timestamp set by the runtime. */
+  timestamp?: string;
+}
+
+export interface AgentStartEvent extends FEPEventBase {
   type: "agent_start"
   session_id: string
   prompt: string
 }
 
-export interface AgentFinishEvent {
+export interface AgentFinishEvent extends FEPEventBase {
   type: "agent_finish"
   session_id: string
   total_usage: Usage
@@ -66,20 +75,20 @@ export interface AgentFinishEvent {
   model: string
 }
 
-export interface AgentErrorEvent {
+export interface AgentErrorEvent extends FEPEventBase {
   type: "agent_error"
   session_id: string
   error: string
   retryable: boolean
 }
 
-export interface StepStartEvent {
+export interface StepStartEvent extends FEPEventBase {
   type: "step_start"
   step_number: number
   session_id: string
 }
 
-export interface StepFinishEvent {
+export interface StepFinishEvent extends FEPEventBase {
   type: "step_finish"
   step_number: number
   session_id: string
@@ -88,56 +97,56 @@ export interface StepFinishEvent {
   tool_call_count: number
 }
 
-export interface TextStartEvent {
+export interface TextStartEvent extends FEPEventBase {
   type: "text_start"
   id: string
 }
 
-export interface TextDeltaEvent {
+export interface TextDeltaEvent extends FEPEventBase {
   type: "text_delta"
   id: string
   delta: string
 }
 
-export interface TextEndEvent {
+export interface TextEndEvent extends FEPEventBase {
   type: "text_end"
   id: string
 }
 
-export interface ReasoningStartEvent {
+export interface ReasoningStartEvent extends FEPEventBase {
   type: "reasoning_start"
   id: string
 }
 
-export interface ReasoningDeltaEvent {
+export interface ReasoningDeltaEvent extends FEPEventBase {
   type: "reasoning_delta"
   id: string
   delta: string
 }
 
-export interface ReasoningEndEvent {
+export interface ReasoningEndEvent extends FEPEventBase {
   type: "reasoning_end"
   id: string
 }
 
-export interface ToolInputStartEvent {
+export interface ToolInputStartEvent extends FEPEventBase {
   type: "tool_input_start"
   id: string
   tool_name: string
 }
 
-export interface ToolInputDeltaEvent {
+export interface ToolInputDeltaEvent extends FEPEventBase {
   type: "tool_input_delta"
   id: string
   delta: string
 }
 
-export interface ToolInputEndEvent {
+export interface ToolInputEndEvent extends FEPEventBase {
   type: "tool_input_end"
   id: string
 }
 
-export interface ToolCallEvent {
+export interface ToolCallEvent extends FEPEventBase {
   type: "tool_call"
   id: string
   tool_name: string
@@ -145,7 +154,7 @@ export interface ToolCallEvent {
   provider_executed: boolean
 }
 
-export interface ToolResultEvent {
+export interface ToolResultEvent extends FEPEventBase {
   type: "tool_result"
   id: string
   tool_name: string
@@ -156,7 +165,7 @@ export interface ToolResultEvent {
   data?: string // base64 for binary
 }
 
-export interface SourceEvent {
+export interface SourceEvent extends FEPEventBase {
   type: "source"
   id: string
   source_type: "url" | "document"
@@ -164,18 +173,18 @@ export interface SourceEvent {
   title: string
 }
 
-export interface WarningsEvent {
+export interface WarningsEvent extends FEPEventBase {
   type: "warnings"
   warnings: Warning[]
 }
 
-export interface StreamFinishEvent {
+export interface StreamFinishEvent extends FEPEventBase {
   type: "stream_finish"
   usage: Usage
   finish_reason: FinishReason
 }
 
-export interface PermissionAskedEvent {
+export interface PermissionAskedEvent extends FEPEventBase {
   type: "permission_asked"
   id: string
   session_id: string
@@ -184,31 +193,31 @@ export interface PermissionAskedEvent {
   description: string
 }
 
-export interface PermissionRepliedEvent {
+export interface PermissionRepliedEvent extends FEPEventBase {
   type: "permission_replied"
   id: string
   response: "once" | "always" | "deny"
 }
 
-export interface QuestionAskedEvent {
+export interface QuestionAskedEvent extends FEPEventBase {
   type: "question_asked"
   id: string
   session_id: string
   questions: Question[]
 }
 
-export interface QuestionRepliedEvent {
+export interface QuestionRepliedEvent extends FEPEventBase {
   type: "question_replied"
   id: string
   answers: string[][]
 }
 
-export interface SessionIdleEvent {
+export interface SessionIdleEvent extends FEPEventBase {
   type: "session_idle"
   session_id: string
 }
 
-export interface SessionStatusEvent {
+export interface SessionStatusEvent extends FEPEventBase {
   type: "session_status"
   session_id: string
   status: "idle" | "busy" | "waiting"

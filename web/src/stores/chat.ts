@@ -402,6 +402,22 @@ function handleFEPEvent(state: SessionChatState, sessionId: string, event: FEPEv
 
   switch (event.type) {
     case 'agent_start':
+      // Use server timestamp (RFC3339 UTC) for the assistant message if available.
+      // This ensures the displayed time reflects when the server started processing,
+      // not when the client sent the request.
+      if (event.timestamp) {
+        const serverTs = new Date(event.timestamp).getTime();
+        if (!isNaN(serverTs)) {
+          setMsgs((prev) => {
+            const updated = [...prev];
+            const lastMsg = updated[updated.length - 1];
+            if (lastMsg?.role === 'assistant') {
+              updated[updated.length - 1] = { ...lastMsg, timestamp: serverTs };
+            }
+            return updated;
+          });
+        }
+      }
       break;
 
     case 'agent_finish':
