@@ -412,8 +412,8 @@ export default function ToolCallCard(props: ToolCallCardProps) {
           </span>
         </Show>
 
-        {/* Category badge for themed tools */}
-        <Show when={isThemed() && categoryLabel()}>
+        {/* Category badge for themed tools — hide when MCP breadcrumb is shown (redundant) */}
+        <Show when={isThemed() && categoryLabel() && !mcpServer()}>
           <span class={`text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0 ${theme().badge}`}>
             {categoryLabel()}
           </span>
