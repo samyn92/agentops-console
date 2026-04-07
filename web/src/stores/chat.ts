@@ -160,6 +160,12 @@ export async function loadSessionMessages(sessionId: string) {
 
   try {
     const runtimeMsgs = await sessionsAPI.messages(agent.namespace, agent.name, sessionId);
+    // Guard: if sendMessage already populated messages while we were fetching,
+    // don't overwrite them — mark loaded and bail.
+    if (state.messages[0]().length > 0) {
+      state.loaded = true;
+      return;
+    }
     const chatMsgs = mapRuntimeMessages(runtimeMsgs);
     state.messages[1](chatMsgs);
     state.loaded = true;
@@ -283,6 +289,7 @@ export async function sendMessage(prompt: string) {
   }
 
   const state = getOrCreateState(sessionId);
+  state.loaded = true; // prevent loadSessionMessages from overwriting our messages
   const [, setMsgs] = state.messages;
   const [, setStr] = state.streaming;
   const [, setStep] = state.currentStep;

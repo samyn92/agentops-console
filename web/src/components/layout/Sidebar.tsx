@@ -8,7 +8,6 @@ import {
   selectSession,
   startNewChat,
   deleteSession,
-  draftMode,
 } from '../../stores/sessions';
 import { streaming, streamingSessionIds } from '../../stores/chat';
 import { connected } from '../../stores/events';
@@ -191,11 +190,7 @@ export default function Sidebar(props: SidebarProps) {
             <div class="flex items-center justify-between px-3 py-2">
               <span class="section-label">Sessions</span>
               <button
-                class={`inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md border transition-colors ${
-                  draftMode()
-                    ? 'border-accent text-accent bg-accent/10'
-                    : 'border-border text-text-secondary hover:text-text hover:border-text-muted'
-                }`}
+                class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md border border-border text-text-secondary hover:text-text hover:border-text-muted hover:bg-surface-hover active:bg-surface-active transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 focus-visible:ring-offset-background"
                 onClick={() => startNewChat()}
                 title="New chat (Ctrl+N)"
               >
@@ -224,7 +219,7 @@ export default function Sidebar(props: SidebarProps) {
                   }
                 >
                   {(session) => {
-                    const isActive = () => currentSessionId() === session.id && !draftMode();
+                    const isActive = () => currentSessionId() === session.id;
                     const isProcessing = () => streamingSessionIds().has(session.id);
 
                     return (
