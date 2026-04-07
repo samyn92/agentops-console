@@ -7,6 +7,7 @@ import type { Session } from '../types';
 // ── State ──
 
 const [currentSessionId, setCurrentSessionId] = createSignal<string | null>(null);
+const [draftMode, setDraftMode] = createSignal(false);
 const [refetchTrigger, setRefetchTrigger] = createSignal(0);
 
 // Fetch sessions when selected agent or trigger changes
@@ -35,7 +36,19 @@ createEffect(() => {
 
 // ── Public API ──
 
-export { sessionList, currentSessionId, setCurrentSessionId, refetchSessions };
+export { sessionList, currentSessionId, setCurrentSessionId, refetchSessions, draftMode, setDraftMode };
+
+/** Start a fresh chat — no session created yet, just show the empty composer. */
+export function startNewChat() {
+  setCurrentSessionId(null);
+  setDraftMode(true);
+}
+
+/** Select an existing session (clears draft mode). */
+export function selectSession(id: string) {
+  setCurrentSessionId(id);
+  setDraftMode(false);
+}
 
 /** Create a new session for the selected agent. */
 export async function createSession(title?: string): Promise<string | null> {
@@ -44,8 +57,9 @@ export async function createSession(title?: string): Promise<string | null> {
 
   try {
     const result = await sessionsAPI.create(agent.namespace, agent.name, title);
-    setRefetchTrigger((n) => n + 1);
     setCurrentSessionId(result.id);
+    setDraftMode(false);
+    // Don't refetch yet — session has no title, sidebar filters it out
     return result.id;
   } catch (err) {
     console.error('Failed to create session:', err);
@@ -82,23 +96,11 @@ export function onSessionDeleted(cb: SessionDeletedCallback) {
   onSessionDeletedCallback = cb;
 }
 
-// ── Prompt-completed callback (set by chat store to trigger refetch) ──
-
-type PromptCompletedCallback = () => void;
-let onPromptCompletedCallback: PromptCompletedCallback | null = null;
-
-export function onPromptCompleted(cb: PromptCompletedCallback) {
-  onPromptCompletedCallback = cb;
-}
-
 /** Notify that a prompt completed — triggers session list refetch.
- *  Does an immediate refetch + a delayed one (3s) to pick up AI-generated
- *  titles that are produced asynchronously by the runtime. */
+ *  The initial refetch picks up session metadata. A delayed refetch (3s)
+ *  catches the AI-generated title from the runtime's background goroutine. */
 export function notifyPromptCompleted() {
-  setRefetchTrigger((n) => n + 1);
-  onPromptCompletedCallback?.();
-
-  // Delayed refetch to catch AI-generated title (runtime background goroutine)
+  // Delayed refetch to catch AI-generated title
   setTimeout(() => setRefetchTrigger((n) => n + 1), 3000);
 }
 

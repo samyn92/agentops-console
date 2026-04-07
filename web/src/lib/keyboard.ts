@@ -2,7 +2,7 @@
 import { onCleanup } from 'solid-js';
 import { useNavigate } from '@solidjs/router';
 import { agentList, selectAgent, selectedAgent } from '../stores/agents';
-import { createSession } from '../stores/sessions';
+import { startNewChat } from '../stores/sessions';
 
 export interface Shortcut {
   key: string;
@@ -42,9 +42,9 @@ export function registerKeyboardShortcuts(navigate: ReturnType<typeof useNavigat
     {
       key: 'n',
       meta: true,
-      description: 'New session',
+      description: 'New chat',
       action: () => {
-        createSession();
+        startNewChat();
       },
     },
     {
@@ -120,7 +120,7 @@ export function getShortcutList(): Array<{ keys: string; description: string }> 
 
   return [
     { keys: `${mod}K`, description: 'Cycle to next agent' },
-    { keys: `${mod}N`, description: 'New session' },
+    { keys: `${mod}N`, description: 'New chat' },
     { keys: `${mod}1`, description: 'Go to Chat' },
     { keys: `${mod}2`, description: 'Go to Agents' },
     { keys: `${mod}3`, description: 'Go to Runs' },

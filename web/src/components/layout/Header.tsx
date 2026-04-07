@@ -46,10 +46,10 @@ export default function Header(props: HeaderProps) {
             <span class="text-text-muted">/</span>
             <span class="font-medium text-text truncate">{agent()!.name}</span>
 
-            <Show when={session()}>
+            <Show when={session()?.title}>
               <span class="text-text-muted mx-1">&middot;</span>
               <span class="text-text-secondary truncate text-xs">
-                {session()!.title || `Session ${session()!.id.slice(0, 8)}`}
+                {session()!.title}
               </span>
             </Show>
           </Show>

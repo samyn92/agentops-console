@@ -5,9 +5,10 @@ import { agentList, selectedAgent, selectAgent, getAgentStatus } from '../../sto
 import {
   sessionList,
   currentSessionId,
-  setCurrentSessionId,
-  createSession,
+  selectSession,
+  startNewChat,
   deleteSession,
+  draftMode,
 } from '../../stores/sessions';
 import { streaming, streamingSessionIds } from '../../stores/chat';
 import { connected } from '../../stores/events';
@@ -190,11 +191,18 @@ export default function Sidebar(props: SidebarProps) {
             <div class="flex items-center justify-between px-3 py-2">
               <span class="section-label">Sessions</span>
               <button
-                class="text-xs text-accent hover:text-accent/80 transition-colors"
-                onClick={() => createSession()}
-                title="New session"
+                class={`inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md border transition-colors ${
+                  draftMode()
+                    ? 'border-accent text-accent bg-accent/10'
+                    : 'border-border text-text-secondary hover:text-text hover:border-text-muted'
+                }`}
+                onClick={() => startNewChat()}
+                title="New chat (Ctrl+N)"
               >
-                + New
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                </svg>
+                New
               </button>
             </div>
 
@@ -208,29 +216,29 @@ export default function Sidebar(props: SidebarProps) {
             >
               <div class="flex flex-col gap-0.5 px-2">
                 <For
-                  each={sessionList()}
+                  each={(sessionList() ?? []).filter((s) => s.title)}
                   fallback={
                     <p class="text-xs text-text-muted px-2 py-3">
-                      No sessions yet. Send a message to start one.
+                      No sessions yet. Type a message to start.
                     </p>
                   }
                 >
                   {(session) => {
-                    const isActive = () => currentSessionId() === session.id;
+                    const isActive = () => currentSessionId() === session.id && !draftMode();
                     const isProcessing = () => streamingSessionIds().has(session.id);
 
                     return (
-                      <div class="relative">
+                      <div class="relative group">
                         <button
-                          class={`flex items-center gap-2 px-2 py-1.5 text-sm rounded-md transition-colors w-full text-left group ${
+                          class={`flex items-center gap-2 px-2 py-1.5 text-sm rounded-md transition-colors w-full text-left ${
                             isActive()
                               ? 'bg-surface-hover text-text'
                               : 'text-text-secondary hover:text-text hover:bg-surface-hover'
                           } ${isProcessing() ? 'session-row-processing' : ''}`}
-                          onClick={() => setCurrentSessionId(session.id)}
+                          onClick={() => selectSession(session.id)}
                         >
                           <span class="truncate flex-1">
-                            {session.title || `Session ${session.id.slice(0, 8)}`}
+                            {session.title}
                           </span>
                           <span class="text-xs text-text-muted opacity-0 group-hover:opacity-100 transition-opacity">
                             {session.messageCount || 0}
