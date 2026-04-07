@@ -405,36 +405,39 @@ function handleFEPEvent(state: SessionChatState, sessionId: string, event: FEPEv
       break;
 
     case 'agent_finish':
+      // Only update usage/model here — streaming state is handled in the
+      // `finally` block of sendMessage to avoid double state transitions.
       batch(() => {
         setUsage(event.total_usage);
         setModel(event.model || null);
-        setStr(false);
       });
-      markStreaming(sessionId, false);
       // Refetch session list to pick up AI-generated title
       notifyPromptCompleted();
       break;
 
     case 'agent_error':
       appendPart(state, { type: 'error', error: event.error || 'Unknown error' });
-      setStr(false);
-      markStreaming(sessionId, false);
+      // Streaming state is handled in the `finally` block of sendMessage.
       notifyPromptCompleted();
       break;
 
     case 'step_start':
+      // Just update the step counter signal — don't append a visual part.
+      // This eliminates a redundant array mutation + re-render per step.
       setStep(event.step_number || 0);
-      appendPart(state, { type: 'step-start', stepNumber: event.step_number || 0 });
       break;
 
     case 'step_finish':
-      appendPart(state, {
-        type: 'step-finish',
-        stepNumber: event.step_number || 0,
-        usage: event.usage,
-        finishReason: event.finish_reason || 'unknown',
-        toolCallCount: event.tool_call_count || 0,
-      });
+      // Only append a visual part when there's usage data worth showing.
+      if (event.usage && event.usage.total_tokens > 0) {
+        appendPart(state, {
+          type: 'step-finish',
+          stepNumber: event.step_number || 0,
+          usage: event.usage,
+          finishReason: event.finish_reason || 'unknown',
+          toolCallCount: event.tool_call_count || 0,
+        });
+      }
       break;
 
     case 'text_start':
@@ -578,15 +581,24 @@ function appendPart(state: SessionChatState, part: MessagePart) {
 function finalizeActiveText(state: SessionChatState) {
   const text = state.activeText[0]();
   if (text && text.content) {
-    appendPart(state, { type: 'text', id: text.id, content: text.content } as TextPart);
+    // Batch the appendPart + signal clear to coalesce into a single reactive update
+    batch(() => {
+      appendPart(state, { type: 'text', id: text.id, content: text.content } as TextPart);
+      state.activeText[1](null);
+    });
+  } else {
+    state.activeText[1](null);
   }
-  state.activeText[1](null);
 }
 
 function finalizeActiveReasoning(state: SessionChatState) {
   const reasoning = state.activeReasoning[0]();
   if (reasoning && reasoning.content) {
-    appendPart(state, { type: 'reasoning', id: reasoning.id, content: reasoning.content } as ReasoningPart);
+    batch(() => {
+      appendPart(state, { type: 'reasoning', id: reasoning.id, content: reasoning.content } as ReasoningPart);
+      state.activeReasoning[1](null);
+    });
+  } else {
+    state.activeReasoning[1](null);
   }
-  state.activeReasoning[1](null);
 }

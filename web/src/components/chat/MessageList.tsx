@@ -1,4 +1,4 @@
-// MessageList — auto-scrolling message list
+// MessageList — auto-scrolling message list with rAF-debounced scroll
 import { For, Show, createEffect, onCleanup } from 'solid-js';
 import {
   messages,
@@ -17,8 +17,22 @@ interface MessageListProps {
 export default function MessageList(props: MessageListProps) {
   let listRef: HTMLDivElement | undefined;
   let isUserScrolled = false;
+  let rafId: number | null = null; // rAF guard — at most one pending scroll per frame
 
-  // Auto-scroll to bottom when new content arrives
+  function scheduleScroll() {
+    if (isUserScrolled || !listRef || rafId !== null) return;
+    rafId = requestAnimationFrame(() => {
+      rafId = null;
+      if (listRef) listRef.scrollTop = listRef.scrollHeight;
+    });
+  }
+
+  onCleanup(() => {
+    if (rafId !== null) cancelAnimationFrame(rafId);
+  });
+
+  // Auto-scroll to bottom when new content arrives.
+  // Single rAF guard prevents multiple scroll calls per frame.
   createEffect(() => {
     // Track dependencies
     messages();
@@ -26,11 +40,7 @@ export default function MessageList(props: MessageListProps) {
     activeReasoning();
     activeToolInput();
 
-    if (!isUserScrolled && listRef) {
-      requestAnimationFrame(() => {
-        listRef!.scrollTop = listRef!.scrollHeight;
-      });
-    }
+    scheduleScroll();
   });
 
   function onScroll() {

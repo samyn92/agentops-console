@@ -2,7 +2,6 @@
 import { createResource, Show, For } from 'solid-js';
 import { agents as agentsAPI } from '../../lib/api';
 import { selectedAgent } from '../../stores/agents';
-import type { AgentCRD } from '../../types';
 import Badge from '../shared/Badge';
 import Spinner from '../shared/Spinner';
 import { formatDateTime } from '../../lib/format';
@@ -21,7 +20,7 @@ export default function AgentDetail(props: AgentDetailProps) {
     },
     async (key) => {
       if (!key) return null;
-      return agentsAPI.get(key.ns, key.name) as Promise<AgentCRD>;
+      return agentsAPI.get(key.ns, key.name);
     },
   );
 

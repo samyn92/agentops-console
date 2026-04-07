@@ -3,6 +3,7 @@ import type {
   FEPEvent,
   AgentEventEnvelope,
   AgentResponse,
+  AgentCRD,
   AgentRunResponse,
   ChannelResponse,
   MCPServerResponse,
@@ -51,7 +52,7 @@ async function del<T>(path: string): Promise<T> {
 
 export const agents = {
   list: () => get<AgentResponse[]>('/agents'),
-  get: (ns: string, name: string) => get<AgentResponse>(`/agents/${ns}/${name}`),
+  get: (ns: string, name: string) => get<AgentCRD>(`/agents/${ns}/${name}`),
   status: (ns: string, name: string) => get<Record<string, unknown>>(`/agents/${ns}/${name}/status`),
 };
 

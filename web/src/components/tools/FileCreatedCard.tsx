@@ -102,7 +102,7 @@ export default function FileCreatedCard(props: FileCreatedCardProps) {
         <div class="border-t border-border-subtle bg-surface max-h-[300px] overflow-y-auto">
           <div class="flex">
             <div class="flex-shrink-0 px-2 py-2 text-right select-none border-r border-border-subtle bg-surface-2">
-              {previewContent().lines.map((_, i) => (
+              {previewContent().lines.map((_: string, i: number) => (
                 <div class="text-[11px] leading-[1.55] text-success/60 font-mono">
                   +{i + 1}
                 </div>

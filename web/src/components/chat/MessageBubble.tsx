@@ -1,11 +1,11 @@
 // MessageBubble — single message (user or assistant) with rich chat styling,
 // asymmetric corners, role indicators, timestamps, and proper alignment.
 import { For, Show, Switch, Match, createSignal } from 'solid-js';
-import type { ChatMessage, MessagePart, TextPart, ReasoningPart, ToolPart, StepStartPart, StepFinishPart, SourcePart, ErrorPart } from '../../types';
+import type { ChatMessage, MessagePart, TextPart, ReasoningPart, ToolPart, StepFinishPart, SourcePart, ErrorPart } from '../../types';
 import StreamingText from './StreamingText';
 import ReasoningBlock from './ReasoningBlock';
 import ToolCallCard from './ToolCallCard';
-import StepIndicator from './StepIndicator';
+import TokenBadge from './TokenBadge';
 import SourceReference from './SourceReference';
 
 interface MessageBubbleProps {
@@ -87,17 +87,8 @@ export default function MessageBubble(props: MessageBubbleProps) {
                   <ToolCallCard part={part as ToolPart} />
                 </Match>
 
-                <Match when={part.type === 'step-start'}>
-                  <StepIndicator stepNumber={(part as StepStartPart).stepNumber} />
-                </Match>
-
                 <Match when={part.type === 'step-finish'}>
-                  <StepIndicator
-                    stepNumber={(part as StepFinishPart).stepNumber}
-                    usage={(part as StepFinishPart).usage}
-                    finishReason={(part as StepFinishPart).finishReason}
-                    toolCallCount={(part as StepFinishPart).toolCallCount}
-                  />
+                  <TokenBadge usage={(part as StepFinishPart).usage} />
                 </Match>
 
                 <Match when={part.type === 'error'}>

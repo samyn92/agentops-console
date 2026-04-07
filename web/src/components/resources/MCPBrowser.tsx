@@ -22,7 +22,7 @@ export default function MCPBrowser(props: MCPBrowserProps) {
       if (!isOpen) return [];
       const agent = selectedAgent();
       if (!agent) return [];
-      return mcpServers.list(agent.namespace);
+      return mcpServers.list();
     }
   );
 
