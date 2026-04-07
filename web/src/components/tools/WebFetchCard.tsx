@@ -11,6 +11,8 @@ interface WebFetchCardProps {
   isError: boolean;
   metadata?: ToolMetadata;
   class?: string;
+  /** When true, skip the outer wrapper border/rounded/margin and the header row */
+  headerless?: boolean;
 }
 
 const MAX_PREVIEW_CHARS = 2000;
@@ -56,6 +58,46 @@ export default function WebFetchCard(props: WebFetchCardProps) {
   const isHtml = () => contentType().includes('html');
   const isJson = () => contentType().includes('json');
 
+  // Content body — shared between headerless and full modes
+  const Body = () => (
+    <>
+      {/* URL bar */}
+      <div class="px-3 py-1.5 bg-surface border-b border-border-subtle flex items-center gap-2">
+        <svg class="w-3.5 h-3.5 text-text-muted flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+        </svg>
+        <span class="text-xs font-mono text-text-secondary truncate">{url()}</span>
+      </div>
+
+      {/* Content preview */}
+      <Show when={props.output}>
+        <div class="px-3 py-2 bg-surface max-h-[400px] overflow-y-auto">
+          <pre class={`text-xs font-mono whitespace-pre-wrap break-all text-text-secondary ${isJson() ? '' : ''}`}>
+            {previewContent()}
+          </pre>
+          <Show when={props.output.length > MAX_PREVIEW_CHARS && !expanded()}>
+            <button
+              class="text-xs text-accent hover:underline mt-1"
+              onClick={() => setExpanded(true)}
+            >
+              Show full response ({formatBytes(props.output.length)})
+            </button>
+          </Show>
+        </div>
+      </Show>
+
+      <Show when={!props.output && !props.isError}>
+        <div class="px-3 py-2 bg-surface">
+          <span class="text-xs text-text-muted italic">No content returned</span>
+        </div>
+      </Show>
+    </>
+  );
+
+  if (props.headerless) {
+    return <div class={props.class || ''}><Body /></div>;
+  }
+
   return (
     <div class={`border border-border rounded-lg overflow-hidden my-1 ${props.class || ''}`}>
       {/* Header */}
@@ -89,36 +131,7 @@ export default function WebFetchCard(props: WebFetchCardProps) {
         </div>
       </div>
 
-      {/* URL bar */}
-      <div class="px-3 py-1.5 bg-surface border-b border-border-subtle flex items-center gap-2">
-        <svg class="w-3.5 h-3.5 text-text-muted flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-        </svg>
-        <span class="text-xs font-mono text-text-secondary truncate">{url()}</span>
-      </div>
-
-      {/* Content preview */}
-      <Show when={props.output}>
-        <div class="px-3 py-2 bg-surface max-h-[400px] overflow-y-auto">
-          <pre class={`text-xs font-mono whitespace-pre-wrap break-all text-text-secondary ${isJson() ? '' : ''}`}>
-            {previewContent()}
-          </pre>
-          <Show when={props.output.length > MAX_PREVIEW_CHARS && !expanded()}>
-            <button
-              class="text-xs text-accent hover:underline mt-1"
-              onClick={() => setExpanded(true)}
-            >
-              Show full response ({formatBytes(props.output.length)})
-            </button>
-          </Show>
-        </div>
-      </Show>
-
-      <Show when={!props.output && !props.isError}>
-        <div class="px-3 py-2 bg-surface">
-          <span class="text-xs text-text-muted italic">No content returned</span>
-        </div>
-      </Show>
+      <Body />
     </div>
   );
 }

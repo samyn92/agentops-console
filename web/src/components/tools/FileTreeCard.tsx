@@ -10,6 +10,8 @@ interface FileTreeCardProps {
   isError: boolean;
   metadata?: ToolMetadata;
   class?: string;
+  /** When true, skip the outer wrapper border/rounded/margin and the header row */
+  headerless?: boolean;
 }
 
 interface TreeNode {
@@ -138,6 +140,23 @@ export default function FileTreeCard(props: FileTreeCardProps) {
 
   const tree = createMemo(() => buildTree(files()));
 
+  // Content body — shared between headerless and full modes
+  const Body = () => (
+    <div class="bg-surface max-h-[400px] overflow-y-auto py-1">
+      <Show when={tree().length > 0} fallback={
+        <p class="text-xs text-text-muted px-3 py-2 italic">No files matched</p>
+      }>
+        <For each={tree()}>
+          {(node) => <TreeItem node={node} depth={0} />}
+        </For>
+      </Show>
+    </div>
+  );
+
+  if (props.headerless) {
+    return <div class={props.class || ''}><Body /></div>;
+  }
+
   return (
     <div class={`border border-border rounded-lg overflow-hidden my-1 ${props.class || ''}`}>
       {/* Header */}
@@ -154,16 +173,7 @@ export default function FileTreeCard(props: FileTreeCardProps) {
         </div>
       </div>
 
-      {/* Tree */}
-      <div class="bg-surface max-h-[400px] overflow-y-auto py-1">
-        <Show when={tree().length > 0} fallback={
-          <p class="text-xs text-text-muted px-3 py-2 italic">No files matched</p>
-        }>
-          <For each={tree()}>
-            {(node) => <TreeItem node={node} depth={0} />}
-          </For>
-        </Show>
-      </div>
+      <Body />
     </div>
   );
 }

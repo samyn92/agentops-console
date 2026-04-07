@@ -10,6 +10,8 @@ interface AgentRunCardProps {
   isError: boolean;
   metadata?: ToolMetadata;
   class?: string;
+  /** When true, skip the outer wrapper border/rounded/margin and the header row */
+  headerless?: boolean;
 }
 
 function phaseVariant(phase: string | undefined): 'success' | 'warning' | 'error' | 'info' | 'muted' {
@@ -39,6 +41,47 @@ export default function AgentRunCard(props: AgentRunCardProps) {
 
   const isStatusCard = () => props.metadata?.ui === 'agent-run-status';
 
+  // Content body — shared between headerless and full modes
+  const Body = () => (
+    <div class="px-3 py-2 bg-surface space-y-1.5">
+      <Show when={runName()}>
+        <div class="flex items-center gap-2 text-xs">
+          <span class="text-text-muted w-16">Run</span>
+          <span class="text-text font-mono">{runName()}</span>
+        </div>
+      </Show>
+      <Show when={namespace()}>
+        <div class="flex items-center gap-2 text-xs">
+          <span class="text-text-muted w-16">Namespace</span>
+          <span class="text-text-secondary font-mono">{namespace()}</span>
+        </div>
+      </Show>
+
+      {/* Output preview (for completed runs) */}
+      <Show when={runOutput()}>
+        <div class="mt-2 pt-2 border-t border-border-subtle">
+          <span class="text-xs text-text-muted">Output</span>
+          <pre class="text-xs text-text-secondary font-mono mt-1 whitespace-pre-wrap break-all max-h-[200px] overflow-y-auto">
+            {runOutput()}
+          </pre>
+        </div>
+      </Show>
+
+      {/* Fallback to raw output */}
+      <Show when={!runOutput() && props.output}>
+        <div class="mt-2 pt-2 border-t border-border-subtle">
+          <pre class="text-xs text-text-secondary font-mono whitespace-pre-wrap break-all max-h-[200px] overflow-y-auto">
+            {props.output}
+          </pre>
+        </div>
+      </Show>
+    </div>
+  );
+
+  if (props.headerless) {
+    return <div class={props.class || ''}><Body /></div>;
+  }
+
   return (
     <div class={`border border-border rounded-lg overflow-hidden my-1 ${props.class || ''}`}>
       {/* Header */}
@@ -61,40 +104,7 @@ export default function AgentRunCard(props: AgentRunCardProps) {
         </div>
       </div>
 
-      {/* Run info */}
-      <div class="px-3 py-2 bg-surface space-y-1.5">
-        <Show when={runName()}>
-          <div class="flex items-center gap-2 text-xs">
-            <span class="text-text-muted w-16">Run</span>
-            <span class="text-text font-mono">{runName()}</span>
-          </div>
-        </Show>
-        <Show when={namespace()}>
-          <div class="flex items-center gap-2 text-xs">
-            <span class="text-text-muted w-16">Namespace</span>
-            <span class="text-text-secondary font-mono">{namespace()}</span>
-          </div>
-        </Show>
-
-        {/* Output preview (for completed runs) */}
-        <Show when={runOutput()}>
-          <div class="mt-2 pt-2 border-t border-border-subtle">
-            <span class="text-xs text-text-muted">Output</span>
-            <pre class="text-xs text-text-secondary font-mono mt-1 whitespace-pre-wrap break-all max-h-[200px] overflow-y-auto">
-              {runOutput()}
-            </pre>
-          </div>
-        </Show>
-
-        {/* Fallback to raw output */}
-        <Show when={!runOutput() && props.output}>
-          <div class="mt-2 pt-2 border-t border-border-subtle">
-            <pre class="text-xs text-text-secondary font-mono whitespace-pre-wrap break-all max-h-[200px] overflow-y-auto">
-              {props.output}
-            </pre>
-          </div>
-        </Show>
-      </div>
+      <Body />
     </div>
   );
 }

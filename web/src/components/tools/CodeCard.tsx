@@ -12,6 +12,8 @@ interface CodeCardProps {
   isError: boolean;
   metadata?: ToolMetadata;
   class?: string;
+  /** When true, skip the outer wrapper border/rounded/margin and the header row */
+  headerless?: boolean;
 }
 
 const MAX_VISIBLE_LINES = 30;
@@ -48,18 +50,9 @@ export default function CodeCard(props: CodeCardProps) {
     return hljs.highlightAuto(code).value;
   });
 
-  return (
-    <div class={`border border-border rounded-lg overflow-hidden my-1 ${props.class || ''}`}>
-      {/* Header */}
-      <div class="flex items-center gap-2 px-3 py-1.5 bg-surface-2 border-b border-border-subtle">
-        <span class="text-xs font-medium text-[#E8A838]">Read</span>
-        <span class="text-xs text-text-secondary truncate">{filePath()}</span>
-        <Show when={language()}>
-          <span class="text-xs text-text-muted uppercase">{language()}</span>
-        </Show>
-        <span class="text-xs text-text-muted ml-auto">{lines().length} lines</span>
-      </div>
-
+  // Content body — shared between headerless and full modes
+  const Body = () => (
+    <>
       {/* Code content */}
       <div class="bg-surface max-h-[400px] overflow-y-auto">
         <div class="flex">
@@ -88,6 +81,26 @@ export default function CodeCard(props: CodeCardProps) {
           Show all {lines().length} lines
         </button>
       </Show>
+    </>
+  );
+
+  if (props.headerless) {
+    return <div class={props.class || ''}><Body /></div>;
+  }
+
+  return (
+    <div class={`border border-border rounded-lg overflow-hidden my-1 ${props.class || ''}`}>
+      {/* Header */}
+      <div class="flex items-center gap-2 px-3 py-1.5 bg-surface-2 border-b border-border-subtle">
+        <span class="text-xs font-medium text-[#E8A838]">Read</span>
+        <span class="text-xs text-text-secondary truncate">{filePath()}</span>
+        <Show when={language()}>
+          <span class="text-xs text-text-muted uppercase">{language()}</span>
+        </Show>
+        <span class="text-xs text-text-muted ml-auto">{lines().length} lines</span>
+      </div>
+
+      <Body />
     </div>
   );
 }

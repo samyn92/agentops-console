@@ -8,6 +8,8 @@ interface GenericCardProps {
   output: string;
   isError: boolean;
   class?: string;
+  /** When true, skip the outer wrapper border/rounded/margin and the header row */
+  headerless?: boolean;
 }
 
 export default function GenericCard(props: GenericCardProps) {
@@ -27,6 +29,32 @@ export default function GenericCard(props: GenericCardProps) {
     }
   };
 
+  // Content body — shared between headerless and full modes
+  const Body = () => (
+    <div class="px-3 py-2 bg-surface">
+      <Show when={props.output}>
+        <pre class="text-xs text-text-secondary font-mono whitespace-pre-wrap break-all overflow-hidden max-h-[300px] overflow-y-auto">
+          {truncatedOutput()}
+        </pre>
+        <Show when={props.output.length > 500 && !expanded()}>
+          <button
+            class="text-xs text-accent hover:underline mt-1"
+            onClick={() => setExpanded(true)}
+          >
+            Show all ({props.output.length} chars)
+          </button>
+        </Show>
+      </Show>
+      <Show when={!props.output}>
+        <span class="text-xs text-text-muted italic">No output</span>
+      </Show>
+    </div>
+  );
+
+  if (props.headerless) {
+    return <div class={props.class || ''}><Body /></div>;
+  }
+
   return (
     <div class={`border border-border rounded-lg overflow-hidden my-1 ${props.class || ''}`}>
       {/* Header */}
@@ -37,25 +65,7 @@ export default function GenericCard(props: GenericCardProps) {
         </Badge>
       </div>
 
-      {/* Output */}
-      <div class="px-3 py-2 bg-surface">
-        <Show when={props.output}>
-          <pre class="text-xs text-text-secondary font-mono whitespace-pre-wrap break-all overflow-hidden max-h-[300px] overflow-y-auto">
-            {truncatedOutput()}
-          </pre>
-          <Show when={props.output.length > 500 && !expanded()}>
-            <button
-              class="text-xs text-accent hover:underline mt-1"
-              onClick={() => setExpanded(true)}
-            >
-              Show all ({props.output.length} chars)
-            </button>
-          </Show>
-        </Show>
-        <Show when={!props.output}>
-          <span class="text-xs text-text-muted italic">No output</span>
-        </Show>
-      </div>
+      <Body />
     </div>
   );
 }

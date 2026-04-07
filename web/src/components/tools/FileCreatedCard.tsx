@@ -13,6 +13,8 @@ interface FileCreatedCardProps {
   isError: boolean;
   metadata?: ToolMetadata;
   class?: string;
+  /** When true, skip the outer wrapper border/rounded/margin and the header row */
+  headerless?: boolean;
 }
 
 const PREVIEW_LINES = 15;
@@ -73,27 +75,9 @@ export default function FileCreatedCard(props: FileCreatedCardProps) {
     return path.split('/').pop() || path;
   };
 
-  return (
-    <div class={`border border-border rounded-lg overflow-hidden my-1 ${props.class || ''}`}>
-      {/* Header */}
-      <div class="flex items-center gap-2 px-3 py-1.5 bg-surface-2 border-b border-border-subtle">
-        <span class="text-xs font-medium text-[#4EAA25]">Write</span>
-        <div class="flex items-center gap-1.5 min-w-0 flex-1">
-          <span class="text-xs text-text-secondary truncate">{filePath()}</span>
-        </div>
-        <div class="flex items-center gap-1.5 ml-auto flex-shrink-0">
-          <Show when={fileSize() > 0}>
-            <span class="text-xs text-text-muted">{formatBytes(fileSize())}</span>
-          </Show>
-          <Show when={language()}>
-            <span class="text-xs text-text-muted uppercase">{language()}</span>
-          </Show>
-          <Badge variant={props.isError ? 'error' : 'success'}>
-            {props.isError ? 'failed' : 'created'}
-          </Badge>
-        </div>
-      </div>
-
+  // Content body — shared between headerless and full modes
+  const Body = () => (
+    <>
       {/* New file indicator */}
       <div class="px-3 py-2 bg-surface flex items-center gap-2">
         <span class="text-success text-xs">+</span>
@@ -137,6 +121,35 @@ export default function FileCreatedCard(props: FileCreatedCardProps) {
           </Show>
         </div>
       </Show>
+    </>
+  );
+
+  if (props.headerless) {
+    return <div class={props.class || ''}><Body /></div>;
+  }
+
+  return (
+    <div class={`border border-border rounded-lg overflow-hidden my-1 ${props.class || ''}`}>
+      {/* Header */}
+      <div class="flex items-center gap-2 px-3 py-1.5 bg-surface-2 border-b border-border-subtle">
+        <span class="text-xs font-medium text-[#4EAA25]">Write</span>
+        <div class="flex items-center gap-1.5 min-w-0 flex-1">
+          <span class="text-xs text-text-secondary truncate">{filePath()}</span>
+        </div>
+        <div class="flex items-center gap-1.5 ml-auto flex-shrink-0">
+          <Show when={fileSize() > 0}>
+            <span class="text-xs text-text-muted">{formatBytes(fileSize())}</span>
+          </Show>
+          <Show when={language()}>
+            <span class="text-xs text-text-muted uppercase">{language()}</span>
+          </Show>
+          <Badge variant={props.isError ? 'error' : 'success'}>
+            {props.isError ? 'failed' : 'created'}
+          </Badge>
+        </div>
+      </div>
+
+      <Body />
     </div>
   );
 }

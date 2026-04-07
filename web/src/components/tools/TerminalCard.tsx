@@ -10,6 +10,8 @@ interface TerminalCardProps {
   isError: boolean;
   metadata?: ToolMetadata;
   class?: string;
+  /** When true, skip the outer wrapper border/rounded/margin and the header row (used inside ToolCallCard) */
+  headerless?: boolean;
 }
 
 const MAX_LINES = 50;
@@ -45,26 +47,9 @@ export default function TerminalCard(props: TerminalCardProps) {
     return props.output;
   };
 
-  return (
-    <div class={`border border-border rounded-lg overflow-hidden my-1 ${props.class || ''}`}>
-      {/* Header */}
-      <div class="flex items-center gap-2 px-3 py-1.5 bg-surface-2 border-b border-border-subtle">
-        <span class="text-xs font-medium text-[#4EAA25]">Terminal</span>
-
-        <Show when={cwd()}>
-          <span class="text-xs text-text-muted truncate max-w-[200px]">{cwd()}</span>
-        </Show>
-
-        <div class="flex items-center gap-1.5 ml-auto">
-          <Show when={duration()}>
-            <span class="text-xs text-text-muted">{duration()}</span>
-          </Show>
-          <Badge variant={exitCode() === 0 ? 'success' : 'error'}>
-            {exitCode() === 0 ? 'exit 0' : `exit ${exitCode()}`}
-          </Badge>
-        </div>
-      </div>
-
+  // Content body (command + output) — shared between headerless and full modes
+  const Body = () => (
+    <>
       {/* Command */}
       <div class="px-3 py-1.5 bg-surface border-b border-border-subtle font-mono text-sm">
         <span class="text-text-muted select-none">$ </span>
@@ -87,6 +72,34 @@ export default function TerminalCard(props: TerminalCardProps) {
           </Show>
         </div>
       </Show>
+    </>
+  );
+
+  if (props.headerless) {
+    return <div class={props.class || ''}><Body /></div>;
+  }
+
+  return (
+    <div class={`border border-border rounded-lg overflow-hidden my-1 ${props.class || ''}`}>
+      {/* Header */}
+      <div class="flex items-center gap-2 px-3 py-1.5 bg-surface-2 border-b border-border-subtle">
+        <span class="text-xs font-medium text-[#4EAA25]">Terminal</span>
+
+        <Show when={cwd()}>
+          <span class="text-xs text-text-muted truncate max-w-[200px]">{cwd()}</span>
+        </Show>
+
+        <div class="flex items-center gap-1.5 ml-auto">
+          <Show when={duration()}>
+            <span class="text-xs text-text-muted">{duration()}</span>
+          </Show>
+          <Badge variant={exitCode() === 0 ? 'success' : 'error'}>
+            {exitCode() === 0 ? 'exit 0' : `exit ${exitCode()}`}
+          </Badge>
+        </div>
+      </div>
+
+      <Body />
     </div>
   );
 }

@@ -10,6 +10,8 @@ interface HelmCardProps {
   isError: boolean;
   metadata?: ToolMetadata;
   class?: string;
+  /** When true, skip the outer wrapper border/rounded/margin and the header row */
+  headerless?: boolean;
 }
 
 function statusVariant(status: string | undefined): 'success' | 'warning' | 'error' | 'info' | 'muted' {
@@ -65,32 +67,9 @@ export default function HelmCard(props: HelmCardProps) {
 
   const hasTable = () => releases().length > 0;
 
-  return (
-    <div class={`border border-border rounded-lg overflow-hidden my-1 ${props.class || ''}`}>
-      {/* Header */}
-      <div class="flex items-center gap-2 px-3 py-1.5 bg-surface-2 border-b border-border-subtle">
-        <span class="text-xs font-medium text-[#0F1689]">Helm</span>
-        <Show when={releaseName()}>
-          <span class="text-xs text-text-secondary font-mono">{releaseName()}</span>
-        </Show>
-        <Show when={chart()}>
-          <span class="text-xs text-text-muted">{chart()}</span>
-        </Show>
-        <div class="flex items-center gap-1.5 ml-auto">
-          <Show when={version()}>
-            <span class="text-xs text-text-muted">v{version()}</span>
-          </Show>
-          <Show when={status()}>
-            <Badge variant={statusVariant(status())}>{status()}</Badge>
-          </Show>
-          <Show when={!status()}>
-            <Badge variant={props.isError ? 'error' : 'success'}>
-              {props.isError ? 'error' : 'done'}
-            </Badge>
-          </Show>
-        </div>
-      </div>
-
+  // Content body — shared between headerless and full modes
+  const Body = () => (
+    <>
       {/* Release info summary */}
       <Show when={releaseName() || namespace()}>
         <div class="px-3 py-2 bg-surface border-b border-border-subtle space-y-1">
@@ -157,6 +136,40 @@ export default function HelmCard(props: HelmCardProps) {
           </pre>
         </div>
       </Show>
+    </>
+  );
+
+  if (props.headerless) {
+    return <div class={props.class || ''}><Body /></div>;
+  }
+
+  return (
+    <div class={`border border-border rounded-lg overflow-hidden my-1 ${props.class || ''}`}>
+      {/* Header */}
+      <div class="flex items-center gap-2 px-3 py-1.5 bg-surface-2 border-b border-border-subtle">
+        <span class="text-xs font-medium text-[#0F1689]">Helm</span>
+        <Show when={releaseName()}>
+          <span class="text-xs text-text-secondary font-mono">{releaseName()}</span>
+        </Show>
+        <Show when={chart()}>
+          <span class="text-xs text-text-muted">{chart()}</span>
+        </Show>
+        <div class="flex items-center gap-1.5 ml-auto">
+          <Show when={version()}>
+            <span class="text-xs text-text-muted">v{version()}</span>
+          </Show>
+          <Show when={status()}>
+            <Badge variant={statusVariant(status())}>{status()}</Badge>
+          </Show>
+          <Show when={!status()}>
+            <Badge variant={props.isError ? 'error' : 'success'}>
+              {props.isError ? 'error' : 'done'}
+            </Badge>
+          </Show>
+        </div>
+      </div>
+
+      <Body />
     </div>
   );
 }

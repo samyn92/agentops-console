@@ -10,6 +10,8 @@ interface KubernetesCardProps {
   isError: boolean;
   metadata?: ToolMetadata;
   class?: string;
+  /** When true, skip the outer wrapper border/rounded/margin and the header row */
+  headerless?: boolean;
 }
 
 interface K8sResource {
@@ -70,30 +72,9 @@ export default function KubernetesCard(props: KubernetesCardProps) {
     return parseKubectlTable(props.output);
   });
 
-  return (
-    <div class={`border border-border rounded-lg overflow-hidden my-1 ${props.class || ''}`}>
-      {/* Header */}
-      <div class="flex items-center gap-2 px-3 py-1.5 bg-surface-2 border-b border-border-subtle">
-        <span class="text-xs font-medium text-[#326CE5]">Kubernetes</span>
-        <Show when={resourceKind()}>
-          <span class="text-xs text-text-secondary">{resourceKind()}</span>
-        </Show>
-        <Show when={namespace()}>
-          <span class="text-xs text-text-muted">in {namespace()}</span>
-        </Show>
-        <div class="flex items-center gap-1.5 ml-auto">
-          <button
-            class="text-xs text-text-muted hover:text-accent transition-colors"
-            onClick={() => setShowRaw(!showRaw())}
-          >
-            {showRaw() ? 'Table' : 'Raw'}
-          </button>
-          <Badge variant={props.isError ? 'error' : 'success'}>
-            {props.isError ? 'error' : `${table().rows.length} items`}
-          </Badge>
-        </div>
-      </div>
-
+  // Content body — shared between headerless and full modes
+  const Body = () => (
+    <>
       {/* Table view */}
       <Show when={!showRaw() && table().headers.length > 0}>
         <div class="bg-surface overflow-x-auto max-h-[400px] overflow-y-auto">
@@ -144,6 +125,38 @@ export default function KubernetesCard(props: KubernetesCardProps) {
           </pre>
         </div>
       </Show>
+    </>
+  );
+
+  if (props.headerless) {
+    return <div class={props.class || ''}><Body /></div>;
+  }
+
+  return (
+    <div class={`border border-border rounded-lg overflow-hidden my-1 ${props.class || ''}`}>
+      {/* Header */}
+      <div class="flex items-center gap-2 px-3 py-1.5 bg-surface-2 border-b border-border-subtle">
+        <span class="text-xs font-medium text-[#326CE5]">Kubernetes</span>
+        <Show when={resourceKind()}>
+          <span class="text-xs text-text-secondary">{resourceKind()}</span>
+        </Show>
+        <Show when={namespace()}>
+          <span class="text-xs text-text-muted">in {namespace()}</span>
+        </Show>
+        <div class="flex items-center gap-1.5 ml-auto">
+          <button
+            class="text-xs text-text-muted hover:text-accent transition-colors"
+            onClick={() => setShowRaw(!showRaw())}
+          >
+            {showRaw() ? 'Table' : 'Raw'}
+          </button>
+          <Badge variant={props.isError ? 'error' : 'success'}>
+            {props.isError ? 'error' : `${table().rows.length} items`}
+          </Badge>
+        </div>
+      </div>
+
+      <Body />
     </div>
   );
 }

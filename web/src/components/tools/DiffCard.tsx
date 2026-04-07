@@ -1,5 +1,5 @@
-// DiffCard — edit results (unified or side-by-side diff view)
-import { createSignal, Show, For } from 'solid-js';
+// DiffCard — edit results with rich unified diff view (line numbers, hunk headers, collapsible)
+import { createSignal, Show, For, createMemo } from 'solid-js';
 import Badge from '../shared/Badge';
 import type { ToolMetadata } from '../../types';
 
@@ -10,21 +10,57 @@ interface DiffCardProps {
   isError: boolean;
   metadata?: ToolMetadata;
   class?: string;
+  /** When true, skip the outer wrapper border/rounded/margin and the header row */
+  headerless?: boolean;
 }
 
 interface DiffLine {
-  type: 'add' | 'remove' | 'context';
+  type: 'add' | 'remove' | 'context' | 'header';
   content: string;
-  lineNumber?: number;
+  oldLineNo?: number;
+  newLineNo?: number;
 }
 
-function parseDiffOutput(output: string): DiffLine[] {
-  if (!output) return [];
-  return output.split('\n').map((line) => {
-    if (line.startsWith('+')) return { type: 'add', content: line.slice(1) };
-    if (line.startsWith('-')) return { type: 'remove', content: line.slice(1) };
-    return { type: 'context', content: line };
-  });
+/** Parse diff output with line number tracking and hunk header detection */
+function parseDiffOutput(output: string): { lines: DiffLine[]; added: number; removed: number } {
+  if (!output) return { lines: [], added: 0, removed: 0 };
+
+  const rawLines = output.split('\n');
+  const lines: DiffLine[] = [];
+  let added = 0;
+  let removed = 0;
+  let oldLine = 1;
+  let newLine = 1;
+
+  for (const raw of rawLines) {
+    // Detect hunk headers: @@ -start,count +start,count @@
+    const hunkMatch = raw.match(/^@@\s*-(\d+)(?:,\d+)?\s*\+(\d+)(?:,\d+)?\s*@@(.*)?$/);
+    if (hunkMatch) {
+      oldLine = parseInt(hunkMatch[1], 10);
+      newLine = parseInt(hunkMatch[2], 10);
+      lines.push({ type: 'header', content: raw });
+      continue;
+    }
+
+    if (raw.startsWith('+')) {
+      added++;
+      lines.push({ type: 'add', content: raw.slice(1), newLineNo: newLine++ });
+    } else if (raw.startsWith('-')) {
+      removed++;
+      lines.push({ type: 'remove', content: raw.slice(1), oldLineNo: oldLine++ });
+    } else {
+      // Context line (may start with space)
+      const content = raw.startsWith(' ') ? raw.slice(1) : raw;
+      lines.push({
+        type: 'context',
+        content,
+        oldLineNo: oldLine++,
+        newLineNo: newLine++,
+      });
+    }
+  }
+
+  return { lines, added, removed };
 }
 
 export default function DiffCard(props: DiffCardProps) {
@@ -40,10 +76,111 @@ export default function DiffCard(props: DiffCardProps) {
     }
   };
 
-  const diffLines = () => parseDiffOutput(props.output);
+  const diff = createMemo(() => parseDiffOutput(props.output));
+  const hasLineNumbers = createMemo(() =>
+    diff().lines.some((l) => l.oldLineNo !== undefined || l.newLineNo !== undefined),
+  );
 
-  const addCount = () => diffLines().filter((l) => l.type === 'add').length;
-  const removeCount = () => diffLines().filter((l) => l.type === 'remove').length;
+  // Content body — shared between headerless and full modes
+  const Body = () => (
+    <>
+      <Show when={expanded() && diff().lines.length > 0}>
+        <div class="bg-surface max-h-[400px] overflow-y-auto overflow-x-auto">
+          <table class="w-full text-[11px] font-mono border-collapse leading-[18px]">
+            <tbody>
+              <For each={diff().lines}>
+                {(line) => (
+                  <Show
+                    when={line.type !== 'header'}
+                    fallback={
+                      <tr class="bg-surface-2/50">
+                        <td
+                          colspan={hasLineNumbers() ? 3 : 2}
+                          class="px-2 py-0 text-text-muted/60 text-[10px] select-none"
+                        >
+                          {line.content}
+                        </td>
+                      </tr>
+                    }
+                  >
+                    <tr
+                      class={
+                        line.type === 'add'
+                          ? 'bg-success/8'
+                          : line.type === 'remove'
+                          ? 'bg-error/8'
+                          : ''
+                      }
+                    >
+                      {/* Line numbers */}
+                      <Show when={hasLineNumbers()}>
+                        <td class="w-[1px] px-1 py-0 text-right text-text-muted/40 select-none whitespace-nowrap border-r border-border-subtle tabular-nums">
+                          {line.oldLineNo ?? ''}
+                        </td>
+                        <td class="w-[1px] px-1 py-0 text-right text-text-muted/40 select-none whitespace-nowrap border-r border-border-subtle tabular-nums">
+                          {line.newLineNo ?? ''}
+                        </td>
+                      </Show>
+                      <td class="px-1.5 py-0 whitespace-pre-wrap break-all">
+                        <span
+                          class={
+                            line.type === 'add'
+                              ? 'text-success'
+                              : line.type === 'remove'
+                              ? 'text-error'
+                              : 'text-text-secondary'
+                          }
+                        >
+                          <span class="select-none text-text-muted/40 mr-1">
+                            {line.type === 'add' ? '+' : line.type === 'remove' ? '-' : ' '}
+                          </span>
+                          {line.content}
+                        </span>
+                      </td>
+                    </tr>
+                  </Show>
+                )}
+              </For>
+            </tbody>
+          </table>
+        </div>
+      </Show>
+
+      <Show when={!expanded() && diff().lines.length > 0}>
+        {/* Collapsed preview: show first few diff lines */}
+        <div class="bg-surface-2/30">
+          <For each={diff().lines.filter((l) => l.type !== 'header').slice(0, 4)}>
+            {(line) => (
+              <div
+                class={`px-2 py-0 font-mono text-[11px] leading-[18px] whitespace-pre truncate ${
+                  line.type === 'add'
+                    ? 'bg-success/8 text-success'
+                    : line.type === 'remove'
+                    ? 'bg-error/8 text-error'
+                    : 'text-text-secondary'
+                }`}
+              >
+                <span class="select-none text-text-muted/40 mr-1">
+                  {line.type === 'add' ? '+' : line.type === 'remove' ? '-' : ' '}
+                </span>
+                {line.content}
+              </div>
+            )}
+          </For>
+          <button
+            class="w-full px-3 py-1 text-xs text-accent hover:bg-surface-hover text-left"
+            onClick={() => setExpanded(true)}
+          >
+            Show full diff ({diff().lines.length} lines)
+          </button>
+        </div>
+      </Show>
+    </>
+  );
+
+  if (props.headerless) {
+    return <div class={props.class || ''}><Body /></div>;
+  }
 
   return (
     <div class={`border border-border rounded-lg overflow-hidden my-1 ${props.class || ''}`}>
@@ -52,11 +189,11 @@ export default function DiffCard(props: DiffCardProps) {
         <span class="text-xs font-medium text-[#E8A838]">Edit</span>
         <span class="text-xs text-text-secondary truncate">{filePath()}</span>
         <div class="flex items-center gap-1.5 ml-auto">
-          <Show when={addCount() > 0}>
-            <span class="text-xs text-success">+{addCount()}</span>
+          <Show when={diff().added > 0}>
+            <span class="text-xs text-success font-mono">+{diff().added}</span>
           </Show>
-          <Show when={removeCount() > 0}>
-            <span class="text-xs text-error">-{removeCount()}</span>
+          <Show when={diff().removed > 0}>
+            <span class="text-xs text-error font-mono">-{diff().removed}</span>
           </Show>
           <Badge variant={props.isError ? 'error' : 'success'}>
             {props.isError ? 'failed' : 'applied'}
@@ -64,38 +201,7 @@ export default function DiffCard(props: DiffCardProps) {
         </div>
       </div>
 
-      {/* Diff content */}
-      <Show when={expanded() && diffLines().length > 0}>
-        <div class="px-0 py-0 bg-surface max-h-[400px] overflow-y-auto font-mono text-xs">
-          <For each={diffLines()}>
-            {(line) => (
-              <div
-                class={`px-3 py-0.5 ${
-                  line.type === 'add'
-                    ? 'bg-success/10 text-success'
-                    : line.type === 'remove'
-                    ? 'bg-error/10 text-error'
-                    : 'text-text-secondary'
-                }`}
-              >
-                <span class="select-none opacity-50 mr-2">
-                  {line.type === 'add' ? '+' : line.type === 'remove' ? '-' : ' '}
-                </span>
-                {line.content}
-              </div>
-            )}
-          </For>
-        </div>
-      </Show>
-
-      <Show when={!expanded() && diffLines().length > 0}>
-        <button
-          class="w-full px-3 py-1.5 text-xs text-accent hover:bg-surface-hover text-left"
-          onClick={() => setExpanded(true)}
-        >
-          Show diff ({diffLines().length} lines)
-        </button>
-      </Show>
+      <Body />
     </div>
   );
 }

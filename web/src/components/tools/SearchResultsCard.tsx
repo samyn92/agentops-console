@@ -10,6 +10,8 @@ interface SearchResultsCardProps {
   isError: boolean;
   metadata?: ToolMetadata;
   class?: string;
+  /** When true, skip the outer wrapper border/rounded/margin and the header row */
+  headerless?: boolean;
 }
 
 interface MatchGroup {
@@ -117,6 +119,23 @@ export default function SearchResultsCard(props: SearchResultsCardProps) {
     (props.metadata?.count as number) ||
     groups().reduce((sum, g) => sum + g.matches.length, 0);
 
+  // Content body — shared between headerless and full modes
+  const Body = () => (
+    <div class="bg-surface max-h-[400px] overflow-y-auto">
+      <Show when={groups().length > 0} fallback={
+        <p class="text-xs text-text-muted px-3 py-2 italic">No matches found</p>
+      }>
+        <For each={groups()}>
+          {(group) => <FileGroup group={group} />}
+        </For>
+      </Show>
+    </div>
+  );
+
+  if (props.headerless) {
+    return <div class={props.class || ''}><Body /></div>;
+  }
+
   return (
     <div class={`border border-border rounded-lg overflow-hidden my-1 ${props.class || ''}`}>
       {/* Header */}
@@ -136,16 +155,7 @@ export default function SearchResultsCard(props: SearchResultsCardProps) {
         </div>
       </div>
 
-      {/* Results */}
-      <div class="bg-surface max-h-[400px] overflow-y-auto">
-        <Show when={groups().length > 0} fallback={
-          <p class="text-xs text-text-muted px-3 py-2 italic">No matches found</p>
-        }>
-          <For each={groups()}>
-            {(group) => <FileGroup group={group} />}
-          </For>
-        </Show>
-      </div>
+      <Body />
     </div>
   );
 }
