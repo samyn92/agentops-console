@@ -305,9 +305,18 @@ export default function ToolCallCard(props: ToolCallCardProps) {
     }
   });
 
-  // MCP metadata accessors
-  const mcpServer = createMemo(() => (part().metadata?.server as string | undefined) || '');
-  const mcpOriginalTool = createMemo(() => (part().metadata?.tool as string | undefined) || '');
+  // MCP metadata accessors — fall back to parsing the tool name (mcp_<server>_<tool>)
+  const mcpParsed = createMemo(() => {
+    const name = part().toolName;
+    if (!name.startsWith('mcp_')) return null;
+    // mcp_kubernetes_kubectl_get → server="kubernetes", tool="kubectl_get"
+    const rest = name.slice(4); // remove "mcp_"
+    const idx = rest.indexOf('_');
+    if (idx < 0) return { server: rest, tool: '' };
+    return { server: rest.slice(0, idx), tool: rest.slice(idx + 1) };
+  });
+  const mcpServer = createMemo(() => (part().metadata?.server as string | undefined) || mcpParsed()?.server || '');
+  const mcpOriginalTool = createMemo(() => (part().metadata?.tool as string | undefined) || mcpParsed()?.tool || '');
   const mcpTransport = createMemo(() => (part().metadata?.transport as string | undefined) || '');
 
   // Whether to show the input arguments section (skip for trivial inputs or builtins with dedicated renderers)
