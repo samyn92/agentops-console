@@ -25,16 +25,20 @@ export default function Composer(props: ComposerProps) {
     const text = input().trim();
     if (!text) return;
 
-    if (mode() === 'steer' && streaming()) {
-      await steerAgent(text);
-    } else {
-      await sendMessage(text);
-    }
+    // Capture mode before clearing — steer check needs current state
+    const isSteer = mode() === 'steer' && streaming();
 
+    // Clear input immediately — don't wait for the async operation
     setInput('');
     setMode('prompt');
     if (textareaRef) {
       textareaRef.style.height = 'auto';
+    }
+
+    if (isSteer) {
+      await steerAgent(text);
+    } else {
+      await sendMessage(text);
     }
   }
 
