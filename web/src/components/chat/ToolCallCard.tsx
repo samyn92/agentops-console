@@ -398,10 +398,19 @@ export default function ToolCallCard(props: ToolCallCardProps) {
         {/* Tool icon */}
         <ToolIcon toolName={part().toolName} category={category()} />
 
-        {/* Tool name */}
-        <span class="text-sm font-semibold text-text shrink-0">
-          {getToolDisplayName(part().toolName)}
-        </span>
+        {/* Tool name — for MCP tools, show server > tool breadcrumb instead of the verbose display name */}
+        <Show
+          when={mcpServer()}
+          fallback={
+            <span class="text-sm font-semibold text-text shrink-0">
+              {getToolDisplayName(part().toolName)}
+            </span>
+          }
+        >
+          <span class="text-sm font-mono text-text-secondary shrink-0">
+            {mcpServer()}<Show when={mcpOriginalTool()}>{' '}<span class="text-text-muted">&rsaquo;</span>{' '}{mcpOriginalTool()}</Show>
+          </span>
+        </Show>
 
         {/* Category badge for themed tools */}
         <Show when={isThemed() && categoryLabel()}>
@@ -418,13 +427,6 @@ export default function ToolCallCard(props: ToolCallCardProps) {
               : 'bg-indigo-500/15 text-indigo-400'
           }`}>
             {mcpTransport() === 'sse' ? 'MCP Server' : 'Inline MCP'}
-          </span>
-        </Show>
-
-        {/* MCP server > tool breadcrumb */}
-        <Show when={mcpServer()}>
-          <span class="text-xs text-text-muted font-mono shrink-0">
-            {mcpServer()}<Show when={mcpOriginalTool()}>{' '}&rsaquo;{' '}{mcpOriginalTool()}</Show>
           </span>
         </Show>
 
