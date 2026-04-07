@@ -211,7 +211,7 @@ export default function Sidebar(props: SidebarProps) {
             >
               <div class="flex flex-col gap-0.5 px-2">
                 <For
-                  each={(sessionList() ?? []).filter((s) => s.title)}
+                  each={sessionList() ?? []}
                   fallback={
                     <p class="text-xs text-text-muted px-2 py-3">
                       No sessions yet. Type a message to start.
@@ -221,6 +221,7 @@ export default function Sidebar(props: SidebarProps) {
                   {(session) => {
                     const isActive = () => currentSessionId() === session.id;
                     const isProcessing = () => streamingSessionIds().has(session.id);
+                    const hasTitle = () => !!session.title;
 
                     return (
                       <div class="relative group">
@@ -233,7 +234,12 @@ export default function Sidebar(props: SidebarProps) {
                           onClick={() => selectSession(session.id)}
                         >
                           <span class="truncate flex-1">
-                            {session.title}
+                            <Show
+                              when={hasTitle()}
+                              fallback={<span class="shimmer-title" />}
+                            >
+                              {session.title}
+                            </Show>
                           </span>
                           <span class="text-xs text-text-muted opacity-0 group-hover:opacity-100 transition-opacity">
                             {session.messageCount || 0}

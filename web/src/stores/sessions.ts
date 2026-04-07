@@ -59,7 +59,8 @@ export async function createSession(title?: string): Promise<string | null> {
     const result = await sessionsAPI.create(agent.namespace, agent.name, title);
     setCurrentSessionId(result.id);
     setDraftMode(false);
-    // Don't refetch yet — session has no title, sidebar filters it out
+    // Immediately refetch so the new session appears in the sidebar (with shimmer)
+    setRefetchTrigger((n) => n + 1);
     return result.id;
   } catch (err) {
     console.error('Failed to create session:', err);
@@ -96,10 +97,22 @@ export function onSessionDeleted(cb: SessionDeletedCallback) {
   onSessionDeletedCallback = cb;
 }
 
+/** Trigger a session list refetch (callable from other stores). */
+export function triggerSessionRefetch() {
+  setRefetchTrigger((n) => n + 1);
+}
+
+/** Schedule a delayed session list refetch (for catching AI-generated titles). */
+export function triggerDelayedSessionRefetch(delayMs: number = 2000) {
+  setTimeout(() => setRefetchTrigger((n) => n + 1), delayMs);
+}
+
 /** Notify that a prompt completed — triggers session list refetch.
- *  The initial refetch picks up session metadata. A delayed refetch (3s)
+ *  Immediate refetch picks up final state. A delayed refetch (3s)
  *  catches the AI-generated title from the runtime's background goroutine. */
 export function notifyPromptCompleted() {
+  // Immediate refetch for final state
+  setRefetchTrigger((n) => n + 1);
   // Delayed refetch to catch AI-generated title
   setTimeout(() => setRefetchTrigger((n) => n + 1), 3000);
 }

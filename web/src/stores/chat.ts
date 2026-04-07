@@ -5,7 +5,7 @@
 import { createSignal, batch, createEffect } from 'solid-js';
 import { streamPrompt, sessions as sessionsAPI } from '../lib/api';
 import { selectedAgent } from './agents';
-import { currentSessionId, setCurrentSessionId, createSession, onSessionDeleted, notifyPromptCompleted } from './sessions';
+import { currentSessionId, setCurrentSessionId, createSession, onSessionDeleted, notifyPromptCompleted, triggerDelayedSessionRefetch } from './sessions';
 import type {
   FEPEvent,
   Usage,
@@ -286,6 +286,10 @@ export async function sendMessage(prompt: string) {
   if (!sessionId) {
     sessionId = await createSession();
     if (!sessionId) return;
+    // Schedule a delayed refetch to catch the AI-generated title.
+    // Title generation fires immediately on the runtime (before agent work)
+    // but takes ~1-2s to complete.
+    triggerDelayedSessionRefetch(2000);
   }
 
   const state = getOrCreateState(sessionId);
