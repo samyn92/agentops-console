@@ -7,6 +7,7 @@ import type {
   ChannelResponse,
   MCPServerResponse,
   Session,
+  RuntimeMessage,
   NamespaceInfo,
   PodInfo,
 } from '../types';
@@ -68,6 +69,9 @@ export const sessions = {
 
   delete: (ns: string, name: string, id: string) =>
     del<{ ok: boolean }>(`/agents/${ns}/${name}/sessions/${id}`),
+
+  messages: (ns: string, name: string, id: string) =>
+    get<RuntimeMessage[]>(`/agents/${ns}/${name}/sessions/${id}/messages`),
 
   prompt: (ns: string, name: string, id: string, prompt: string) =>
     post<{ output: string; model: string }>(`/agents/${ns}/${name}/sessions/${id}/prompt`, { prompt }),

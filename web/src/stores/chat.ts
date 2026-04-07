@@ -1,13 +1,17 @@
-// Chat store — FEP event state machine that assembles streaming events
-// into renderable message parts.
-import { createSignal, batch } from 'solid-js';
+// Chat store — FEP event state machine with per-session state.
+// Each session maintains independent messages, streaming state, and interactive
+// requests. Switching sessions shows the correct state instantly; background
+// sessions continue streaming uninterrupted.
+import { createSignal, batch, createEffect } from 'solid-js';
 import { streamPrompt, sessions as sessionsAPI } from '../lib/api';
 import { selectedAgent } from './agents';
-import { currentSessionId, createSession } from './sessions';
+import { currentSessionId, setCurrentSessionId, createSession, onSessionDeleted, notifyPromptCompleted } from './sessions';
 import type {
   FEPEvent,
   Usage,
   ToolMetadata,
+  RuntimeMessage,
+  RuntimeMessagePart,
 } from '../types';
 import type {
   ChatMessage,
@@ -17,29 +21,34 @@ import type {
   ToolPart,
 } from '../types';
 
-// ── State ──
+// ── Per-session state ──
 
-const [messages, setMessages] = createSignal<ChatMessage[]>([]);
-const [streaming, setStreaming] = createSignal(false);
-const [currentStep, setCurrentStep] = createSignal(0);
-const [totalUsage, setTotalUsage] = createSignal<Usage | null>(null);
-const [activeModel, setActiveModel] = createSignal<string | null>(null);
+interface SessionChatState {
+  // Reactive signals (each session owns its own)
+  messages: ReturnType<typeof createSignal<ChatMessage[]>>;
+  streaming: ReturnType<typeof createSignal<boolean>>;
+  currentStep: ReturnType<typeof createSignal<number>>;
+  totalUsage: ReturnType<typeof createSignal<Usage | null>>;
+  activeModel: ReturnType<typeof createSignal<string | null>>;
+  activeText: ReturnType<typeof createSignal<{ id: string; content: string } | null>>;
+  activeReasoning: ReturnType<typeof createSignal<{ id: string; content: string } | null>>;
+  activeToolInput: ReturnType<typeof createSignal<{ id: string; toolName: string; args: string } | null>>;
+  pendingPermission: ReturnType<typeof createSignal<PendingPermissionState | null>>;
+  pendingQuestion: ReturnType<typeof createSignal<PendingQuestionState | null>>;
+  // Non-reactive
+  abortController: AbortController | null;
+  loaded: boolean; // whether we've fetched history from runtime
+}
 
-// Active streaming parts (assembled from deltas)
-const [activeText, setActiveText] = createSignal<{ id: string; content: string } | null>(null);
-const [activeReasoning, setActiveReasoning] = createSignal<{ id: string; content: string } | null>(null);
-const [activeToolInput, setActiveToolInput] = createSignal<{ id: string; toolName: string; args: string } | null>(null);
-
-// Pending interactive requests
-const [pendingPermission, setPendingPermission] = createSignal<{
+interface PendingPermissionState {
   id: string;
   sessionId: string;
   toolName: string;
   input: string;
   description: string;
-} | null>(null);
+}
 
-const [pendingQuestion, setPendingQuestion] = createSignal<{
+interface PendingQuestionState {
   id: string;
   sessionId: string;
   questions: Array<{
@@ -48,29 +57,220 @@ const [pendingQuestion, setPendingQuestion] = createSignal<{
     options?: Array<{ label: string; description: string }>;
     multiple?: boolean;
   }>;
-} | null>(null);
+}
 
-// Abort controller for current stream
-let abortController: AbortController | null = null;
+// ── Session state registry ──
 
-// ── Public API ──
+const sessionStates = new Map<string, SessionChatState>();
+// Reactive trigger so SolidJS re-evaluates currentState() when the Map mutates
+const [stateVersion, setStateVersion] = createSignal(0);
 
-export {
-  messages,
-  streaming,
-  currentStep,
-  totalUsage,
-  activeModel,
-  activeText,
-  activeReasoning,
-  activeToolInput,
-  pendingPermission,
-  pendingQuestion,
-  setPendingPermission,
-  setPendingQuestion,
-};
+function getOrCreateState(sessionId: string): SessionChatState {
+  let state = sessionStates.get(sessionId);
+  if (!state) {
+    state = {
+      messages: createSignal<ChatMessage[]>([]),
+      streaming: createSignal(false),
+      currentStep: createSignal(0),
+      totalUsage: createSignal<Usage | null>(null),
+      activeModel: createSignal<string | null>(null),
+      activeText: createSignal<{ id: string; content: string } | null>(null),
+      activeReasoning: createSignal<{ id: string; content: string } | null>(null),
+      activeToolInput: createSignal<{ id: string; toolName: string; args: string } | null>(null),
+      pendingPermission: createSignal<PendingPermissionState | null>(null),
+      pendingQuestion: createSignal<PendingQuestionState | null>(null),
+      abortController: null,
+      loaded: false,
+    };
+    sessionStates.set(sessionId, state);
+    setStateVersion((v) => v + 1); // notify reactive consumers
+  }
+  return state;
+}
 
-/** Send a prompt to the current agent/session. Creates a session if needed. */
+/** Remove a session's state from the registry (e.g. on delete). */
+export function removeSessionState(sessionId: string) {
+  const state = sessionStates.get(sessionId);
+  if (state?.abortController) {
+    state.abortController.abort();
+  }
+  sessionStates.delete(sessionId);
+  setStateVersion((v) => v + 1); // notify reactive consumers
+}
+
+// Register cleanup callback with sessions store (avoids circular import)
+onSessionDeleted(removeSessionState);
+
+// ── Current-session derived accessors ──
+// These read from whichever session is currently selected.
+// Components bind to these; when currentSessionId changes, they re-render.
+
+function currentState(): SessionChatState | null {
+  const id = currentSessionId();
+  stateVersion(); // subscribe to Map mutations
+  return id ? sessionStates.get(id) ?? null : null;
+}
+
+export const messages = () => currentState()?.messages[0]() ?? [];
+export const streaming = () => currentState()?.streaming[0]() ?? false;
+export const currentStep = () => currentState()?.currentStep[0]() ?? 0;
+export const totalUsage = () => currentState()?.totalUsage[0]() ?? null;
+export const activeModel = () => currentState()?.activeModel[0]() ?? null;
+export const activeText = () => currentState()?.activeText[0]() ?? null;
+export const activeReasoning = () => currentState()?.activeReasoning[0]() ?? null;
+export const activeToolInput = () => currentState()?.activeToolInput[0]() ?? null;
+export const pendingPermission = () => currentState()?.pendingPermission[0]() ?? null;
+export const pendingQuestion = () => currentState()?.pendingQuestion[0]() ?? null;
+
+export function setPendingPermission(val: PendingPermissionState | null) {
+  const state = currentState();
+  if (state) state.pendingPermission[1](val);
+}
+
+export function setPendingQuestion(val: PendingQuestionState | null) {
+  const state = currentState();
+  if (state) state.pendingQuestion[1](val);
+}
+
+// ── Streaming sessions (for sidebar indicators) ──
+
+const [streamingSessionIds, setStreamingSessionIds] = createSignal<Set<string>>(new Set());
+export { streamingSessionIds };
+
+function markStreaming(sessionId: string, isStreaming: boolean) {
+  setStreamingSessionIds((prev) => {
+    const next = new Set(prev);
+    if (isStreaming) {
+      next.add(sessionId);
+    } else {
+      next.delete(sessionId);
+    }
+    return next;
+  });
+}
+
+// ── Load session messages from runtime ──
+
+export async function loadSessionMessages(sessionId: string) {
+  const agent = selectedAgent();
+  if (!agent) return;
+
+  const state = getOrCreateState(sessionId);
+  if (state.loaded) return; // already fetched
+
+  try {
+    const runtimeMsgs = await sessionsAPI.messages(agent.namespace, agent.name, sessionId);
+    const chatMsgs = mapRuntimeMessages(runtimeMsgs);
+    state.messages[1](chatMsgs);
+    state.loaded = true;
+  } catch (err) {
+    console.error('Failed to load session messages:', err);
+    // Still mark loaded to avoid retry loops
+    state.loaded = true;
+  }
+}
+
+// Auto-load messages when session changes
+createEffect(() => {
+  const sessionId = currentSessionId();
+  if (sessionId) {
+    loadSessionMessages(sessionId);
+  }
+});
+
+// ── Message format mapper: RuntimeMessage[] -> ChatMessage[] ──
+
+function mapRuntimeMessages(runtimeMsgs: RuntimeMessage[]): ChatMessage[] {
+  const chatMsgs: ChatMessage[] = [];
+
+  for (const msg of runtimeMsgs) {
+    if (msg.role === 'user') {
+      // User messages: extract text parts into content string
+      const textContent = msg.content
+        ?.filter((p) => p.type === 'text')
+        .map((p) => p.text ?? '')
+        .join('') ?? '';
+      chatMsgs.push({
+        role: 'user',
+        content: textContent,
+        timestamp: 0, // runtime doesn't store per-message timestamps
+      });
+    } else if (msg.role === 'assistant') {
+      // Assistant messages: convert parts to MessagePart[]
+      const parts: MessagePart[] = [];
+      // Map tool-call parts to track IDs for pairing with tool-results
+      const toolCalls = new Map<string, ToolPart>();
+
+      for (const part of msg.content ?? []) {
+        switch (part.type) {
+          case 'text':
+            if (part.text) {
+              parts.push({ type: 'text', id: '', content: part.text } as TextPart);
+            }
+            break;
+          case 'reasoning':
+            if (part.text) {
+              parts.push({ type: 'reasoning', id: '', content: part.text } as ReasoningPart);
+            }
+            break;
+          case 'tool-call': {
+            const tp: ToolPart = {
+              type: 'tool',
+              id: part.tool_call_id ?? '',
+              toolName: part.tool_name ?? '',
+              input: part.input ?? '',
+              output: '',
+              isError: false,
+              status: 'completed', // historical = completed
+            };
+            toolCalls.set(tp.id, tp);
+            parts.push(tp);
+            break;
+          }
+          // tool-result parts are in separate "tool" role messages; handled below
+        }
+      }
+
+      chatMsgs.push({ role: 'assistant', parts, timestamp: 0 });
+    } else if (msg.role === 'tool') {
+      // Tool-result messages: pair with the last assistant message's tool parts
+      const lastAssistant = chatMsgs[chatMsgs.length - 1];
+      if (lastAssistant?.role === 'assistant' && lastAssistant.parts) {
+        for (const part of msg.content ?? []) {
+          if (part.type === 'tool-result' && part.tool_call_id) {
+            const toolPart = lastAssistant.parts.find(
+              (p) => p.type === 'tool' && (p as ToolPart).id === part.tool_call_id,
+            ) as ToolPart | undefined;
+            if (toolPart) {
+              toolPart.output = extractToolOutput(part);
+              toolPart.isError = part.output?.type === 'error';
+              toolPart.status = part.output?.type === 'error' ? 'error' : 'completed';
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return chatMsgs;
+}
+
+function extractToolOutput(part: RuntimeMessagePart): string {
+  if (!part.output) return '';
+  switch (part.output.type) {
+    case 'text':
+      return part.output.text ?? '';
+    case 'error':
+      return part.output.error ?? '';
+    case 'media':
+      return part.output.text ?? '[media]';
+    default:
+      return '';
+  }
+}
+
+// ── Send message (session-scoped) ──
+
 export async function sendMessage(prompt: string) {
   const agent = selectedAgent();
   if (!agent) return;
@@ -82,63 +282,73 @@ export async function sendMessage(prompt: string) {
     if (!sessionId) return;
   }
 
-  // Add user message
-  const userMsg: ChatMessage = {
-    role: 'user',
-    content: prompt,
-    timestamp: Date.now(),
-  };
+  const state = getOrCreateState(sessionId);
+  const [, setMsgs] = state.messages;
+  const [, setStr] = state.streaming;
+  const [, setStep] = state.currentStep;
+  const [, setUsage] = state.totalUsage;
+  const [, setATxt] = state.activeText;
+  const [, setAReason] = state.activeReasoning;
+  const [, setAToolIn] = state.activeToolInput;
 
-  const assistantMsg: ChatMessage = {
-    role: 'assistant',
-    parts: [],
-    timestamp: Date.now(),
-  };
+  // Add user message + placeholder assistant message
+  const userMsg: ChatMessage = { role: 'user', content: prompt, timestamp: Date.now() };
+  const assistantMsg: ChatMessage = { role: 'assistant', parts: [], timestamp: Date.now() };
 
   batch(() => {
-    setMessages((prev) => [...prev, userMsg, assistantMsg]);
-    setStreaming(true);
-    setCurrentStep(0);
-    setTotalUsage(null);
-    setActiveText(null);
-    setActiveReasoning(null);
-    setActiveToolInput(null);
+    setMsgs((prev) => [...prev, userMsg, assistantMsg]);
+    setStr(true);
+    setStep(0);
+    setUsage(null);
+    setATxt(null);
+    setAReason(null);
+    setAToolIn(null);
   });
 
-  abortController = new AbortController();
+  markStreaming(sessionId, true);
+  state.abortController = new AbortController();
+
+  // Capture sessionId for the closure — even if user switches sessions mid-stream,
+  // events continue writing to the correct session's state.
+  const capturedSessionId = sessionId;
+  const capturedState = state;
 
   try {
     await streamPrompt(
       agent.namespace,
       agent.name,
-      sessionId,
+      capturedSessionId,
       prompt,
-      (event) => handleFEPEvent(event),
-      abortController.signal,
+      (event) => handleFEPEvent(capturedState, capturedSessionId, event),
+      state.abortController.signal,
     );
   } catch (err) {
     if ((err as Error).name !== 'AbortError') {
-      appendPart({ type: 'error', error: (err as Error).message });
+      appendPart(capturedState, { type: 'error', error: (err as Error).message });
     }
   } finally {
     batch(() => {
-      setStreaming(false);
-      // Finalize any active parts
-      finalizeActiveText();
-      finalizeActiveReasoning();
-      setActiveToolInput(null);
+      capturedState.streaming[1](false);
+      finalizeActiveText(capturedState);
+      finalizeActiveReasoning(capturedState);
+      capturedState.activeToolInput[1](null);
     });
-    abortController = null;
+    capturedState.abortController = null;
+    markStreaming(capturedSessionId, false);
   }
 }
 
-/** Abort the current stream. */
+/** Abort the stream for the current session. */
 export function abortStream() {
-  if (abortController) {
-    abortController.abort();
-    abortController = null;
+  const id = currentSessionId();
+  if (!id) return;
+  const state = sessionStates.get(id);
+  if (state?.abortController) {
+    state.abortController.abort();
+    state.abortController = null;
   }
-  setStreaming(false);
+  state?.streaming[1](false);
+  markStreaming(id, false);
 }
 
 /** Steer the current agent mid-execution. */
@@ -154,45 +364,60 @@ export async function steerAgent(message: string) {
   }
 }
 
-/** Clear all messages. */
+/** Clear messages for the current session. */
 export function clearMessages() {
-  setMessages([]);
-  setTotalUsage(null);
-  setActiveModel(null);
+  const state = currentState();
+  if (state) {
+    state.messages[1]([]);
+    state.totalUsage[1](null);
+    state.activeModel[1](null);
+    state.loaded = false; // allow re-fetch
+  }
 }
 
-// ── FEP Event Handler (state machine) ──
+// ── FEP Event Handler (session-scoped) ──
 
-function handleFEPEvent(event: FEPEvent) {
+function handleFEPEvent(state: SessionChatState, sessionId: string, event: FEPEvent) {
+  const [, setMsgs] = state.messages;
+  const [, setStr] = state.streaming;
+  const [, setStep] = state.currentStep;
+  const [, setUsage] = state.totalUsage;
+  const [, setModel] = state.activeModel;
+  const [, setATxt] = state.activeText;
+  const [, setAReason] = state.activeReasoning;
+  const [, setAToolIn] = state.activeToolInput;
+  const [, setPerm] = state.pendingPermission;
+  const [, setQ] = state.pendingQuestion;
+
   switch (event.type) {
-    // Agent lifecycle
     case 'agent_start':
-      break; // already handled by sendMessage
+      break;
 
     case 'agent_finish':
       batch(() => {
-        setTotalUsage(event.total_usage);
-        setActiveModel(event.model || null);
-        setStreaming(false);
+        setUsage(event.total_usage);
+        setModel(event.model || null);
+        setStr(false);
       });
+      markStreaming(sessionId, false);
+      // Refetch session list to pick up AI-generated title
+      notifyPromptCompleted();
       break;
 
     case 'agent_error':
-      appendPart({ type: 'error', error: event.error || 'Unknown error' });
-      setStreaming(false);
+      appendPart(state, { type: 'error', error: event.error || 'Unknown error' });
+      setStr(false);
+      markStreaming(sessionId, false);
+      notifyPromptCompleted();
       break;
 
-    // Step lifecycle
     case 'step_start':
-      setCurrentStep(event.step_number || 0);
-      appendPart({
-        type: 'step-start',
-        stepNumber: event.step_number || 0,
-      });
+      setStep(event.step_number || 0);
+      appendPart(state, { type: 'step-start', stepNumber: event.step_number || 0 });
       break;
 
     case 'step_finish':
-      appendPart({
+      appendPart(state, {
         type: 'step-finish',
         stepNumber: event.step_number || 0,
         usage: event.usage,
@@ -201,58 +426,50 @@ function handleFEPEvent(event: FEPEvent) {
       });
       break;
 
-    // Text streaming
     case 'text_start':
-      setActiveText({ id: event.id || '', content: '' });
+      setATxt({ id: event.id || '', content: '' });
       break;
 
     case 'text_delta':
-      setActiveText((prev) =>
+      setATxt((prev) =>
         prev ? { ...prev, content: prev.content + (event.delta || '') } : null,
       );
       break;
 
     case 'text_end':
-      finalizeActiveText();
+      finalizeActiveText(state);
       break;
 
-    // Reasoning streaming
     case 'reasoning_start':
-      setActiveReasoning({ id: event.id || '', content: '' });
+      setAReason({ id: event.id || '', content: '' });
       break;
 
     case 'reasoning_delta':
-      setActiveReasoning((prev) =>
+      setAReason((prev) =>
         prev ? { ...prev, content: prev.content + (event.delta || '') } : null,
       );
       break;
 
     case 'reasoning_end':
-      finalizeActiveReasoning();
+      finalizeActiveReasoning(state);
       break;
 
-    // Tool input streaming
     case 'tool_input_start':
-      setActiveToolInput({
-        id: event.id || '',
-        toolName: event.tool_name || '',
-        args: '',
-      });
+      setAToolIn({ id: event.id || '', toolName: event.tool_name || '', args: '' });
       break;
 
     case 'tool_input_delta':
-      setActiveToolInput((prev) =>
+      setAToolIn((prev) =>
         prev ? { ...prev, args: prev.args + (event.delta || '') } : null,
       );
       break;
 
     case 'tool_input_end':
-      setActiveToolInput(null);
+      setAToolIn(null);
       break;
 
-    // Tool execution
     case 'tool_call':
-      appendPart({
+      appendPart(state, {
         type: 'tool',
         id: event.id || '',
         toolName: event.tool_name || '',
@@ -264,17 +481,14 @@ function handleFEPEvent(event: FEPEvent) {
       break;
 
     case 'tool_result': {
-      // Update the matching tool part from 'running' to 'complete'
       const toolId = event.id || '';
       let metadata: ToolMetadata | undefined;
       if (event.metadata) {
         try {
           metadata = JSON.parse(event.metadata) as ToolMetadata;
-        } catch {
-          // skip malformed metadata
-        }
+        } catch { /* skip */ }
       }
-      setMessages((prev) => {
+      setMsgs((prev) => {
         const updated = [...prev];
         const lastAssistant = updated[updated.length - 1];
         if (lastAssistant?.role === 'assistant' && lastAssistant.parts) {
@@ -299,9 +513,8 @@ function handleFEPEvent(event: FEPEvent) {
       break;
     }
 
-    // Interactive
     case 'permission_asked':
-      setPendingPermission({
+      setPerm({
         id: event.id || '',
         sessionId: event.session_id || '',
         toolName: event.tool_name || '',
@@ -311,16 +524,15 @@ function handleFEPEvent(event: FEPEvent) {
       break;
 
     case 'question_asked':
-      setPendingQuestion({
+      setQ({
         id: event.id || '',
         sessionId: event.session_id || '',
         questions: (event.questions as any) || [],
       });
       break;
 
-    // Sources
     case 'source':
-      appendPart({
+      appendPart(state, {
         type: 'source',
         id: event.id || '',
         sourceType: event.source_type || 'url',
@@ -330,19 +542,19 @@ function handleFEPEvent(event: FEPEvent) {
       break;
 
     case 'session_idle':
-      setStreaming(false);
+      setStr(false);
+      markStreaming(sessionId, false);
       break;
   }
 }
 
 // ── Helpers ──
 
-function appendPart(part: MessagePart) {
-  setMessages((prev) => {
+function appendPart(state: SessionChatState, part: MessagePart) {
+  state.messages[1]((prev) => {
     const updated = [...prev];
     const lastMsg = updated[updated.length - 1];
     if (lastMsg?.role === 'assistant') {
-      // Create a new object so SolidJS detects the change
       updated[updated.length - 1] = {
         ...lastMsg,
         parts: [...(lastMsg.parts || []), part],
@@ -352,18 +564,18 @@ function appendPart(part: MessagePart) {
   });
 }
 
-function finalizeActiveText() {
-  const text = activeText();
+function finalizeActiveText(state: SessionChatState) {
+  const text = state.activeText[0]();
   if (text && text.content) {
-    appendPart({ type: 'text', id: text.id, content: text.content } as TextPart);
+    appendPart(state, { type: 'text', id: text.id, content: text.content } as TextPart);
   }
-  setActiveText(null);
+  state.activeText[1](null);
 }
 
-function finalizeActiveReasoning() {
-  const reasoning = activeReasoning();
+function finalizeActiveReasoning(state: SessionChatState) {
+  const reasoning = state.activeReasoning[0]();
   if (reasoning && reasoning.content) {
-    appendPart({ type: 'reasoning', id: reasoning.id, content: reasoning.content } as ReasoningPart);
+    appendPart(state, { type: 'reasoning', id: reasoning.id, content: reasoning.content } as ReasoningPart);
   }
-  setActiveReasoning(null);
+  state.activeReasoning[1](null);
 }

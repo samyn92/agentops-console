@@ -9,7 +9,7 @@ import {
   createSession,
   deleteSession,
 } from '../../stores/sessions';
-import { streaming } from '../../stores/chat';
+import { streaming, streamingSessionIds } from '../../stores/chat';
 import { connected } from '../../stores/events';
 import AgentStatusBadge from '../agents/AgentStatusBadge';
 import NeuralTrace from '../shared/NeuralTrace';
@@ -217,7 +217,7 @@ export default function Sidebar(props: SidebarProps) {
                 >
                   {(session) => {
                     const isActive = () => currentSessionId() === session.id;
-                    const isProcessing = () => isActive() && streaming();
+                    const isProcessing = () => streamingSessionIds().has(session.id);
 
                     return (
                       <div class="relative">

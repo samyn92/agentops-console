@@ -146,6 +146,39 @@ export interface Session {
   messageCount: number
 }
 
+// ---- Runtime Messages (from GET /sessions/{id}/messages) ----
+// Mirrors the Go serializableMessage / serializablePartOK / serializableToolOutput types.
+
+export interface RuntimeToolOutput {
+  type: "text" | "error" | "media"
+  text?: string
+  error?: string
+  data?: string
+  media_type?: string
+}
+
+export interface RuntimeMessagePart {
+  type: "text" | "reasoning" | "file" | "tool-call" | "tool-result" | "unknown"
+  // text / reasoning
+  text?: string
+  // file
+  filename?: string
+  data?: string
+  media_type?: string
+  // tool-call
+  tool_call_id?: string
+  tool_name?: string
+  input?: string
+  provider_executed?: boolean
+  // tool-result
+  output?: RuntimeToolOutput
+}
+
+export interface RuntimeMessage {
+  role: "user" | "assistant" | "tool"
+  content: RuntimeMessagePart[]
+}
+
 // ---- Kubernetes ----
 
 export interface NamespaceInfo {

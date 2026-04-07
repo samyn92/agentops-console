@@ -60,6 +60,8 @@ export async function deleteSession(id: string): Promise<boolean> {
 
   try {
     await sessionsAPI.delete(agent.namespace, agent.name, id);
+    // Notify chat store via callback (avoids circular import)
+    onSessionDeletedCallback?.(id);
     setRefetchTrigger((n) => n + 1);
     if (currentSessionId() === id) {
       setCurrentSessionId(null);
@@ -69,6 +71,30 @@ export async function deleteSession(id: string): Promise<boolean> {
     console.error('Failed to delete session:', err);
     return false;
   }
+}
+
+// ── Delete callback (set by chat store to avoid circular import) ──
+
+type SessionDeletedCallback = (id: string) => void;
+let onSessionDeletedCallback: SessionDeletedCallback | null = null;
+
+export function onSessionDeleted(cb: SessionDeletedCallback) {
+  onSessionDeletedCallback = cb;
+}
+
+// ── Prompt-completed callback (set by chat store to trigger refetch) ──
+
+type PromptCompletedCallback = () => void;
+let onPromptCompletedCallback: PromptCompletedCallback | null = null;
+
+export function onPromptCompleted(cb: PromptCompletedCallback) {
+  onPromptCompletedCallback = cb;
+}
+
+/** Notify that a prompt completed — triggers session list refetch. */
+export function notifyPromptCompleted() {
+  setRefetchTrigger((n) => n + 1);
+  onPromptCompletedCallback?.();
 }
 
 /** Get the current session object. */

@@ -75,6 +75,7 @@ func New(cfg Config, k8sClient *k8s.Client, mux *multiplexer.Multiplexer) *Serve
 			r.Get("/agents/{ns}/{name}/sessions", h.ListSessions)
 			r.Post("/agents/{ns}/{name}/sessions", h.CreateSession)
 			r.Get("/agents/{ns}/{name}/sessions/{id}", h.GetSession)
+			r.Get("/agents/{ns}/{name}/sessions/{id}/messages", h.GetSessionMessages)
 			r.Delete("/agents/{ns}/{name}/sessions/{id}", h.DeleteSession)
 			r.Post("/agents/{ns}/{name}/sessions/{id}/prompt", h.SessionPrompt)
 			r.Post("/agents/{ns}/{name}/sessions/{id}/stream", h.SessionPromptStream)

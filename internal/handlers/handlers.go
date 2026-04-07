@@ -121,6 +121,11 @@ func (h *Handlers) GetSession(w http.ResponseWriter, r *http.Request) {
 	h.proxyToAgent(w, r, "GET", "/sessions/"+id, nil)
 }
 
+func (h *Handlers) GetSessionMessages(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	h.proxyToAgent(w, r, "GET", "/sessions/"+id+"/messages", nil)
+}
+
 func (h *Handlers) DeleteSession(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	h.proxyToAgent(w, r, "DELETE", "/sessions/"+id, nil)
