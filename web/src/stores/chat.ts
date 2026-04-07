@@ -176,15 +176,35 @@ export async function loadSessionMessages(sessionId: string) {
 
     const chatMsgs = mapRuntimeMessages(runtimeMsgs, createdTs, updatedTs);
 
-    // Inject per-turn usage into each assistant message so TokenBadge renders
-    // after a browser refresh. turn_usages[i] corresponds to the i-th assistant
-    // message (each user prompt produces exactly one assistant response).
+    // Inject per-turn usage so TokenBadge renders on each assistant turn after
+    // a browser refresh. A "turn" = everything from a user message to the next
+    // user message (or end). The usage goes on the LAST assistant message of
+    // each turn — that's the final text response the user sees.
     const turnUsages = session?.turn_usages;
     if (turnUsages && turnUsages.length > 0) {
-      let turnIdx = 0;
-      for (const msg of chatMsgs) {
-        if (msg.role === 'assistant' && msg.parts && turnIdx < turnUsages.length) {
-          const tu = turnUsages[turnIdx];
+      // Identify the last assistant message index for each turn.
+      // Turn boundaries are user messages (skip the first one which starts turn 0).
+      const turnLastAssistantIdx: number[] = [];
+      let lastAssistantIdx = -1;
+      for (let i = 0; i < chatMsgs.length; i++) {
+        if (chatMsgs[i].role === 'assistant') {
+          lastAssistantIdx = i;
+        } else if (chatMsgs[i].role === 'user' && lastAssistantIdx >= 0) {
+          // This user message starts a new turn — flush the previous turn
+          turnLastAssistantIdx.push(lastAssistantIdx);
+          lastAssistantIdx = -1;
+        }
+      }
+      // Flush the final turn
+      if (lastAssistantIdx >= 0) {
+        turnLastAssistantIdx.push(lastAssistantIdx);
+      }
+
+      // Inject synthetic step-finish on each turn's last assistant message
+      for (let t = 0; t < Math.min(turnLastAssistantIdx.length, turnUsages.length); t++) {
+        const msg = chatMsgs[turnLastAssistantIdx[t]];
+        if (msg.parts) {
+          const tu = turnUsages[t];
           msg.parts.push({
             type: 'step-finish',
             stepNumber: tu.steps || 0,
@@ -199,7 +219,6 @@ export async function loadSessionMessages(sessionId: string) {
             finishReason: 'stop',
             toolCallCount: 0,
           } as StepFinishPart);
-          turnIdx++;
         }
       }
     }
