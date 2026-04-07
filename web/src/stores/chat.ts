@@ -5,13 +5,14 @@
 import { createSignal, batch, createEffect } from 'solid-js';
 import { streamPrompt, sessions as sessionsAPI } from '../lib/api';
 import { selectedAgent } from './agents';
-import { currentSessionId, setCurrentSessionId, createSession, onSessionDeleted, notifyPromptCompleted, triggerDelayedSessionRefetch } from './sessions';
+import { currentSessionId, setCurrentSessionId, createSession, onSessionDeleted, notifyPromptCompleted, triggerDelayedSessionRefetch, sessionList } from './sessions';
 import type {
   FEPEvent,
   Usage,
   ToolMetadata,
   RuntimeMessage,
   RuntimeMessagePart,
+  Session,
 } from '../types';
 import type {
   ChatMessage,
@@ -19,6 +20,7 @@ import type {
   TextPart,
   ReasoningPart,
   ToolPart,
+  StepFinishPart,
 } from '../types';
 
 // ── Per-session state ──
@@ -166,8 +168,54 @@ export async function loadSessionMessages(sessionId: string) {
       state.loaded = true;
       return;
     }
-    const chatMsgs = mapRuntimeMessages(runtimeMsgs);
-    state.messages[1](chatMsgs);
+
+    // Look up session metadata for timestamps and usage
+    const session = sessionList()?.find((s: Session) => s.id === sessionId);
+    const createdTs = session?.created_at ? new Date(session.created_at).getTime() : 0;
+    const updatedTs = session?.updated_at ? new Date(session.updated_at).getTime() : 0;
+
+    const chatMsgs = mapRuntimeMessages(runtimeMsgs, createdTs, updatedTs);
+
+    // If the session has persisted usage, inject a synthetic step-finish into the
+    // last assistant message so the TokenBadge renders in the footer.
+    if (session?.total_usage && chatMsgs.length > 0) {
+      const lastMsg = chatMsgs[chatMsgs.length - 1];
+      if (lastMsg.role === 'assistant' && lastMsg.parts) {
+        const syntheticUsage: Usage = {
+          input_tokens: session.total_usage.input_tokens,
+          output_tokens: session.total_usage.output_tokens,
+          total_tokens: session.total_usage.total_tokens,
+          reasoning_tokens: session.total_usage.reasoning_tokens,
+          cache_creation_tokens: session.total_usage.cache_creation_tokens,
+          cache_read_tokens: session.total_usage.cache_read_tokens,
+        };
+        lastMsg.parts.push({
+          type: 'step-finish',
+          stepNumber: 0,
+          usage: syntheticUsage,
+          finishReason: 'stop',
+          toolCallCount: 0,
+        } as StepFinishPart);
+      }
+    }
+
+    batch(() => {
+      state.messages[1](chatMsgs);
+      // Restore usage and model signals from session metadata
+      if (session?.total_usage) {
+        state.totalUsage[1]({
+          input_tokens: session.total_usage.input_tokens,
+          output_tokens: session.total_usage.output_tokens,
+          total_tokens: session.total_usage.total_tokens,
+          reasoning_tokens: session.total_usage.reasoning_tokens,
+          cache_creation_tokens: session.total_usage.cache_creation_tokens,
+          cache_read_tokens: session.total_usage.cache_read_tokens,
+        });
+      }
+      if (session?.model) {
+        state.activeModel[1](session.model);
+      }
+    });
     state.loaded = true;
   } catch (err) {
     console.error('Failed to load session messages:', err);
@@ -186,8 +234,12 @@ createEffect(() => {
 
 // ── Message format mapper: RuntimeMessage[] -> ChatMessage[] ──
 
-function mapRuntimeMessages(runtimeMsgs: RuntimeMessage[]): ChatMessage[] {
+function mapRuntimeMessages(runtimeMsgs: RuntimeMessage[], createdTs: number, updatedTs: number): ChatMessage[] {
   const chatMsgs: ChatMessage[] = [];
+
+  // We'll distribute timestamps: first user message gets createdAt,
+  // last assistant message gets updatedAt. Others interpolate or use 0.
+  let firstUserAssigned = false;
 
   for (const msg of runtimeMsgs) {
     if (msg.role === 'user') {
@@ -196,10 +248,12 @@ function mapRuntimeMessages(runtimeMsgs: RuntimeMessage[]): ChatMessage[] {
         ?.filter((p) => p.type === 'text')
         .map((p) => p.text ?? '')
         .join('') ?? '';
+      const ts = !firstUserAssigned && createdTs ? createdTs : 0;
+      firstUserAssigned = true;
       chatMsgs.push({
         role: 'user',
         content: textContent,
-        timestamp: 0, // runtime doesn't store per-message timestamps
+        timestamp: ts,
       });
     } else if (msg.role === 'assistant') {
       // Assistant messages: convert parts to MessagePart[]
@@ -254,6 +308,16 @@ function mapRuntimeMessages(runtimeMsgs: RuntimeMessage[]): ChatMessage[] {
             }
           }
         }
+      }
+    }
+  }
+
+  // Assign updatedTs to the last assistant message
+  if (updatedTs) {
+    for (let i = chatMsgs.length - 1; i >= 0; i--) {
+      if (chatMsgs[i].role === 'assistant') {
+        chatMsgs[i] = { ...chatMsgs[i], timestamp: updatedTs };
+        break;
       }
     }
   }

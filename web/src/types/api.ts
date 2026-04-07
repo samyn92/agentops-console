@@ -138,12 +138,23 @@ export interface MCPServerResponse {
 
 // ---- Session ----
 
+export interface SessionUsage {
+  input_tokens: number
+  output_tokens: number
+  total_tokens: number
+  reasoning_tokens: number
+  cache_creation_tokens: number
+  cache_read_tokens: number
+}
+
 export interface Session {
   id: string
   title: string
-  createdAt: string
-  updatedAt: string
-  messageCount: number
+  created_at: string
+  updated_at: string
+  message_count: number
+  total_usage?: SessionUsage
+  model?: string
 }
 
 // ---- Runtime Messages (from GET /sessions/{id}/messages) ----

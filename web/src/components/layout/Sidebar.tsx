@@ -242,7 +242,7 @@ export default function Sidebar(props: SidebarProps) {
                             </Show>
                           </span>
                           <span class="text-xs text-text-muted opacity-0 group-hover:opacity-100 transition-opacity">
-                            {session.messageCount || 0}
+                            {session.message_count || 0}
                           </span>
                         </button>
 
