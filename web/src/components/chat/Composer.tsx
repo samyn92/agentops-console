@@ -13,11 +13,16 @@ import AgentResourcesPanel from '../resources/AgentResourcesPanel';
 function SlidingWindowIndicator(props: { messages: number; windowSize: number }) {
   const [open, setOpen] = createSignal(false);
   const [localSize, setLocalSize] = createSignal(props.windowSize);
+  const [localMessages, setLocalMessages] = createSignal(props.messages);
   const [saving, setSaving] = createSignal(false);
+  const [clearing, setClearing] = createSignal(false);
   let debounceTimer: ReturnType<typeof setTimeout> | undefined;
   let sliderRef: HTMLInputElement | undefined;
 
   // Sync local state when props change (e.g. after server confirms)
+  createEffect(() => {
+    setLocalMessages(props.messages);
+  });
   createEffect(() => {
     const ws = props.windowSize;
     if (!open()) setLocalSize(ws);
@@ -31,7 +36,7 @@ function SlidingWindowIndicator(props: { messages: number; windowSize: number })
 
   const pct = createMemo(() => {
     if (localSize() <= 0) return 0;
-    return Math.min((props.messages / localSize()) * 100, 100);
+    return Math.min((localMessages() / localSize()) * 100, 100);
   });
 
   const textColor = createMemo(() => {
@@ -52,6 +57,16 @@ function SlidingWindowIndicator(props: { messages: number; windowSize: number })
         setSaving(false);
       }
     }, 300);
+  }
+
+  async function handleClear() {
+    setClearing(true);
+    setLocalMessages(0); // optimistic
+    try {
+      await clearWorkingMemory();
+    } finally {
+      setClearing(false);
+    }
   }
 
   // Close popover on outside click
@@ -88,7 +103,7 @@ function SlidingWindowIndicator(props: { messages: number; windowSize: number })
           <line x1="2" y1="12" x2="14" y2="12" />
         </svg>
         <span class="text-[11px] select-none">
-          {props.messages}/{localSize()}
+          {localMessages()}/{localSize()}
         </span>
       </button>
 
@@ -97,9 +112,9 @@ function SlidingWindowIndicator(props: { messages: number; windowSize: number })
           <div class="flex items-center justify-between mb-2">
             <span class="text-xs text-text-secondary font-medium">Working memory</span>
             <span class="text-xs font-mono tabular-nums text-text-muted">
-              {localSize()}
+              {localMessages()}/{localSize()}
               <Show when={saving()}>
-                <span class="text-accent ml-1 text-[10px]">...</span>
+                <span class="text-accent ml-1 text-[10px]">saving</span>
               </Show>
             </span>
           </div>
@@ -123,17 +138,17 @@ function SlidingWindowIndicator(props: { messages: number; windowSize: number })
             <span>4</span>
             <span>100</span>
           </div>
-          <Show when={props.messages > 0}>
-            <button
-              class="w-full mt-2 pt-2 border-t border-border-subtle text-[11px] text-text-muted hover:text-error transition-colors cursor-pointer text-center"
-              onClick={async () => {
-                await clearWorkingMemory();
-                setOpen(false);
-              }}
-            >
-              Clear memory
-            </button>
-          </Show>
+          <button
+            class={`w-full mt-2 pt-2 border-t border-border-subtle text-[11px] transition-colors text-center
+              ${localMessages() > 0
+                ? 'text-text-muted hover:text-error cursor-pointer'
+                : 'text-text-muted/30 cursor-default'
+              }`}
+            disabled={localMessages() === 0 || clearing()}
+            onClick={handleClear}
+          >
+            {clearing() ? 'Clearing...' : localMessages() === 0 ? 'Empty' : 'Clear memory'}
+          </button>
         </div>
       </Show>
     </span>
@@ -465,9 +480,9 @@ export default function Composer(props: ComposerProps) {
               <span class="text-accent">Steer mode</span>
               {' — guide the agent\'s next action'}
             </Show>
-            <Show when={!streaming() && runtimeStatus()?.messages != null && runtimeStatus()?.window_size}>
+            <Show when={!streaming() && runtimeStatus()?.window_size != null}>
               <SlidingWindowIndicator
-                messages={runtimeStatus()!.messages!}
+                messages={runtimeStatus()?.messages ?? 0}
                 windowSize={runtimeStatus()!.window_size!}
               />
             </Show>
