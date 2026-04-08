@@ -1,0 +1,17 @@
+apiVersion: v2
+name: agentops-console
+description: Web console for managing and interacting with AI agents on Kubernetes
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - agentops
+  - ai
+  - agents
+  - console
+  - kubernetes
+home: https://github.com/samyn92/agentops-console
+sources:
+  - https://github.com/samyn92/agentops-console
+maintainers:
+  - name: samyn92

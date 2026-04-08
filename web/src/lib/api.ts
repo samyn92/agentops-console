@@ -366,6 +366,13 @@ export const memory = {
     if (opts?.after) params.set('after', String(opts.after));
     return get<MemoryObservation[]>(`/agents/${ns}/${name}/memory/timeline?${params.toString()}`);
   },
+
+  /** AI-assisted extraction: sends working memory to agent's model, returns structured observation */
+  extract: (ns: string, name: string, opts?: { focus?: string; type?: string }) =>
+    post<{ type: string; title: string; content: string; tags: string[] }>(
+      `/agents/${ns}/${name}/memory/extract`,
+      opts ?? {},
+    ),
 };
 
 // ── Global SSE connection ──

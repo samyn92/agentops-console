@@ -151,6 +151,12 @@ func (h *Handlers) AgentClearWorkingMemory(w http.ResponseWriter, r *http.Reques
 	h.proxyToAgent(w, r, "DELETE", "/working-memory", nil)
 }
 
+// AgentMemoryExtract proxies AI-assisted memory extraction to the agent runtime.
+// The runtime reads its working memory, calls its model, and returns a structured observation.
+func (h *Handlers) AgentMemoryExtract(w http.ResponseWriter, r *http.Request) {
+	h.proxyToAgent(w, r, "POST", "/memory/extract", r.Body)
+}
+
 // AgentPromptStream proxies a streaming prompt and relays FEP events to the multiplexer.
 func (h *Handlers) AgentPromptStream(w http.ResponseWriter, r *http.Request) {
 	ns := chi.URLParam(r, "ns")

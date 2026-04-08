@@ -1,0 +1,66 @@
+{{- if .Values.rbac.create }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "agentops-console.fullname" . }}
+  labels:
+    {{- include "agentops-console.labels" . | nindent 4 }}
+rules:
+  # -- AgentOps CRDs (agents, agentruns, channels, agenttools, agentresources)
+  - apiGroups:
+      - "agentops.ai"
+    resources:
+      - agents
+      - agentruns
+      - channels
+      - agenttools
+      - agentresources
+    verbs:
+      - get
+      - list
+      - watch
+  # -- Native Kubernetes resources the console browses
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+      - services
+      - configmaps
+      - secrets
+      - events
+      - namespaces
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - "apps"
+    resources:
+      - deployments
+      - statefulsets
+      - daemonsets
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - "batch"
+    resources:
+      - jobs
+      - cronjobs
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - "networking.k8s.io"
+    resources:
+      - ingresses
+    verbs:
+      - get
+      - list
+      - watch
+  {{- with .Values.rbac.extraRules }}
+  {{- toYaml . | nindent 2 }}
+  {{- end }}
+{{- end }}

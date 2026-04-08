@@ -1,0 +1,225 @@
+# -- Number of replicas
+replicaCount: 1
+
+# -- Container image configuration
+image:
+  # -- Image repository
+  repository: ghcr.io/samyn92/agentops-console
+  # -- Image pull policy
+  pullPolicy: IfNotPresent
+  # -- Image tag (defaults to Chart.appVersion)
+  tag: ""
+  # -- Image digest (overrides tag when set)
+  digest: ""
+
+# -- Image pull secrets for private registries
+imagePullSecrets: []
+
+# -- Override the chart name
+nameOverride: ""
+# -- Override the full release name
+fullnameOverride: ""
+
+# -- AgentOps Console application settings
+console:
+  # -- Restrict the console to a single namespace (empty = all namespaces)
+  namespace: ""
+  # -- Path to the built frontend static assets inside the container
+  webDir: ""
+  # -- Enable development mode (relaxed CORS, debug logging)
+  dev: false
+
+# -- Extra CLI arguments passed to the console binary
+extraArgs: []
+
+# -- Service account configuration
+serviceAccount:
+  # -- Create a service account
+  create: true
+  # -- Annotations for the service account
+  annotations: {}
+  # -- Service account name (auto-generated if not set)
+  name: ""
+  # -- Automount API credentials
+  automount: true
+
+# -- RBAC configuration
+rbac:
+  # -- Create ClusterRole and ClusterRoleBinding for K8s API access
+  # The console needs read access to AgentOps CRDs and native K8s resources
+  create: true
+  # -- Additional RBAC rules to append to the ClusterRole
+  extraRules: []
+  # - apiGroups: [""]
+  #   resources: ["persistentvolumeclaims"]
+  #   verbs: ["get", "list", "watch"]
+
+# -- Deployment-specific configuration
+deployment:
+  # -- Annotations for the Deployment resource
+  annotations: {}
+  # -- Update strategy
+  strategy: {}
+  # type: RollingUpdate
+  # rollingUpdate:
+  #   maxSurge: 1
+  #   maxUnavailable: 0
+
+# -- Annotations added to pods
+podAnnotations: {}
+# -- Labels added to pods
+podLabels: {}
+
+# -- Pod security context
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+
+# -- Container security context
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: true
+
+# -- Service configuration
+service:
+  # -- Service type
+  type: ClusterIP
+  # -- Service port (external)
+  port: 80
+  # -- Container target port
+  targetPort: 8080
+  # -- Node port (only used when type is NodePort)
+  nodePort: null
+  # -- Service annotations
+  annotations: {}
+  # -- LoadBalancer IP
+  loadBalancerIP: ""
+  # -- LoadBalancer source ranges
+  loadBalancerSourceRanges: []
+  # -- External IPs
+  externalIPs: []
+  # -- Extra service ports
+  extraPorts: []
+
+# -- Ingress configuration
+ingress:
+  # -- Enable ingress
+  enabled: false
+  # -- Ingress class name
+  className: ""
+  # -- Ingress annotations
+  annotations: {}
+    # cert-manager.io/cluster-issuer: letsencrypt-prod
+    # nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  # -- Ingress hosts
+  hosts:
+    - host: agentops-console.local
+      paths:
+        - path: /
+          pathType: Prefix
+  # -- Ingress TLS configuration
+  tls: []
+  #  - secretName: agentops-console-tls
+  #    hosts:
+  #      - agentops-console.local
+
+# -- Liveness probe configuration
+# The console exposes /healthz on the HTTP port
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+# -- Readiness probe configuration
+readinessProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  initialDelaySeconds: 3
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+# -- Startup probe configuration
+startupProbe: {}
+
+# -- Resource requests and limits
+resources:
+  limits:
+    cpu: 500m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+# -- Autoscaling configuration
+autoscaling:
+  # -- Enable HPA
+  enabled: false
+  # -- Minimum replicas
+  minReplicas: 1
+  # -- Maximum replicas
+  maxReplicas: 5
+  # -- Target CPU utilization percentage
+  targetCPUUtilizationPercentage: 80
+  # -- Target memory utilization percentage
+  targetMemoryUtilizationPercentage: null
+  # -- HPA behavior configuration
+  behavior: {}
+  # -- Custom metrics for HPA
+  customMetrics: []
+
+# -- Environment variables
+env: []
+# - name: AGENT_URL_OVERRIDE
+#   value: "http://my-agent:4096"
+# - name: ENGRAM_URL_OVERRIDE
+#   value: "http://my-engram:7437"
+
+# -- Environment variables from ConfigMap or Secret references
+envFrom: []
+
+# -- ConfigMap configuration
+configMap:
+  # -- Create a ConfigMap
+  enabled: false
+  # -- ConfigMap key-value data
+  data: {}
+
+# -- Secret configuration
+secret:
+  # -- Create a Secret
+  enabled: false
+  # -- Secret type
+  type: Opaque
+  # -- Secret string data (plain text, will be base64 encoded by K8s)
+  stringData: {}
+  # -- Secret data (pre-encoded base64)
+  data: {}
+
+# -- Additional volume mounts for the container
+volumeMounts: []
+# -- Additional volumes for the pod
+volumes: []
+
+# -- Init containers
+initContainers: []
+# -- Sidecar containers
+sidecars: []
+
+# -- Node selector
+nodeSelector: {}
+# -- Affinity rules
+affinity: {}
+# -- Tolerations
+tolerations: []
+# -- Priority class name
+priorityClassName: ""

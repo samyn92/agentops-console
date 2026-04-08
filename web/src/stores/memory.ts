@@ -253,9 +253,77 @@ export async function deleteObservation(id: number, hard?: boolean): Promise<boo
 
 // ── Memory panel view state ──
 
-export type MemoryView = 'observations' | 'search' | 'sessions' | 'detail';
+export type MemoryView = 'observations' | 'search' | 'sessions' | 'detail' | 'extract';
 const [memoryView, setMemoryView] = createSignal<MemoryView>('observations');
 export { memoryView, setMemoryView };
+
+// ── AI-assisted extraction ──
+
+export interface ExtractionResult {
+  type: string;
+  title: string;
+  content: string;
+  tags: string[];
+}
+
+const [extracting, setExtracting] = createSignal(false);
+const [extractionResult, setExtractionResult] = createSignal<ExtractionResult | null>(null);
+const [extractionError, setExtractionError] = createSignal<string | null>(null);
+
+export { extracting, extractionResult, extractionError, setExtractionResult };
+
+/** Extract a structured observation from the current working memory using AI. */
+export async function extractFromConversation(focus?: string, type?: string): Promise<boolean> {
+  const agent = selectedAgent();
+  if (!agent) return false;
+
+  setExtracting(true);
+  setExtractionError(null);
+  setExtractionResult(null);
+
+  try {
+    const result = await memoryAPI.extract(agent.namespace, agent.name, {
+      focus: focus || undefined,
+      type: type || undefined,
+    });
+    setExtractionResult(result);
+    return true;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Extraction failed';
+    setExtractionError(msg);
+    console.error('Failed to extract memory:', err);
+    return false;
+  } finally {
+    setExtracting(false);
+  }
+}
+
+/** Save the extraction result as a new observation, then reset extraction state. */
+export async function saveExtraction(overrides?: Partial<ExtractionResult>): Promise<boolean> {
+  const result = extractionResult();
+  if (!result) return false;
+
+  const obs = {
+    type: overrides?.type ?? result.type,
+    title: overrides?.title ?? result.title,
+    content: overrides?.content ?? result.content,
+    tags: overrides?.tags ?? result.tags,
+  };
+
+  const ok = await createObservation(obs);
+  if (ok) {
+    setExtractionResult(null);
+    setExtractionError(null);
+    setMemoryView('observations');
+  }
+  return ok;
+}
+
+/** Discard extraction result. */
+export function discardExtraction() {
+  setExtractionResult(null);
+  setExtractionError(null);
+}
 
 // ── Auto-refresh on agent change ──
 
