@@ -66,29 +66,29 @@ export default function AgentDetail(props: AgentDetailProps) {
               <div class="px-4 space-y-3">
                 <Section title="Configuration">
                   <Property label="Mode" value={spec().mode} />
-                  <Property label="Runtime" value={spec().runtime} />
-                  <Show when={spec().fantasy}>
-                    <Property label="Model" value={spec().fantasy!.primaryModel} />
-                    <Show when={spec().fantasy!.temperature !== undefined}>
-                      <Property label="Temperature" value={String(spec().fantasy!.temperature)} />
-                    </Show>
-                    <Show when={spec().fantasy!.maxOutputTokens !== undefined}>
-                      <Property label="Max Tokens" value={String(spec().fantasy!.maxOutputTokens)} />
-                    </Show>
-                    <Show when={spec().fantasy!.maxSteps !== undefined}>
-                      <Property label="Max Steps" value={String(spec().fantasy!.maxSteps)} />
-                    </Show>
+                  <Property label="Model" value={spec().model} />
+                  <Show when={spec().image}>
+                    <Property label="Image" value={spec().image!} />
                   </Show>
-                  <Show when={spec().replicas !== undefined}>
-                    <Property label="Replicas" value={String(spec().replicas)} />
+                  <Show when={spec().temperature !== undefined}>
+                    <Property label="Temperature" value={String(spec().temperature)} />
+                  </Show>
+                  <Show when={spec().maxOutputTokens !== undefined}>
+                    <Property label="Max Tokens" value={String(spec().maxOutputTokens)} />
+                  </Show>
+                  <Show when={spec().maxSteps !== undefined}>
+                    <Property label="Max Steps" value={String(spec().maxSteps)} />
+                  </Show>
+                  <Show when={spec().timeout}>
+                    <Property label="Timeout" value={spec().timeout!} />
                   </Show>
                 </Section>
 
                 {/* Providers */}
-                <Show when={spec().fantasy?.providers?.length}>
+                <Show when={spec().providers?.length}>
                   <Section title="Providers">
                     <div class="flex flex-wrap gap-1.5">
-                      <For each={spec().fantasy!.providers}>
+                      <For each={spec().providers}>
                         {(p) => (
                           <Badge variant="info">{p.name}</Badge>
                         )}
@@ -98,10 +98,10 @@ export default function AgentDetail(props: AgentDetailProps) {
                 </Show>
 
                 {/* Built-in Tools */}
-                <Show when={spec().fantasy?.builtinTools?.length}>
+                <Show when={spec().builtinTools?.length}>
                   <Section title="Built-in Tools">
                     <div class="flex flex-wrap gap-1.5">
-                      <For each={spec().fantasy!.builtinTools}>
+                      <For each={spec().builtinTools}>
                         {(tool) => (
                           <Badge variant="muted">{tool}</Badge>
                         )}
@@ -110,25 +110,11 @@ export default function AgentDetail(props: AgentDetailProps) {
                   </Section>
                 </Show>
 
-                {/* External Tools */}
-                <Show when={spec().fantasy?.tools?.length}>
-                  <Section title="External Tools">
-                    <For each={spec().fantasy!.tools}>
-                      {(tool) => (
-                        <div class="flex items-center gap-2 text-xs py-0.5">
-                          <span class="text-text font-mono">{tool.name}</span>
-                          <span class="text-text-muted truncate">{tool.path}</span>
-                        </div>
-                      )}
-                    </For>
-                  </Section>
-                </Show>
-
                 {/* MCP Servers */}
-                <Show when={spec().fantasy?.mcpServers?.length}>
+                <Show when={spec().mcpServers?.length}>
                   <Section title="MCP Servers">
                     <div class="flex flex-wrap gap-1.5">
-                      <For each={spec().fantasy!.mcpServers}>
+                      <For each={spec().mcpServers}>
                         {(mcp) => (
                           <Badge variant="info">{mcp.name}</Badge>
                         )}
@@ -138,10 +124,10 @@ export default function AgentDetail(props: AgentDetailProps) {
                 </Show>
 
                 {/* Fallback Models */}
-                <Show when={spec().fantasy?.fallbackModels?.length}>
+                <Show when={spec().fallbackModels?.length}>
                   <Section title="Fallback Models">
                     <div class="flex flex-wrap gap-1.5">
-                      <For each={spec().fantasy!.fallbackModels}>
+                      <For each={spec().fallbackModels}>
                         {(model) => (
                           <Badge variant="muted">{model}</Badge>
                         )}
@@ -151,11 +137,33 @@ export default function AgentDetail(props: AgentDetailProps) {
                 </Show>
 
                 {/* System Prompt */}
-                <Show when={spec().fantasy?.systemPrompt}>
+                <Show when={spec().systemPrompt}>
                   <Section title="System Prompt">
                     <pre class="text-xs text-text-secondary font-mono whitespace-pre-wrap bg-surface-2 rounded-md p-2 max-h-[200px] overflow-y-auto border border-border-subtle">
-                      {spec().fantasy!.systemPrompt}
+                      {spec().systemPrompt}
                     </pre>
+                  </Section>
+                </Show>
+
+                {/* Tool Hooks */}
+                <Show when={spec().toolHooks}>
+                  <Section title="Tool Hooks">
+                    <Show when={spec().toolHooks!.blockedCommands?.length}>
+                      <div class="text-xs text-text-muted mb-1">Blocked commands:</div>
+                      <div class="flex flex-wrap gap-1.5">
+                        <For each={spec().toolHooks!.blockedCommands}>
+                          {(cmd) => <Badge variant="muted">{cmd}</Badge>}
+                        </For>
+                      </div>
+                    </Show>
+                    <Show when={spec().toolHooks!.allowedPaths?.length}>
+                      <div class="text-xs text-text-muted mb-1 mt-1">Allowed paths:</div>
+                      <div class="flex flex-wrap gap-1.5">
+                        <For each={spec().toolHooks!.allowedPaths}>
+                          {(p) => <Badge variant="muted">{p}</Badge>}
+                        </For>
+                      </div>
+                    </Show>
                   </Section>
                 </Show>
 

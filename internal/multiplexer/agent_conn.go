@@ -3,14 +3,11 @@
 package multiplexer
 
 import (
-	"bufio"
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"math"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
@@ -32,6 +29,7 @@ type AgentConn struct {
 	Key    AgentKey
 	URL    string // base URL, e.g. http://agent.ns.svc:4096
 	eventC chan<- EnvelopedEvent
+	httpC  *http.Client // shared client with timeout for health checks
 
 	mu     sync.Mutex
 	cancel context.CancelFunc
@@ -51,6 +49,7 @@ func NewAgentConn(key AgentKey, url string, eventC chan<- EnvelopedEvent) *Agent
 		Key:    key,
 		URL:    url,
 		eventC: eventC,
+		httpC:  &http.Client{Timeout: 10 * time.Second},
 	}
 }
 
@@ -161,7 +160,7 @@ func (ac *AgentConn) connect(ctx context.Context) error {
 		return fmt.Errorf("create request: %w", err)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := ac.httpC.Do(req)
 	if err != nil {
 		return fmt.Errorf("health check: %w", err)
 	}
@@ -202,7 +201,7 @@ func (ac *AgentConn) healthCheck(ctx context.Context) error {
 		return err
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := ac.httpC.Do(req)
 	if err != nil {
 		return err
 	}
@@ -212,46 +211,4 @@ func (ac *AgentConn) healthCheck(ctx context.Context) error {
 		return fmt.Errorf("status %d", resp.StatusCode)
 	}
 	return nil
-}
-
-// RelaySSEStream reads an SSE response body and relays FEP events to the multiplexer.
-// Called by the session proxy handler when streaming a prompt.
-func (ac *AgentConn) RelaySSEStream(ctx context.Context, body *http.Response) {
-	defer body.Body.Close()
-
-	scanner := bufio.NewScanner(body.Body)
-	// Increase buffer for large SSE payloads
-	scanner.Buffer(make([]byte, 0, 256*1024), 256*1024)
-
-	for scanner.Scan() {
-		line := scanner.Text()
-
-		// SSE data lines
-		if !strings.HasPrefix(line, "data: ") {
-			continue
-		}
-
-		data := strings.TrimPrefix(line, "data: ")
-		if data == "" {
-			continue
-		}
-
-		var evt fep.Event
-		if err := json.Unmarshal([]byte(data), &evt); err != nil {
-			slog.Warn("failed to parse FEP event", "agent", ac.Key, "error", err)
-			continue
-		}
-
-		select {
-		case ac.eventC <- EnvelopedEvent{
-			Agent:     ac.Key,
-			EventType: "agent.event",
-			Event:     evt,
-		}:
-		case <-ctx.Done():
-			return
-		default:
-			slog.Warn("event channel full, dropping event", "agent", ac.Key, "type", evt.Type)
-		}
-	}
 }

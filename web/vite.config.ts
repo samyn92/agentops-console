@@ -20,7 +20,7 @@ export default defineConfig({
     solid(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['logo.png', 'vite.svg'],
+      includeAssets: ['logo.png'],
       manifest: {
         name: 'AgentOps Console',
         short_name: 'AgentOps',

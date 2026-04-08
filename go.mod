@@ -12,7 +12,7 @@ require (
 	sigs.k8s.io/controller-runtime v0.21.0
 )
 
-replace github.com/samyn92/agenticops-core => ../agenticops-core
+replace github.com/samyn92/agenticops-core => ../agentops-core
 
 require (
 	github.com/beorn7/perks v1.0.1 // indirect

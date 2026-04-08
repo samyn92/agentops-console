@@ -1,8 +1,11 @@
-// Settings store — theme, accent color, preferences.
+// Settings store — theme, accent color, Material You scheme, preferences.
 import { createSignal, createEffect } from 'solid-js';
+import { generateThemeTokens, applyThemeTokens } from '../lib/theme';
+import type { SchemeVariant } from '../lib/theme';
 
 export type ThemeMode = 'dark' | 'light' | 'system';
 export type ThemeStyle = 'vercel' | 'material';
+export type { SchemeVariant } from '../lib/theme';
 
 // ── State ──
 
@@ -18,6 +21,10 @@ const [themeStyle, setThemeStyle] = createSignal<ThemeStyle>(
 
 const [accentColor, setAccentColor] = createSignal(
   stored?.getItem('accent-color') || '#3b82f6',
+);
+
+const [schemeVariant, setSchemeVariant] = createSignal<SchemeVariant>(
+  (stored?.getItem('scheme-variant') as SchemeVariant) || 'tonal_spot',
 );
 
 const [diffView, setDiffView] = createSignal<'unified' | 'split'>(
@@ -74,31 +81,38 @@ const [showSystemPrompts, setShowSystemPrompts] = createSignal(
 createEffect(() => stored?.setItem('theme-mode', themeMode()));
 createEffect(() => stored?.setItem('theme-style', themeStyle()));
 createEffect(() => stored?.setItem('accent-color', accentColor()));
+createEffect(() => stored?.setItem('scheme-variant', schemeVariant()));
 createEffect(() => stored?.setItem('diff-view', diffView()));
 createEffect(() => stored?.setItem('collapsed-tools', String(collapsedTools())));
 createEffect(() => stored?.setItem('tool-expansion-defaults', JSON.stringify(toolExpansionDefaults())));
 createEffect(() => stored?.setItem('show-system-prompts', String(showSystemPrompts())));
+
+// ── Resolve effective dark/light mode ──
+
+function resolveIsDark(mode: ThemeMode): boolean {
+  if (mode === 'system') {
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+  }
+  return mode === 'dark';
+}
 
 // ── Apply theme to document ──
 
 createEffect(() => {
   const mode = themeMode();
   const style = themeStyle();
+  const accent = accentColor();
+  const variant = schemeVariant();
 
   const root = document.documentElement;
-
-  // Resolve system preference
-  let resolvedMode = mode;
-  if (mode === 'system') {
-    resolvedMode = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-  }
+  const isDark = resolveIsDark(mode);
 
   // Apply data attributes for CSS selectors
-  root.setAttribute('data-theme', resolvedMode);
+  root.setAttribute('data-theme', isDark ? 'dark' : 'light');
   root.setAttribute('data-style', style);
 
   // Toggle class for Tailwind dark mode
-  if (resolvedMode === 'dark') {
+  if (isDark) {
     root.classList.add('dark');
   } else {
     root.classList.remove('dark');
@@ -110,6 +124,10 @@ createEffect(() => {
   } else {
     root.classList.remove('material');
   }
+
+  // Generate and apply theme tokens from the accent color
+  const tokens = generateThemeTokens(accent, isDark, style, variant);
+  applyThemeTokens(tokens, root);
 });
 
 // ── Public API ──
@@ -118,6 +136,7 @@ export {
   themeMode, setThemeMode,
   themeStyle, setThemeStyle,
   accentColor, setAccentColor,
+  schemeVariant, setSchemeVariant,
   diffView, setDiffView,
   collapsedTools, setCollapsedTools,
   toolExpansionDefaults, setToolExpansionDefault, setAllToolExpansionDefaults,

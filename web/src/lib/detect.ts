@@ -63,10 +63,9 @@ export function getToolStyle(toolName: string): ToolStyle {
   return TOOL_STYLES[toolName] || { label: toolName, color: 'text-text-secondary', icon: 'generic' };
 }
 
-/** Get a tool category from tool name (for grouping) */
-export type ToolCategory = 'file' | 'terminal' | 'search' | 'web' | 'agent' | 'generic';
+type ToolCategory = 'file' | 'terminal' | 'search' | 'web' | 'agent' | 'generic';
 
-export function getToolCategory(toolName: string): ToolCategory {
+function getToolCategory(toolName: string): ToolCategory {
   if (['read', 'edit', 'write'].includes(toolName)) return 'file';
   if (toolName === 'bash') return 'terminal';
   if (['glob', 'ls', 'grep'].includes(toolName)) return 'search';

@@ -185,26 +185,7 @@
   }
 }
 
-/* ===== Tab Bar ===== */
-.tab-item {
-  flex: 0 1 200px;
-  min-width: 100px;
-  max-width: 200px;
-}
-
-/* ===== Agent Panel - Slide Down ===== */
-@keyframes slideDown {
-  from {
-    opacity: 0;
-    max-height: 0;
-  }
-  to {
-    opacity: 1;
-    max-height: 80vh;
-  }
-}
-
-/* ===== Capability Browser - Expand/Collapse ===== */
+/* ===== Agent Panel - Expand/Collapse ===== */
 .capability-expand-enter {
   animation: capability-expand-in 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   transform-origin: top;
@@ -313,13 +294,7 @@
   }
 }
 
-/* Session pulse color variants */
-.session-row-processing--accent  { --session-pulse-color: var(--accent); }
-.session-row-processing--success { --session-pulse-color: var(--success); }
-.session-row-processing--warning { --session-pulse-color: var(--warning); }
-.session-row-processing--error   { --session-pulse-color: var(--error); }
-
-/* ===== Shimmer / skeleton placeholder for session titles ===== */
+/* Session pulse color — uses accent by default */
 .shimmer-title {
   display: inline-block;
   width: 70%;
@@ -364,17 +339,6 @@
 
 .panel-resize-handle.active {
   background-color: var(--accent);
-}
-
-/* ===== Tab active indicator ===== */
-.tab-active-indicator {
-  position: absolute;
-  bottom: -1px;
-  left: 8px;
-  right: 8px;
-  height: 2px;
-  background: var(--primary);
-  border-radius: 1px 1px 0 0;
 }
 
 /* ===== Subtle fade for section headers ===== */
@@ -926,18 +890,32 @@
   }
 }
 
-/* ===== Material You Refinements ===== */
-/* When .material is on <html>, adjust shape, elevation, and motion to
-   match Material Design 3 language. Colors are applied inline by the
-   theme store — these rules handle everything else. */
+/* ===== Material You Design System ===== */
+/* When .material is on <html>, the full Material Design 3 language activates.
+   Colors are generated dynamically by lib/theme.ts using @material/material-color-utilities
+   and applied as inline CSS custom properties. These rules handle shape, elevation,
+   motion, and component-level refinements per the M3 spec. */
 
-/* Shape — MD3 uses rounder corners */
+/* ── M3 Shape System ──
+   MD3 shape scale: Extra Small (4dp), Small (8dp), Medium (12dp),
+   Large (16dp), Extra Large (28dp), Full (9999px).
+   We map these to component roles. */
+
+/* Small shape — inputs, buttons, chips */
 .material button,
 .material input,
 .material select,
-.material textarea,
-.material [class*="rounded"] {
+.material textarea {
   border-radius: 12px;
+}
+
+/* Medium shape — cards, panels, code blocks */
+.material [class*="rounded-lg"] {
+  border-radius: 12px;
+}
+
+.material [class*="rounded-xl"] {
+  border-radius: 16px;
 }
 
 .material .md-code-block {
@@ -948,35 +926,51 @@
   border-radius: 6px;
 }
 
-/* Cards / panels — larger radius */
+/* Large shape — composer, dialogs, sheets */
 .material .composer-input {
-  border-radius: 16px;
+  border-radius: 28px;
 }
 
-/* Pill buttons (e.g., primary action, chips) */
+/* Full shape — pills, FABs, toggles */
 .material button[class*="rounded-full"] {
-  border-radius: 9999px; /* keep pill shape */
+  border-radius: 9999px;
 }
 
-/* Elevation — MD3 uses softer, more spread shadows with tonal surface tint */
+/* ── M3 Elevation System ──
+   MD3 uses surface tint + shadow for elevation, creating depth through
+   both light/shadow and color layering. Shadows are softer and more diffuse. */
+
+/* Level 1 (sm), Level 3 (md), Level 5 (lg) */
 .material {
-  --shadow-sm: 0 1px 3px 1px rgba(0, 0, 0, 0.07), 0 1px 2px 0 rgba(0, 0, 0, 0.04);
-  --shadow-md: 0 2px 6px 2px rgba(0, 0, 0, 0.07), 0 1px 2px 0 rgba(0, 0, 0, 0.04);
-  --shadow-lg: 0 4px 8px 3px rgba(0, 0, 0, 0.07), 0 1px 3px 0 rgba(0, 0, 0, 0.04);
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.06), 0 1px 3px 1px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 1px 2px 0 rgba(0, 0, 0, 0.06), 0 2px 6px 2px rgba(0, 0, 0, 0.05);
+  --shadow-lg: 0 2px 3px 0 rgba(0, 0, 0, 0.06), 0 4px 8px 3px rgba(0, 0, 0, 0.05);
 }
 
+/* Dark mode: M3 uses less shadow, more surface tint for elevation */
 .material.dark {
-  --shadow-sm: 0 1px 3px 1px rgba(0, 0, 0, 0.25), 0 1px 2px 0 rgba(0, 0, 0, 0.2);
-  --shadow-md: 0 2px 6px 2px rgba(0, 0, 0, 0.25), 0 1px 2px 0 rgba(0, 0, 0, 0.2);
-  --shadow-lg: 0 4px 8px 3px rgba(0, 0, 0, 0.25), 0 1px 3px 0 rgba(0, 0, 0, 0.2);
+  --shadow-sm: 0 1px 3px 1px rgba(0, 0, 0, 0.2), 0 1px 2px 0 rgba(0, 0, 0, 0.15);
+  --shadow-md: 0 2px 6px 2px rgba(0, 0, 0, 0.2), 0 1px 2px 0 rgba(0, 0, 0, 0.15);
+  --shadow-lg: 0 4px 8px 3px rgba(0, 0, 0, 0.2), 0 1px 3px 0 rgba(0, 0, 0, 0.15);
 }
 
-/* Motion — MD3 standard duration is 300ms with emphasized decelerate */
+/* ── M3 Motion System ──
+   MD3 uses "emphasized" easing (decelerate: 0, 0, 0, 1 / accelerate: 0.3, 0, 1, 1)
+   and standard duration of 300ms for medium transitions, 200ms for small. */
 .material {
   --transition-default: 300ms;
 }
 
-/* Scrollbar — slightly thicker, more rounded for Material feel */
+/* State layer — M3 hover/focus uses a semi-transparent overlay.
+   This is the "state layer" concept from the M3 interaction model. */
+.material button:hover,
+.material a:hover {
+  transition: background-color 300ms cubic-bezier(0, 0, 0, 1),
+              box-shadow 300ms cubic-bezier(0, 0, 0, 1),
+              transform 150ms cubic-bezier(0, 0, 0, 1);
+}
+
+/* ── M3 Scrollbar ── */
 .material * {
   scrollbar-width: auto;
 }
@@ -990,14 +984,7 @@
   border-radius: 4px;
 }
 
-/* Tab indicator — thicker, rounded like MD3 */
-.material .tab-active-indicator {
-  height: 3px;
-  border-radius: 3px 3px 0 0;
-  background: var(--primary);
-}
-
-/* Neural trace — slightly softer in Material mode */
+/* ── M3 Neural Trace — softer in Material mode ── */
 .material .neural-trace__beam {
   opacity: 0.6;
 }
@@ -1010,6 +997,45 @@
 }
 .material.dark .neural-trace__glow {
   opacity: 0.15;
+}
+
+/* ── M3 Composer refinements ── */
+.material .composer-input {
+  box-shadow: var(--shadow-md);
+}
+
+.material .composer-input:focus-within {
+  box-shadow: 0 0 0 3px var(--accent-muted), var(--shadow-md);
+}
+
+/* ── M3 Toggle / Switch ── */
+.material .m3-toggle {
+  border-radius: 9999px;
+  transition: background-color 300ms cubic-bezier(0, 0, 0, 1);
+}
+
+.material .m3-toggle-thumb {
+  border-radius: 9999px;
+  transition: transform 300ms cubic-bezier(0, 0, 0, 1),
+              width 200ms cubic-bezier(0, 0, 0, 1),
+              height 200ms cubic-bezier(0, 0, 0, 1);
+}
+
+/* ── M3 Settings-specific styles ── */
+/* Scheme variant cards in settings */
+.material .scheme-card {
+  border-radius: 16px;
+  transition: border-color 300ms cubic-bezier(0, 0, 0, 1),
+              box-shadow 300ms cubic-bezier(0, 0, 0, 1),
+              transform 150ms cubic-bezier(0, 0, 0, 1);
+}
+
+.material .scheme-card:hover {
+  transform: translateY(-1px);
+}
+
+.material .scheme-card.selected {
+  box-shadow: 0 0 0 2px var(--accent);
 }
 
 /* ===== Mobile-specific scrolling fixes ===== */

@@ -1,10 +1,116 @@
 // Composer — input area with send/stop/steer functionality
-import { createSignal, Show } from 'solid-js';
-import { streaming, totalUsage } from '../../stores/chat';
+import { createSignal, Show, createMemo } from 'solid-js';
+import { streaming, lastStepUsage, activeModel } from '../../stores/chat';
 import { sendMessage, abortStream, steerAgent } from '../../stores/chat';
 import { selectedAgent } from '../../stores/agents';
 import { formatTokens } from '../../lib/format';
 import MCPBrowser from '../resources/MCPBrowser';
+
+// ── Model context window sizes (tokens) ──
+
+const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
+  // OpenAI
+  'gpt-4': 8_192,
+  'gpt-4-32k': 32_768,
+  'gpt-4-turbo': 128_000,
+  'gpt-4-turbo-preview': 128_000,
+  'gpt-4o': 128_000,
+  'gpt-4o-mini': 128_000,
+  'gpt-4.1': 1_047_576,
+  'gpt-4.1-mini': 1_047_576,
+  'gpt-4.1-nano': 1_047_576,
+  'o1': 200_000,
+  'o1-mini': 128_000,
+  'o1-preview': 128_000,
+  'o3': 200_000,
+  'o3-mini': 200_000,
+  'o4-mini': 200_000,
+  'gpt-3.5-turbo': 16_385,
+  // Anthropic
+  'claude-3-opus': 200_000,
+  'claude-3-sonnet': 200_000,
+  'claude-3-haiku': 200_000,
+  'claude-3.5-sonnet': 200_000,
+  'claude-3.5-haiku': 200_000,
+  'claude-3.7-sonnet': 200_000,
+  'claude-4-sonnet': 200_000,
+  'claude-4-opus': 200_000,
+  'claude-opus-4': 200_000,
+  'claude-sonnet-4': 200_000,
+  // Google
+  'gemini-pro': 1_000_000,
+  'gemini-1.5-pro': 1_000_000,
+  'gemini-1.5-flash': 1_000_000,
+  'gemini-2.0-flash': 1_000_000,
+  'gemini-2.5-pro': 1_000_000,
+  'gemini-2.5-flash': 1_000_000,
+  // Mistral
+  'mistral-large': 128_000,
+  'mistral-medium': 32_000,
+  'mistral-small': 32_000,
+};
+
+/** Best-effort lookup: match model string against known context windows. */
+function getContextWindow(model: string | null): number | null {
+  if (!model) return null;
+  const lower = model.toLowerCase();
+  // Exact match first
+  if (MODEL_CONTEXT_WINDOWS[lower]) return MODEL_CONTEXT_WINDOWS[lower];
+  // Prefix/substring match (handles versioned names like "gpt-4o-2024-08-06")
+  for (const [key, size] of Object.entries(MODEL_CONTEXT_WINDOWS)) {
+    if (lower.includes(key) || lower.startsWith(key)) return size;
+  }
+  return null;
+}
+
+// ── Context gauge component ──
+
+function ContextGauge(props: { inputTokens: number; contextWindow: number | null }) {
+  const pct = createMemo(() => {
+    if (!props.contextWindow || props.contextWindow === 0) return null;
+    return Math.min((props.inputTokens / props.contextWindow) * 100, 100);
+  });
+
+  // Color thresholds: green < 50%, yellow 50-80%, red > 80%
+  const color = createMemo(() => {
+    const p = pct();
+    if (p === null) return 'bg-text-muted/30';
+    if (p < 50) return 'bg-success';
+    if (p < 80) return 'bg-warning';
+    return 'bg-error';
+  });
+
+  const textColor = createMemo(() => {
+    const p = pct();
+    if (p === null) return 'text-text-muted/60';
+    if (p < 50) return 'text-text-muted/60';
+    if (p < 80) return 'text-warning';
+    return 'text-error';
+  });
+
+  return (
+    <span class={`inline-flex items-center gap-1.5 ${textColor()}`}>
+      {/* Battery icon */}
+      <span class="relative inline-flex items-center">
+        {/* Battery body */}
+        <span class="relative w-5 h-2.5 rounded-[3px] border border-current/40 overflow-hidden">
+          <span
+            class={`absolute inset-y-0 left-0 rounded-[2px] transition-all duration-500 ${color()}`}
+            style={{ width: pct() !== null ? `${pct()}%` : '0%', opacity: pct() !== null ? 0.8 : 0.3 }}
+          />
+        </span>
+        {/* Battery tip */}
+        <span class="w-[2px] h-1.5 rounded-r-[1px] bg-current/40 -ml-px" />
+      </span>
+      <span class="text-[11px] select-none">
+        {formatTokens(props.inputTokens)}
+        <Show when={props.contextWindow}>
+          {' / '}{formatTokens(props.contextWindow!)}
+        </Show>
+      </span>
+    </span>
+  );
+}
 
 interface ComposerProps {
   class?: string;
@@ -185,7 +291,7 @@ export default function Composer(props: ComposerProps) {
           </div>
         </div>
 
-        {/* Hints */}
+        {/* Hints + Context gauge */}
         <div class="flex items-center justify-between mt-1.5 px-1">
           <span class="text-[11px] text-text-muted">
             <Show when={streaming() && mode() !== 'steer'}>
@@ -196,8 +302,11 @@ export default function Composer(props: ComposerProps) {
               <span class="text-accent">Steer mode</span>
               {' — guide the agent\'s next action'}
             </Show>
-            <Show when={!streaming() && totalUsage()}>
-              <span class="text-text-muted/60">{formatTokens(totalUsage()!.total_tokens)} tokens</span>
+            <Show when={!streaming() && lastStepUsage()}>
+              <ContextGauge
+                inputTokens={lastStepUsage()!.input_tokens}
+                contextWindow={getContextWindow(activeModel())}
+              />
             </Show>
           </span>
           <span class="text-[11px] text-text-muted">

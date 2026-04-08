@@ -1,18 +1,22 @@
-// SettingsPage — theme, accent color, per-tool expansion, preferences
-import { For } from 'solid-js';
+// SettingsPage — Material You theme park + Vercel-style preferences
+import { For, Show, createMemo } from 'solid-js';
 import { A } from '@solidjs/router';
 import {
   themeMode, setThemeMode,
   themeStyle, setThemeStyle,
   accentColor, setAccentColor,
+  schemeVariant, setSchemeVariant,
   diffView, setDiffView,
   collapsedTools, setCollapsedTools,
   toolExpansionDefaults, setToolExpansionDefault, setAllToolExpansionDefaults,
   showSystemPrompts, setShowSystemPrompts,
   KNOWN_TOOLS,
 } from '../stores/settings';
-import type { ThemeMode, ThemeStyle } from '../stores/settings';
+import type { ThemeMode, ThemeStyle, SchemeVariant } from '../stores/settings';
 import { getToolDisplayName } from '../lib/capability-themes';
+import { SCHEME_VARIANTS, generatePreviewPalette } from '../lib/theme';
+
+// ── Accent color presets ──
 
 const accentPresets = [
   { name: 'Blue', value: '#3b82f6' },
@@ -29,22 +33,31 @@ const accentPresets = [
   { name: 'Red', value: '#ef4444' },
 ];
 
-function SettingSection(props: { title: string; children: any }) {
+// ── Shared components ──
+
+function SettingSection(props: { title: string; description?: string; children: any }) {
   return (
-    <div class="mb-6">
-      <h3 class="text-sm font-semibold text-text mb-3">{props.title}</h3>
-      {props.children}
+    <div class="mb-8">
+      <div class="mb-4">
+        <h3 class="text-[13px] font-semibold text-text uppercase tracking-[0.05em]">{props.title}</h3>
+        {props.description && (
+          <p class="text-xs text-text-muted mt-1 leading-relaxed">{props.description}</p>
+        )}
+      </div>
+      <div class="rounded-xl border border-border bg-surface overflow-hidden">
+        {props.children}
+      </div>
     </div>
   );
 }
 
-function SettingRow(props: { label: string; description?: string; children: any }) {
+function SettingRow(props: { label: string; description?: string; children: any; last?: boolean }) {
   return (
-    <div class="flex items-center justify-between py-2.5 border-b border-border-subtle last:border-0">
+    <div class={`flex items-center justify-between px-4 py-3.5 ${props.last ? '' : 'border-b border-border-subtle'}`}>
       <div class="min-w-0 mr-4">
-        <p class="text-sm text-text">{props.label}</p>
+        <p class="text-sm text-text font-medium">{props.label}</p>
         {props.description && (
-          <p class="text-xs text-text-muted mt-0.5">{props.description}</p>
+          <p class="text-xs text-text-muted mt-0.5 leading-relaxed">{props.description}</p>
         )}
       </div>
       <div class="flex-shrink-0">
@@ -59,7 +72,7 @@ function SelectButton(props: { options: { value: string; label: string }[]; valu
     <div class="flex rounded-lg border border-border overflow-hidden">
       {props.options.map((opt) => (
         <button
-          class={`px-3 py-1.5 text-xs font-medium transition-colors ${
+          class={`px-3 py-1.5 text-xs font-medium transition-all duration-200 ${
             props.value === opt.value
               ? 'bg-primary text-primary-foreground'
               : 'bg-surface text-text-secondary hover:bg-surface-hover'
@@ -76,41 +89,165 @@ function SelectButton(props: { options: { value: string; label: string }[]; valu
 function Toggle(props: { checked: boolean; onChange: (v: boolean) => void }) {
   return (
     <button
-      class={`relative w-10 h-5 rounded-full transition-colors ${
-        props.checked ? 'bg-accent' : 'bg-surface-2 border border-border'
+      class={`relative w-11 h-6 rounded-full transition-colors duration-200 ${
+        props.checked
+          ? 'bg-accent'
+          : 'bg-surface-2 border border-border'
       }`}
       onClick={() => props.onChange(!props.checked)}
+      role="switch"
+      aria-checked={props.checked}
     >
       <span
-        class={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${
-          props.checked ? 'left-[22px]' : 'left-0.5'
+        class={`absolute top-0.5 w-5 h-5 rounded-full shadow-sm transition-all duration-200 ${
+          props.checked
+            ? 'left-[22px] bg-white'
+            : 'left-0.5 bg-text-muted'
         }`}
       />
     </button>
   );
 }
 
-/** Per-tool expansion state: 'expanded' | 'collapsed' | undefined (use global) */
+// ── Accent color picker with live ring ──
+
+function AccentColorPicker(props: { isMaterial: boolean }) {
+  return (
+    <div class={`px-4 py-4 ${props.isMaterial ? 'border-b border-border-subtle' : ''}`}>
+      <div class="flex items-center justify-between mb-3">
+        <div>
+          <p class="text-sm text-text font-medium">Accent Color</p>
+          <p class="text-xs text-text-muted mt-0.5">
+            {props.isMaterial
+              ? 'Seed color for the entire tonal palette'
+              : 'Highlight color for interactive elements'}
+          </p>
+        </div>
+        <div class="flex items-center gap-2">
+          <div
+            class="w-5 h-5 rounded-full border border-border"
+            style={{ background: accentColor() }}
+          />
+          <span class="text-xs text-text-muted font-mono">{accentColor()}</span>
+        </div>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <For each={accentPresets}>
+          {(preset) => {
+            const isActive = () => accentColor() === preset.value;
+            return (
+              <button
+                class={`w-8 h-8 rounded-full transition-all duration-200 ring-offset-2 ring-offset-surface ${
+                  isActive()
+                    ? 'ring-2 ring-accent scale-110'
+                    : 'hover:scale-105 hover:ring-1 hover:ring-border-hover'
+                }`}
+                style={{ background: preset.value }}
+                onClick={() => setAccentColor(preset.value)}
+                title={preset.name}
+              />
+            );
+          }}
+        </For>
+        {/* Custom color input */}
+        <label
+          class="w-8 h-8 rounded-full border-2 border-dashed border-border-hover flex items-center justify-center cursor-pointer hover:border-accent transition-colors group"
+          title="Custom color"
+        >
+          <svg class="w-3.5 h-3.5 text-text-muted group-hover:text-accent transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+          </svg>
+          <input
+            type="color"
+            class="sr-only"
+            value={accentColor()}
+            onInput={(e) => setAccentColor(e.currentTarget.value)}
+          />
+        </label>
+      </div>
+    </div>
+  );
+}
+
+// ── Material You scheme variant picker ──
+
+function SchemeVariantPicker() {
+  const isDark = () => {
+    const mode = themeMode();
+    if (mode === 'system') return window.matchMedia('(prefers-color-scheme: dark)').matches;
+    return mode === 'dark';
+  };
+
+  return (
+    <div class="px-4 py-4">
+      <div class="mb-3">
+        <p class="text-sm text-text font-medium">Scheme Variant</p>
+        <p class="text-xs text-text-muted mt-0.5">How the accent color generates the full palette</p>
+      </div>
+      <div class="grid grid-cols-3 gap-2">
+        <For each={SCHEME_VARIANTS}>
+          {(sv) => {
+            const isActive = () => schemeVariant() === sv.value;
+            const palette = createMemo(() =>
+              generatePreviewPalette(accentColor(), isDark(), sv.value)
+            );
+
+            return (
+              <button
+                class={`scheme-card relative flex flex-col items-start p-3 rounded-xl border transition-all duration-200 text-left ${
+                  isActive()
+                    ? 'border-accent bg-surface-hover'
+                    : 'border-border-subtle bg-surface hover:border-border-hover hover:bg-surface-hover/50'
+                }`}
+                onClick={() => setSchemeVariant(sv.value)}
+                title={sv.description}
+              >
+                {/* Preview palette swatch bar */}
+                <div class="flex w-full gap-0.5 mb-2.5 h-4 rounded-md overflow-hidden">
+                  <div class="flex-1 rounded-l-md" style={{ background: palette().primary }} />
+                  <div class="flex-1" style={{ background: palette().secondary }} />
+                  <div class="flex-1" style={{ background: palette().tertiary }} />
+                  <div class="flex-1" style={{ background: palette().container }} />
+                  <div class="flex-1 rounded-r-md" style={{ background: palette().surface }} />
+                </div>
+                <span class={`text-xs font-medium ${isActive() ? 'text-accent' : 'text-text'}`}>
+                  {sv.label}
+                </span>
+                {/* Active indicator dot */}
+                <Show when={isActive()}>
+                  <div class="absolute top-2 right-2 w-1.5 h-1.5 rounded-full bg-accent" />
+                </Show>
+              </button>
+            );
+          }}
+        </For>
+      </div>
+    </div>
+  );
+}
+
+// ── Per-tool expansion row ──
+
 function toolState(toolName: string): 'expanded' | 'collapsed' | 'default' {
   const defaults = toolExpansionDefaults();
   return defaults[toolName] || 'default';
 }
 
-function ToolExpansionRow(props: { tool: string }) {
+function ToolExpansionRow(props: { tool: string; last?: boolean }) {
   const state = () => toolState(props.tool);
 
   const cycle = () => {
     const current = state();
     if (current === 'default') setToolExpansionDefault(props.tool, 'expanded');
     else if (current === 'expanded') setToolExpansionDefault(props.tool, 'collapsed');
-    else setToolExpansionDefault(props.tool, 'expanded'); // reset cycle could go back to 'default' but that requires clearing
+    else setToolExpansionDefault(props.tool, 'expanded');
   };
 
   return (
-    <div class="flex items-center justify-between py-1.5 px-2 rounded hover:bg-surface-hover/50 transition-colors">
+    <div class={`flex items-center justify-between py-2.5 px-4 hover:bg-surface-hover/50 transition-colors ${props.last ? '' : 'border-b border-border-subtle'}`}>
       <span class="text-xs text-text-secondary font-mono">{getToolDisplayName(props.tool)}</span>
       <button
-        class={`text-[10px] font-medium px-2 py-0.5 rounded-full transition-colors ${
+        class={`text-[10px] font-medium px-2.5 py-1 rounded-full transition-colors ${
           state() === 'expanded'
             ? 'bg-success/15 text-success'
             : state() === 'collapsed'
@@ -126,12 +263,17 @@ function ToolExpansionRow(props: { tool: string }) {
   );
 }
 
+// ── Main settings page ──
+
 export default function SettingsPage() {
+  const isMaterial = () => themeStyle() === 'material';
+  const toolsList = [...KNOWN_TOOLS];
+
   return (
     <div class="min-h-screen bg-background text-text">
       {/* Header */}
       <div class="border-b border-border px-4 py-3 flex items-center gap-3">
-        <A href="/" class="text-text-secondary hover:text-text transition-colors">
+        <A href="/" class="text-text-secondary hover:text-text transition-colors p-1 -ml-1 rounded-lg hover:bg-surface-hover">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
           </svg>
@@ -140,9 +282,10 @@ export default function SettingsPage() {
       </div>
 
       {/* Settings content */}
-      <div class="max-w-2xl mx-auto px-4 py-6">
+      <div class="max-w-2xl mx-auto px-4 py-8">
 
-        <SettingSection title="Appearance">
+        {/* ── Appearance ── */}
+        <SettingSection title="Appearance" description="Control the visual style and color scheme">
           <SettingRow label="Theme" description="Color mode for the interface">
             <SelectButton
               options={[
@@ -155,38 +298,34 @@ export default function SettingsPage() {
             />
           </SettingRow>
 
-          <SettingRow label="Style" description="Visual design language">
+          <SettingRow label="Style" description="Design language for shape, motion, and surfaces" last>
             <SelectButton
               options={[
                 { value: 'vercel', label: 'Vercel' },
-                { value: 'material', label: 'Material' },
+                { value: 'material', label: 'Material You' },
               ]}
               value={themeStyle()}
               onChange={(v) => setThemeStyle(v as ThemeStyle)}
             />
           </SettingRow>
-
-          <SettingRow label="Accent Color" description="Primary accent for interactive elements">
-            <div class="flex flex-wrap gap-1.5">
-              <For each={accentPresets}>
-                {(preset) => (
-                  <button
-                    class={`w-6 h-6 rounded-full border-2 transition-all ${
-                      accentColor() === preset.value
-                        ? 'border-text scale-110'
-                        : 'border-transparent hover:scale-105'
-                    }`}
-                    style={{ background: preset.value }}
-                    onClick={() => setAccentColor(preset.value)}
-                    title={preset.name}
-                  />
-                )}
-              </For>
-            </div>
-          </SettingRow>
         </SettingSection>
 
-        <SettingSection title="Editor">
+        {/* ── Theme Palette ── */}
+        <SettingSection
+          title="Theme Palette"
+          description={isMaterial()
+            ? 'Material You generates an entire tonal palette from your seed color'
+            : 'Choose the accent color for interactive elements'
+          }
+        >
+          <AccentColorPicker isMaterial={isMaterial()} />
+          <Show when={isMaterial()}>
+            <SchemeVariantPicker />
+          </Show>
+        </SettingSection>
+
+        {/* ── Editor ── */}
+        <SettingSection title="Editor" description="Code display and tool behavior preferences">
           <SettingRow label="Diff View" description="How code diffs are displayed">
             <SelectButton
               options={[
@@ -205,7 +344,7 @@ export default function SettingsPage() {
             />
           </SettingRow>
 
-          <SettingRow label="Show System Prompts" description="Display system prompts in agent sidebar">
+          <SettingRow label="Show System Prompts" description="Display system prompts in agent sidebar" last>
             <Toggle
               checked={showSystemPrompts()}
               onChange={setShowSystemPrompts}
@@ -213,35 +352,31 @@ export default function SettingsPage() {
           </SettingRow>
         </SettingSection>
 
-        {/* Per-tool expansion defaults */}
-        <SettingSection title="Per-Tool Expansion Defaults">
-          <p class="text-xs text-text-muted mb-3">
-            Override the global collapse setting per tool. Click the badge to cycle through states. "Default" follows the global toggle above.
-          </p>
-          <div class="flex gap-2 mb-3">
+        {/* ── Per-Tool Defaults ── */}
+        <SettingSection title="Per-Tool Defaults" description="Override the global collapse setting for individual tools">
+          <div class="px-4 py-3 flex gap-2 border-b border-border-subtle">
             <button
-              class="text-xs px-2.5 py-1 rounded border border-border text-text-secondary hover:bg-surface-hover transition-colors"
-              onClick={() => setAllToolExpansionDefaults([...KNOWN_TOOLS], 'expanded')}
+              class="text-xs px-3 py-1.5 rounded-lg border border-border text-text-secondary hover:bg-surface-hover transition-colors"
+              onClick={() => setAllToolExpansionDefaults(toolsList, 'expanded')}
             >
               Expand All
             </button>
             <button
-              class="text-xs px-2.5 py-1 rounded border border-border text-text-secondary hover:bg-surface-hover transition-colors"
-              onClick={() => setAllToolExpansionDefaults([...KNOWN_TOOLS], 'collapsed')}
+              class="text-xs px-3 py-1.5 rounded-lg border border-border text-text-secondary hover:bg-surface-hover transition-colors"
+              onClick={() => setAllToolExpansionDefaults(toolsList, 'collapsed')}
             >
               Collapse All
             </button>
           </div>
-          <div class="border border-border rounded-lg overflow-hidden divide-y divide-border-subtle">
-            <For each={[...KNOWN_TOOLS]}>
-              {(tool) => <ToolExpansionRow tool={tool} />}
-            </For>
-          </div>
+          <For each={toolsList}>
+            {(tool, i) => <ToolExpansionRow tool={tool} last={i() === toolsList.length - 1} />}
+          </For>
         </SettingSection>
 
+        {/* ── About ── */}
         <SettingSection title="About">
-          <SettingRow label="AgentOps Console" description="Fantasy SDK native agent operations console">
-            <span class="text-xs text-text-muted">v0.1.0</span>
+          <SettingRow label="AgentOps Console" description="Fantasy SDK native agent operations console" last>
+            <span class="text-xs text-text-muted font-mono">v0.1.0</span>
           </SettingRow>
         </SettingSection>
 

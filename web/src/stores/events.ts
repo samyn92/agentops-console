@@ -1,6 +1,6 @@
 // Global SSE event store — connects to the multiplexed SSE stream
 // and dispatches events to subscribers.
-import { createSignal, onCleanup } from 'solid-js';
+import { createSignal } from 'solid-js';
 import { connectGlobalSSE } from '../lib/api';
 import type { FEPEvent, AgentEventEnvelope } from '../types';
 
@@ -107,12 +107,6 @@ export function onFEPEvent(
   return () => fepSubscribers.delete(fn);
 }
 
-/** Subscribe to agent online/offline status changes. */
-export function onAgentStatus(callback: StatusSubscriber): () => void {
-  statusSubscribers.add(callback);
-  return () => statusSubscribers.delete(callback);
-}
-
 /** Subscribe to K8s resource change notifications (triggers refetch). */
 export function onResourceChanged(callback: ResourceSubscriber): () => void {
   resourceSubscribers.add(callback);
@@ -126,19 +120,4 @@ function updateAgentStatus(namespace: string, name: string, status: AgentStatus)
   setAgentStatuses((prev) => ({ ...prev, [key]: status }));
 }
 
-/** SolidJS helper: auto-cleanup subscription on component unmount. */
-export function useEventSubscription(
-  agentKey: () => AgentKey | null,
-  callback: (event: FEPEvent) => void,
-) {
-  let unsub: (() => void) | null = null;
-
-  // Re-subscribe when agentKey changes
-  const subscribe = () => {
-    if (unsub) unsub();
-    unsub = onFEPEvent(agentKey(), callback);
-  };
-
-  subscribe();
-  onCleanup(() => unsub?.());
-}
+// ── Internal ──

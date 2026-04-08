@@ -156,15 +156,3 @@ const (
 	EventSessionIdle       = "session_idle"
 	EventSessionStatus     = "session_status"
 )
-
-// ---- SSE Envelope (multiplexed global stream) ----
-
-type AgentRef struct {
-	Namespace string `json:"namespace"`
-	Name      string `json:"name"`
-}
-
-type Envelope struct {
-	Agent AgentRef `json:"agent"`
-	Event Event    `json:"event"`
-}

@@ -3,7 +3,6 @@ package server
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
@@ -141,12 +140,4 @@ func (s *Server) Start() error {
 // Shutdown gracefully stops the server.
 func (s *Server) Shutdown(ctx context.Context) error {
 	return s.http.Shutdown(ctx)
-}
-
-// WriteSSE is a helper for writing SSE events.
-func WriteSSE(w http.ResponseWriter, event string, data []byte) {
-	fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, data)
-	if f, ok := w.(http.Flusher); ok {
-		f.Flush()
-	}
 }

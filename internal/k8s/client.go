@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"reflect"
 	"strings"
 	"time"
 
@@ -143,11 +144,15 @@ func registerInformerHandler[T client.Object](c *Client, ctx context.Context, ki
 	}
 }
 
-// newObj creates a new zero-value instance of a pointer type.
+// newObj allocates a new instance of a pointer type T.
+// For types like *Agent, the zero value is nil — cache.GetInformer
+// requires a non-nil pointer, so we use reflect to allocate one.
 func newObj[T client.Object]() T {
 	var zero T
-	// For pointer types like *Agent, reflect would give us nil.
-	// We use a type switch instead.
+	t := reflect.TypeOf(zero)
+	if t.Kind() == reflect.Ptr {
+		return reflect.New(t.Elem()).Interface().(T)
+	}
 	return zero
 }
 
@@ -232,10 +237,6 @@ func (c *Client) GetAgentRun(ctx context.Context, namespace, name string) (*agen
 		return nil, err
 	}
 	return run, nil
-}
-
-func (c *Client) CreateAgentRun(ctx context.Context, run *agentsv1alpha1.AgentRun) error {
-	return c.client.Create(ctx, run)
 }
 
 // ── Channel operations ──

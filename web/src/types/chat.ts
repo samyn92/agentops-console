@@ -1,6 +1,6 @@
 // Chat types — UI-side message representations
 
-import type { Usage, ToolMetadata, Question } from "./fep"
+import type { Usage, ToolMetadata } from "./fep"
 
 // ---- Message Parts ----
 
@@ -14,13 +14,6 @@ export interface ReasoningPart {
   type: "reasoning"
   id: string
   content: string
-}
-
-export interface ToolInputPart {
-  type: "tool-input"
-  id: string
-  toolName: string
-  argsPreview: string // partial JSON being composed
 }
 
 export type ToolStatus = "composing" | "pending" | "running" | "completed" | "error"
@@ -69,7 +62,6 @@ export interface ErrorPart {
 export type MessagePart =
   | TextPart
   | ReasoningPart
-  | ToolInputPart
   | ToolPart
   | StepStartPart
   | StepFinishPart
@@ -85,35 +77,4 @@ export interface ChatMessage {
   timestamp: number
 }
 
-// ---- Pending interactive elements ----
 
-export interface PendingPermission {
-  id: string
-  sessionId: string
-  toolName: string
-  input: string
-  description: string
-}
-
-export interface PendingQuestion {
-  id: string
-  sessionId: string
-  questions: Question[]
-}
-
-// ---- Context attachments ----
-
-export interface K8sResourceContext {
-  type: "k8s-resource"
-  kind: string
-  name: string
-  namespace: string
-}
-
-export interface MCPServerContext {
-  type: "mcp-server"
-  name: string
-  namespace: string
-}
-
-export type SelectedContext = K8sResourceContext | MCPServerContext

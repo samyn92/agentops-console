@@ -1,10 +1,10 @@
 // Keyboard shortcuts — global hotkeys for the console
-import { onCleanup } from 'solid-js';
 import { useNavigate } from '@solidjs/router';
 import { agentList, selectAgent, selectedAgent } from '../stores/agents';
 import { startNewChat } from '../stores/sessions';
+import { setActiveView } from '../stores/view';
 
-export interface Shortcut {
+interface Shortcut {
   key: string;
   meta?: boolean;
   ctrl?: boolean;
@@ -50,32 +50,20 @@ export function registerKeyboardShortcuts(navigate: ReturnType<typeof useNavigat
     {
       key: '1',
       meta: true,
-      description: 'Go to Chat',
-      action: () => navigate('/'),
+      description: 'Agents view',
+      action: () => {
+        navigate('/');
+        setActiveView('agents');
+      },
     },
     {
       key: '2',
       meta: true,
-      description: 'Go to Agents',
-      action: () => navigate('/agents'),
-    },
-    {
-      key: '3',
-      meta: true,
-      description: 'Go to Runs',
-      action: () => navigate('/runs'),
-    },
-    {
-      key: '4',
-      meta: true,
-      description: 'Go to Channels',
-      action: () => navigate('/channels'),
-    },
-    {
-      key: '5',
-      meta: true,
-      description: 'Go to MCP Servers',
-      action: () => navigate('/mcpservers'),
+      description: 'Runs view',
+      action: () => {
+        navigate('/');
+        setActiveView('runs');
+      },
     },
     {
       key: ',',
@@ -121,11 +109,8 @@ export function getShortcutList(): Array<{ keys: string; description: string }> 
   return [
     { keys: `${mod}K`, description: 'Cycle to next agent' },
     { keys: `${mod}N`, description: 'New chat' },
-    { keys: `${mod}1`, description: 'Go to Chat' },
-    { keys: `${mod}2`, description: 'Go to Agents' },
-    { keys: `${mod}3`, description: 'Go to Runs' },
-    { keys: `${mod}4`, description: 'Go to Channels' },
-    { keys: `${mod}5`, description: 'Go to MCP Servers' },
+    { keys: `${mod}1`, description: 'Agents view' },
+    { keys: `${mod}2`, description: 'Runs view' },
     { keys: `${mod},`, description: 'Go to Settings' },
     { keys: 'Enter', description: 'Send message' },
     { keys: 'Shift+Enter', description: 'New line' },

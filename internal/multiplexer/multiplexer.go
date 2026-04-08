@@ -105,14 +105,6 @@ func (m *Multiplexer) Subscribe() (string, <-chan EnvelopedEvent, func()) {
 	}
 }
 
-// GetAgentConn returns the connection for a specific agent (for stream relay).
-func (m *Multiplexer) GetAgentConn(ns, name string) *AgentConn {
-	key := AgentKey{Namespace: ns, Name: name}
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return m.agents[key]
-}
-
 // GetEventChannel returns the central event channel for external producers (e.g., stream proxy).
 func (m *Multiplexer) GetEventChannel() chan<- EnvelopedEvent {
 	return m.eventC
@@ -135,11 +127,12 @@ func (m *Multiplexer) broadcastResourceEvent(event k8s.ResourceEvent) {
 	evt := EnvelopedEvent{
 		EventType: "resource.changed",
 		Event: fep.Event{
-			Type: "resource.changed",
+			Type:      "resource.changed",
+			SessionID: string(event.Type), // reuse SessionID field for the K8s event type (ADDED/MODIFIED/DELETED)
+			ToolName:  event.ResourceKind, // reuse ToolName field for the resource kind
+			ID:        event.Namespace + "/" + event.Name,
 		},
 	}
-	// Encode resource event details into the FEP event
-	// The frontend will use resourceKind + namespace + name to update its stores
 	m.broadcast(evt)
 }
 

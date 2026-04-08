@@ -4,35 +4,44 @@
 
 export interface AgentSpec {
   mode: "daemon" | "task"
-  runtime: "fantasy" | "pi"
-  fantasy?: {
-    providers: Array<{ name: string }>
-    primaryModel: string
-    fallbackModels?: string[]
-    systemPrompt?: string
-    builtinTools?: string[]
-    tools?: Array<{ name: string; path: string }>
-    mcpServers?: Array<{ name: string }>
-    temperature?: number
-    maxOutputTokens?: number
-    maxSteps?: number
-  }
-  storage?: string
-  replicas?: number
+  image?: string
+  imagePullPolicy?: string
+  model: string
+  primaryProvider?: string
+  titleModel?: string
+  providers: Array<{ name: string; apiKeySecret: { name: string; key: string } }>
+  fallbackModels?: string[]
+  systemPrompt?: string
+  builtinTools?: string[]
+  temperature?: number
+  maxOutputTokens?: number
+  maxSteps?: number
+  toolRefs?: Array<{ oci?: object; configMap?: object; inline?: object }>
+  permissionTools?: string[]
+  enableQuestionTool?: boolean
+  env?: Record<string, string>
+  secrets?: Array<{ name: string; secretKeyRef: { name: string; key: string } }>
+  storage?: { size: string; storageClassName?: string }
+  mcpServers?: Array<{ name: string; permissions?: object; directTools?: string[] }>
   toolHooks?: {
     blockedCommands?: string[]
     allowedPaths?: string[]
     auditTools?: string[]
   }
-  contextFiles?: Array<{ path: string }>
-  concurrencyPolicy?: string
+  contextFiles?: Array<{ path: string; configMapRef: { name: string; key: string } }>
+  concurrency?: { maxRuns?: number; policy?: string }
   schedule?: string
+  schedulePrompt?: string
+  networkPolicy?: { enabled: boolean }
+  resources?: object
+  serviceAccountName?: string
+  timeout?: string
 }
 
 export interface AgentStatus {
   phase: string
-  ready: boolean
-  runtime?: string
+  readyReplicas: number
+  serviceURL?: string
   model?: string
   conditions?: Array<{
     type: string
@@ -49,7 +58,7 @@ export interface AgentResponse {
   namespace: string
   mode: string
   model: string
-  runtime: string
+  image: string
   phase: string
   readyReplicas: number
 }

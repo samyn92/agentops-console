@@ -5,13 +5,11 @@
 import { For, Show, createMemo } from 'solid-js';
 import type {
   ChatMessage, MessagePart, TextPart, ReasoningPart, ToolPart,
-  StepFinishPart, SourcePart, ErrorPart,
+  SourcePart, ErrorPart,
 } from '../../types';
-import type { Usage } from '../../types';
 import StreamingText from './StreamingText';
 import ReasoningBlock from './ReasoningBlock';
 import ToolCallCard from './ToolCallCard';
-import TokenBadge from './TokenBadge';
 import SourceReference from './SourceReference';
 import ToolInputPreview from './ToolInputPreview';
 
@@ -70,16 +68,6 @@ function groupParts(parts: MessagePart[]): PartGroup[] {
   return groups;
 }
 
-/** Extract the last step-finish usage for this message (per-step, not summed) */
-function lastUsage(parts: MessagePart[] | undefined): Usage | undefined {
-  if (!parts) return undefined;
-  for (let i = parts.length - 1; i >= 0; i--) {
-    if (parts[i].type === 'step-finish') {
-      return (parts[i] as StepFinishPart).usage;
-    }
-  }
-  return undefined;
-}
 
 export default function MessageBubble(props: MessageBubbleProps) {
   const msg = () => props.message;
@@ -104,7 +92,6 @@ export default function MessageBubble(props: MessageBubbleProps) {
 
   // ── Assistant message ──
   const groups = createMemo(() => groupParts(msg().parts || []));
-  const usage = createMemo(() => lastUsage(msg().parts));
 
   // Determine if there's any visible content to show
   const hasVisibleContent = createMemo(() => {
@@ -125,7 +112,7 @@ export default function MessageBubble(props: MessageBubbleProps) {
   // Check if there's active tool input preview (renders outside bubble)
   const hasActiveToolInput = () => props.isLastAssistant && props.activeToolInput;
 
-  const hasFooter = () => !!(msg().timestamp || usage());
+  const hasFooter = () => !!msg().timestamp;
 
   return (
     <Show when={hasVisibleContent()}>
@@ -210,17 +197,12 @@ export default function MessageBubble(props: MessageBubbleProps) {
             />
           </Show>
 
-          {/* Footer row — timestamp left, token count right */}
+          {/* Footer row — timestamp */}
           <Show when={hasFooter()}>
-            <div class="flex items-center justify-between px-1 -mt-1">
-              <Show when={msg().timestamp} fallback={<span />}>
-                <span class="text-[11px] text-text-muted/50 select-none">
-                  {formatTime(msg().timestamp)}
-                </span>
-              </Show>
-              <Show when={usage()}>
-                <TokenBadge usage={usage()} />
-              </Show>
+            <div class="flex items-center px-1 -mt-1">
+              <span class="text-[11px] text-text-muted/50 select-none">
+                {formatTime(msg().timestamp)}
+              </span>
             </div>
           </Show>
         </div>

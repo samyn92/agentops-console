@@ -31,6 +31,7 @@ interface SessionChatState {
   streaming: ReturnType<typeof createSignal<boolean>>;
   currentStep: ReturnType<typeof createSignal<number>>;
   totalUsage: ReturnType<typeof createSignal<Usage | null>>;
+  lastStepUsage: ReturnType<typeof createSignal<Usage | null>>;
   activeModel: ReturnType<typeof createSignal<string | null>>;
   activeText: ReturnType<typeof createSignal<{ id: string; content: string } | null>>;
   activeReasoning: ReturnType<typeof createSignal<{ id: string; content: string } | null>>;
@@ -75,6 +76,7 @@ function getOrCreateState(sessionId: string): SessionChatState {
       streaming: createSignal(false),
       currentStep: createSignal(0),
       totalUsage: createSignal<Usage | null>(null),
+      lastStepUsage: createSignal<Usage | null>(null),
       activeModel: createSignal<string | null>(null),
       activeText: createSignal<{ id: string; content: string } | null>(null),
       activeReasoning: createSignal<{ id: string; content: string } | null>(null),
@@ -117,6 +119,7 @@ export const messages = () => currentState()?.messages[0]() ?? [];
 export const streaming = () => currentState()?.streaming[0]() ?? false;
 export const currentStep = () => currentState()?.currentStep[0]() ?? 0;
 export const totalUsage = () => currentState()?.totalUsage[0]() ?? null;
+export const lastStepUsage = () => currentState()?.lastStepUsage[0]() ?? null;
 export const activeModel = () => currentState()?.activeModel[0]() ?? null;
 export const activeText = () => currentState()?.activeText[0]() ?? null;
 export const activeReasoning = () => currentState()?.activeReasoning[0]() ?? null;
@@ -239,7 +242,7 @@ export async function loadSessionMessages(sessionId: string) {
 
     batch(() => {
       state.messages[1](chatMsgs);
-      // Restore usage and model signals from session metadata (for Header display)
+      // Restore usage and model signals from session metadata
       if (session?.total_usage) {
         state.totalUsage[1]({
           input_tokens: session.total_usage.input_tokens,
@@ -249,6 +252,18 @@ export async function loadSessionMessages(sessionId: string) {
           cache_creation_tokens: session.total_usage.cache_creation_tokens,
           cache_read_tokens: session.total_usage.cache_read_tokens,
         });
+      }
+      // Restore last step usage for context window gauge — use the last
+      // turn's last step_usage, which reflects the current context size.
+      if (turnUsages && turnUsages.length > 0) {
+        const lastTurn = turnUsages[turnUsages.length - 1];
+        const stepUsages = lastTurn.step_usages;
+        if (stepUsages && stepUsages.length > 0) {
+          const lastStep = stepUsages[stepUsages.length - 1];
+          state.lastStepUsage[1](lastStep as Usage);
+        } else if (lastTurn.usage) {
+          state.lastStepUsage[1](lastTurn.usage as Usage);
+        }
       }
       if (session?.model) {
         state.activeModel[1](session.model);
@@ -487,17 +502,6 @@ export async function steerAgent(message: string) {
   }
 }
 
-/** Clear messages for the current session. */
-export function clearMessages() {
-  const state = currentState();
-  if (state) {
-    state.messages[1]([]);
-    state.totalUsage[1](null);
-    state.activeModel[1](null);
-    state.loaded = false; // allow re-fetch
-  }
-}
-
 // ── FEP Event Handler (session-scoped) ──
 
 function handleFEPEvent(state: SessionChatState, sessionId: string, event: FEPEvent) {
@@ -505,6 +509,7 @@ function handleFEPEvent(state: SessionChatState, sessionId: string, event: FEPEv
   const [, setStr] = state.streaming;
   const [, setStep] = state.currentStep;
   const [, setUsage] = state.totalUsage;
+  const [, setLastStep] = state.lastStepUsage;
   const [, setModel] = state.activeModel;
   const [, setATxt] = state.activeText;
   const [, setAReason] = state.activeReasoning;
@@ -572,8 +577,10 @@ function handleFEPEvent(state: SessionChatState, sessionId: string, event: FEPEv
     }
 
     case 'step_finish':
-      // Only append a visual part when there's usage data worth showing.
+      // Track the latest step's usage for the context window gauge.
+      // Also append a visual part when there's usage data (for history restoration).
       if (event.usage && event.usage.total_tokens > 0) {
+        setLastStep(event.usage);
         appendPart(state, {
           type: 'step-finish',
           stepNumber: event.step_number || 0,

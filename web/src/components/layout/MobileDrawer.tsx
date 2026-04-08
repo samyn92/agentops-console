@@ -1,6 +1,6 @@
 // MobileDrawer — swipe-to-open drawer for mobile devices
 // CSS classes (mobile-drawer, mobile-drawer-backdrop) defined in index.css
-import { Show, createSignal, onMount, onCleanup } from 'solid-js';
+import { Show, createSignal } from 'solid-js';
 import type { JSX } from 'solid-js';
 
 interface MobileDrawerProps {
@@ -40,26 +40,6 @@ export default function MobileDrawer(props: MobileDrawerProps) {
     if (delta < -80) {
       props.onClose();
     }
-  }
-
-  // Swipe-to-open from left edge
-  let edgeStartX = 0;
-
-  function onEdgeTouchStart(e: TouchEvent) {
-    const touch = e.touches[0];
-    if (touch.clientX < 20 && !props.open) {
-      edgeStartX = touch.clientX;
-    }
-  }
-
-  function onEdgeTouchEnd(e: TouchEvent) {
-    if (!props.open) {
-      const touch = e.changedTouches[0];
-      if (edgeStartX < 20 && touch.clientX - edgeStartX > 50) {
-        // Trigger open — parent should handle this via a callback
-      }
-    }
-    edgeStartX = 0;
   }
 
   return (

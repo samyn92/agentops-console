@@ -4,11 +4,32 @@ import { sessions as sessionsAPI } from '../lib/api';
 import { selectedAgent } from './agents';
 import type { Session } from '../types';
 
+// ── Persistence ──
+
+const SESSION_KEY = 'agentops:currentSessionId';
+
+function loadPersistedSessionId(): string | null {
+  try {
+    return localStorage.getItem(SESSION_KEY) || null;
+  } catch { /* ignore */ }
+  return null;
+}
+
 // ── State ──
 
-const [currentSessionId, setCurrentSessionId] = createSignal<string | null>(null);
+const [currentSessionId, setCurrentSessionId] = createSignal<string | null>(loadPersistedSessionId());
 const [draftMode, setDraftMode] = createSignal(false);
 const [refetchTrigger, setRefetchTrigger] = createSignal(0);
+
+// Persist session ID to localStorage
+createEffect(() => {
+  const id = currentSessionId();
+  if (id) {
+    localStorage.setItem(SESSION_KEY, id);
+  } else {
+    localStorage.removeItem(SESSION_KEY);
+  }
+});
 
 // Fetch sessions when selected agent or trigger changes
 const [sessionList, { refetch: refetchSessions }] = createResource(
@@ -28,15 +49,26 @@ const [sessionList, { refetch: refetchSessions }] = createResource(
   },
 );
 
-// Clear current session when agent changes
+// Clear current session when agent changes (but not on initial load / restore)
+let prevAgentKey: string | null = (() => {
+  const a = selectedAgent();
+  return a ? `${a.namespace}/${a.name}` : null;
+})();
+
 createEffect(() => {
-  selectedAgent(); // track
-  setCurrentSessionId(null);
+  const a = selectedAgent();
+  const key = a ? `${a.namespace}/${a.name}` : null;
+  if (prevAgentKey !== null && key !== prevAgentKey) {
+    // Agent actually changed — clear session
+    setCurrentSessionId(null);
+    setDraftMode(false);
+  }
+  prevAgentKey = key;
 });
 
 // ── Public API ──
 
-export { sessionList, currentSessionId, setCurrentSessionId, refetchSessions, draftMode, setDraftMode };
+export { sessionList, currentSessionId, setCurrentSessionId, draftMode, setDraftMode };
 
 /** Start a fresh chat — no session created yet, just show the empty composer. */
 export function startNewChat() {
@@ -95,11 +127,6 @@ let onSessionDeletedCallback: SessionDeletedCallback | null = null;
 
 export function onSessionDeleted(cb: SessionDeletedCallback) {
   onSessionDeletedCallback = cb;
-}
-
-/** Trigger a session list refetch (callable from other stores). */
-export function triggerSessionRefetch() {
-  setRefetchTrigger((n) => n + 1);
 }
 
 /** Schedule a delayed session list refetch (for catching AI-generated titles). */

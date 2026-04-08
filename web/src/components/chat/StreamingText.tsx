@@ -1,5 +1,5 @@
 // StreamingText — progressive text rendering with markdown and streaming cursor
-import { Show, createMemo } from 'solid-js';
+import { Show } from 'solid-js';
 import Markdown from '../shared/Markdown';
 
 interface StreamingTextProps {

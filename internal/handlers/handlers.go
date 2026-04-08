@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -45,25 +46,19 @@ func (h *Handlers) ListAgents(w http.ResponseWriter, r *http.Request) {
 		Namespace string `json:"namespace"`
 		Mode      string `json:"mode"`
 		Model     string `json:"model"`
-		Runtime   string `json:"runtime"`
+		Image     string `json:"image"`
 		Phase     string `json:"phase"`
 		Ready     int32  `json:"readyReplicas"`
 	}
 
 	resp := make([]agentResponse, 0, len(agents.Items))
 	for _, a := range agents.Items {
-		runtime := "unknown"
-		if a.Spec.Fantasy != nil {
-			runtime = "fantasy"
-		} else if a.Spec.Pi != nil {
-			runtime = "pi"
-		}
 		resp = append(resp, agentResponse{
 			Name:      a.Name,
 			Namespace: a.Namespace,
 			Mode:      string(a.Spec.Mode),
 			Model:     a.Spec.Model,
-			Runtime:   runtime,
+			Image:     a.Spec.Image,
 			Phase:     string(a.Status.Phase),
 			Ready:     a.Status.ReadyReplicas,
 		})
@@ -461,10 +456,9 @@ func (h *Handlers) proxyToAgent(w http.ResponseWriter, r *http.Request, method, 
 // ── SSE scanner ──
 
 type sseScanner struct {
-	reader *json.Decoder
-	body   io.ReadCloser
-	buf    []byte
-	data   string
+	body io.ReadCloser
+	buf  []byte
+	data string
 }
 
 func newSSEScanner(body io.ReadCloser) *sseScanner {
@@ -487,7 +481,7 @@ func (s *sseScanner) Scan() bool {
 				s.buf = s.buf[idx+2:]
 
 				// Extract data line
-				for _, line := range splitLines(frame) {
+				for _, line := range strings.Split(frame, "\n") {
 					if len(line) > 6 && line[:6] == "data: " {
 						s.data = line[6:]
 						return true
@@ -503,21 +497,6 @@ func (s *sseScanner) Scan() bool {
 
 func (s *sseScanner) Data() string {
 	return s.data
-}
-
-func splitLines(s string) []string {
-	var lines []string
-	start := 0
-	for i := 0; i < len(s); i++ {
-		if s[i] == '\n' {
-			lines = append(lines, s[start:i])
-			start = i + 1
-		}
-	}
-	if start < len(s) {
-		lines = append(lines, s[start:])
-	}
-	return lines
 }
 
 // ── Response helpers ──

@@ -25,15 +25,6 @@ export function formatDateTime(dateStr: string | undefined): string {
   return new Date(dateStr).toLocaleString();
 }
 
-/** Format a duration in milliseconds as human-readable (e.g. "1.2s", "320ms", "2m 15s") */
-export function formatDuration(ms: number): string {
-  if (ms < 1000) return `${Math.round(ms)}ms`;
-  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
-  const mins = Math.floor(ms / 60000);
-  const secs = Math.round((ms % 60000) / 1000);
-  return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
-}
-
 // ---- Tokens ----
 
 /** Format a token count as a human-readable string (e.g. "1.2M", "45.3k", "500") */

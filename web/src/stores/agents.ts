@@ -1,5 +1,5 @@
 // Agent list store — tracks agents from the K8s API with live status from SSE.
-import { createSignal, createResource } from 'solid-js';
+import { createSignal, createResource, createEffect } from 'solid-js';
 import { agents as agentsAPI } from '../lib/api';
 import { agentStatuses, onResourceChanged } from './events';
 import type { AgentResponse } from '../types';
@@ -9,10 +9,36 @@ export type AgentSelection = {
   name: string;
 };
 
+// ── Persistence ──
+
+const STORAGE_KEY = 'agentops:selectedAgent';
+
+function loadPersistedAgent(): AgentSelection | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed.namespace === 'string' && typeof parsed.name === 'string') {
+      return parsed;
+    }
+  } catch { /* ignore */ }
+  return null;
+}
+
 // ── State ──
 
-const [selectedAgent, setSelectedAgent] = createSignal<AgentSelection | null>(null);
+const [selectedAgent, setSelectedAgent] = createSignal<AgentSelection | null>(loadPersistedAgent());
 const [refetchTrigger, setRefetchTrigger] = createSignal(0);
+
+// Persist agent selection to localStorage
+createEffect(() => {
+  const agent = selectedAgent();
+  if (agent) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(agent));
+  } else {
+    localStorage.removeItem(STORAGE_KEY);
+  }
+});
 
 // Fetch agents from API (refetches on trigger change)
 const [agentList, { refetch: refetchAgents }] = createResource(
@@ -50,7 +76,7 @@ export function getAgentStatus(ns: string, name: string) {
     phase,
     sseStatus: sseStatus || 'unknown',
     isOnline,
-    runtime: agent?.runtime || 'unknown',
+    image: agent?.image || '',
     model: agent?.model || '',
   };
 }

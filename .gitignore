@@ -1,5 +1,5 @@
 # Go
-console
+/console
 *.exe
 *.dll
 *.so

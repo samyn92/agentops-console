@@ -1,5 +1,5 @@
 // Markdown renderer with syntax highlighting
-import { createMemo, createEffect, onCleanup } from 'solid-js';
+import { createMemo } from 'solid-js';
 import { Marked } from 'marked';
 import hljs from 'highlight.js';
 
