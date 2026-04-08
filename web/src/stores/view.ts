@@ -3,7 +3,7 @@ import { createSignal } from 'solid-js';
 
 export type PanelState = 'collapsed' | 'expanded';
 
-// ── Left panel (agents/sessions) ──
+// ── Left panel (agents) ──
 
 const LEFT_KEY = 'agentops:leftPanel';
 
@@ -57,6 +57,31 @@ export function setRightPanelState(state: PanelState) {
 export function toggleRightPanel() {
   const current = rightPanelState();
   setRightPanelState(current === 'collapsed' ? 'expanded' : 'collapsed');
+}
+
+// ── Right panel tab (memory vs runs) ──
+
+export type RightPanelTab = 'memory' | 'runs';
+
+const TAB_KEY = 'agentops:rightPanelTab';
+
+function loadTabState(): RightPanelTab {
+  try {
+    const raw = localStorage.getItem(TAB_KEY);
+    if (raw === 'memory' || raw === 'runs') return raw;
+  } catch { /* ignore */ }
+  return 'memory';
+}
+
+const [rightPanelTab, setRightPanelTabRaw] = createSignal<RightPanelTab>(loadTabState());
+
+export { rightPanelTab };
+
+export function setRightPanelTab(tab: RightPanelTab) {
+  setRightPanelTabRaw(tab);
+  try {
+    localStorage.setItem(TAB_KEY, tab);
+  } catch { /* ignore */ }
 }
 
 // Legacy exports — kept so existing imports don't break.

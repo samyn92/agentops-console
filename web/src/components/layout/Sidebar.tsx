@@ -1,20 +1,11 @@
-// Sidebar — agents + sessions navigation (left panel)
-// M3 redesign: Agent cards with metadata + concurrency, sessions below.
-// Agents take natural height. Divider is hidden; only grabbable when agents overflow.
-import { For, Show, createSignal, createMemo } from 'solid-js';
+// Sidebar — agents navigation (left panel)
+// M3 redesign: Agent cards with metadata + concurrency.
+// Agents take natural height in a scrollable list.
+import { For, Show, createSignal } from 'solid-js';
 import { A } from '@solidjs/router';
 import { agentList, selectedAgent, selectAgent } from '../../stores/agents';
-import {
-  sessionList,
-  currentSessionId,
-  setCurrentSessionId,
-  selectSession,
-  startNewChat,
-  deleteSession,
-  setDraftMode,
-} from '../../stores/sessions';
 import { leftPanelState, toggleLeftPanel } from '../../stores/view';
-import { streamingSessionIds } from '../../stores/chat';
+import { streamingAgentKeys } from '../../stores/chat';
 import Spinner from '../shared/Spinner';
 import AgentCard from './AgentCard';
 
@@ -25,12 +16,6 @@ interface SidebarProps {
 export default function Sidebar(props: SidebarProps) {
   const [sidebarWidth, setSidebarWidth] = createSignal(280);
   const [isResizing, setIsResizing] = createSignal(false);
-
-  // Divider: user can drag to cap agent section height (px).
-  // null = auto (agents take natural height).
-  const [agentMaxHeight, setAgentMaxHeight] = createSignal<number | null>(null);
-  const [isDividerDragging, setIsDividerDragging] = createSignal(false);
-  let sidebarRef: HTMLElement | undefined;
 
   const isExpanded = () => leftPanelState() === 'expanded';
 
@@ -58,44 +43,8 @@ export default function Sidebar(props: SidebarProps) {
     document.addEventListener('mouseup', onMouseUp);
   }
 
-  // ── Divider drag handler ──
-  // Dragging sets agentMaxHeight to a pixel value, capping the agents section.
-  function onDividerStart(e: MouseEvent) {
-    e.preventDefault();
-    setIsDividerDragging(true);
-
-    function onMouseMove(e: MouseEvent) {
-      if (!sidebarRef) return;
-      const rect = sidebarRef.getBoundingClientRect();
-      // Header is 48px
-      const headerH = 48;
-      const y = e.clientY - rect.top - headerH;
-      // Clamp: minimum 80px for agents, leave at least 120px for sessions + settings
-      const bottomH = 44; // settings bar
-      const minSessions = 120;
-      const maxAgentH = rect.height - headerH - bottomH - minSessions;
-      const clamped = Math.max(80, Math.min(maxAgentH, y));
-      setAgentMaxHeight(clamped);
-    }
-
-    function onMouseUp() {
-      setIsDividerDragging(false);
-      document.removeEventListener('mousemove', onMouseMove);
-      document.removeEventListener('mouseup', onMouseUp);
-    }
-
-    document.addEventListener('mousemove', onMouseMove);
-    document.addEventListener('mouseup', onMouseUp);
-  }
-
-  // Double-click divider to reset to auto height
-  function onDividerDblClick() {
-    setAgentMaxHeight(null);
-  }
-
   return (
     <aside
-      ref={sidebarRef}
       class={`relative flex flex-col h-full bg-surface border-r border-border overflow-hidden transition-[width,min-width] duration-200 ${props.class || ''}`}
       style={{
         width: isExpanded() ? `${sidebarWidth()}px` : '44px',
@@ -136,170 +85,46 @@ export default function Sidebar(props: SidebarProps) {
           </button>
         </div>
 
-        {/* ── Content area (agents + divider + sessions) ── */}
+        {/* ── Content area (agents list) ── */}
         <div class="flex-1 flex flex-col overflow-hidden min-h-0">
 
           {/* ── Agents section ── */}
-          {/* Default: natural height (flex: 0 0 auto). When user drags, capped to agentMaxHeight. */}
-          <div
-            class="flex flex-col flex-shrink-0 overflow-hidden"
-            style={{
-              'max-height': agentMaxHeight() !== null ? `${agentMaxHeight()}px` : undefined,
-            }}
+          <div class="flex items-center justify-between px-3 py-2 flex-shrink-0">
+            <span class="section-label">Agents</span>
+            <span class="text-[10px] text-text-muted font-mono">
+              {agentList()?.length ?? 0}
+            </span>
+          </div>
+
+          <Show
+            when={!agentList.loading}
+            fallback={
+              <div class="flex items-center justify-center py-4">
+                <Spinner size="sm" />
+              </div>
+            }
           >
-            <div class="flex items-center justify-between px-3 py-2 flex-shrink-0">
-              <span class="section-label">Agents</span>
-              <span class="text-[10px] text-text-muted font-mono">
-                {agentList()?.length ?? 0}
-              </span>
+            <div class="flex flex-col gap-1.5 px-2 overflow-y-auto flex-1 min-h-0 pb-1">
+              <For each={agentList()}>
+                {(agent) => {
+                  const ns = agent.namespace;
+                  const name = agent.name;
+                  const isSelected = () => {
+                    const sel = selectedAgent();
+                    return sel?.namespace === ns && sel?.name === name;
+                  };
+
+                  return (
+                    <AgentCard
+                      agent={agent}
+                      selected={isSelected()}
+                      onSelect={() => selectAgent(ns, name)}
+                    />
+                  );
+                }}
+              </For>
             </div>
-
-            <Show
-              when={!agentList.loading}
-              fallback={
-                <div class="flex items-center justify-center py-4">
-                  <Spinner size="sm" />
-                </div>
-              }
-            >
-              <div class="flex flex-col gap-1.5 px-2 overflow-y-auto pb-1">
-                <For each={agentList()}>
-                  {(agent) => {
-                    const ns = agent.namespace;
-                    const name = agent.name;
-                    const isSelected = () => {
-                      const sel = selectedAgent();
-                      return sel?.namespace === ns && sel?.name === name;
-                    };
-
-                    return (
-                      <AgentCard
-                        agent={agent}
-                        selected={isSelected()}
-                        onSelect={() => {
-                          selectAgent(ns, name);
-                          setCurrentSessionId(null);
-                          setDraftMode(false);
-                        }}
-                      />
-                    );
-                  }}
-                </For>
-              </div>
-            </Show>
-          </div>
-
-          {/* ── Divider — hidden by default, visible on hover near border ── */}
-          <div
-            class={`sidebar-divider flex-shrink-0 ${isDividerDragging() ? 'sidebar-divider--active' : ''}`}
-            onMouseDown={onDividerStart}
-            onDblClick={onDividerDblClick}
-            title="Drag to resize agent list. Double-click to reset."
-          >
-            <div class="sidebar-divider__track" />
-          </div>
-
-          {/* ── Sessions section ── */}
-          <div class="flex flex-col flex-1 overflow-hidden min-h-0">
-            <Show when={selectedAgent()}>
-              <div class="flex items-center justify-between px-3 py-2 flex-shrink-0">
-                <span class="section-label">Sessions</span>
-                <button
-                  class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg border border-border text-text-secondary hover:text-text hover:border-text-muted hover:bg-surface-hover active:bg-surface-active transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 focus-visible:ring-offset-background"
-                  onClick={() => startNewChat()}
-                  title="New chat (Ctrl+N)"
-                >
-                  <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                  </svg>
-                  New
-                </button>
-              </div>
-
-              <Show
-                when={!sessionList.loading}
-                fallback={
-                  <div class="flex items-center justify-center py-4">
-                    <Spinner size="sm" />
-                  </div>
-                }
-              >
-                <div class="flex flex-col gap-0.5 px-2 overflow-y-auto flex-1 min-h-0 pb-1">
-                  <For
-                    each={sessionList() ?? []}
-                    fallback={
-                      <p class="text-xs text-text-muted px-2 py-3">
-                        No sessions yet. Type a message to start.
-                      </p>
-                    }
-                  >
-                    {(session) => {
-                      const isActive = () => currentSessionId() === session.id;
-                      const isProcessing = () => streamingSessionIds().has(session.id);
-                      const hasTitle = () => !!session.title;
-
-                      return (
-                        <div class="relative group">
-                          <button
-                            class={`flex items-center gap-2 px-2.5 py-2 text-sm rounded-lg transition-colors w-full text-left ${
-                              isActive()
-                                ? 'bg-surface-hover text-text'
-                                : 'text-text-secondary hover:text-text hover:bg-surface-hover'
-                            } ${isProcessing() ? 'session-row-processing' : ''}`}
-                            onClick={() => selectSession(session.id)}
-                          >
-                            {/* Orbital Trace on the left when processing */}
-                            <Show when={isProcessing()}>
-                              <span class="agent-thinking agent-thinking--sidebar flex-shrink-0">
-                                <span class="agent-thinking__orbit agent-thinking__orbit--sm">
-                                  <span class="agent-thinking__track" />
-                                  <span class="agent-thinking__dot agent-thinking__dot--1" />
-                                  <span class="agent-thinking__dot agent-thinking__dot--2" />
-                                  <span class="agent-thinking__dot agent-thinking__dot--3" />
-                                  <span class="agent-thinking__core" />
-                                </span>
-                              </span>
-                            </Show>
-                            <span class="truncate flex-1">
-                              <Show
-                                when={hasTitle()}
-                                fallback={<span class="shimmer-title" />}
-                              >
-                                {session.title}
-                              </Show>
-                            </span>
-                          </button>
-
-                          {/* Delete button on hover (hidden during processing) */}
-                          <Show when={!isProcessing()}>
-                            <button
-                              class="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-text-muted hover:text-error opacity-0 group-hover:opacity-100 transition-opacity rounded"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                deleteSession(session.id);
-                              }}
-                              title="Delete session"
-                            >
-                              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                              </svg>
-                            </button>
-                          </Show>
-                        </div>
-                      );
-                    }}
-                  </For>
-                </div>
-              </Show>
-            </Show>
-
-            {/* No agent selected fallback */}
-            <Show when={!selectedAgent()}>
-              <div class="flex flex-col items-center justify-center flex-1 px-4 text-center">
-                <p class="text-xs text-text-muted">Select an agent to see sessions.</p>
-              </div>
-            </Show>
-          </div>
+          </Show>
         </div>
 
         {/* Bottom bar — Settings */}

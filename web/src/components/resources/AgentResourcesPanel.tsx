@@ -351,34 +351,18 @@ export default function AgentResourcesPanel(props: AgentResourcesPanelProps) {
 }
 
 // ── Inline wrappers ──
-// These render the existing browser components in "embedded" mode (no popover
-// chrome, no backdrop — they fill the parent panel's content area).
-
-// We import and re-export internal components. Since the existing browsers are
-// self-contained popovers, we create slim inline wrappers that render their
-// *content* directly, passing open=true and a no-op onClose.
-
-// For the Git ResourceBrowser, we render it "open" inside the panel, but we
-// need to strip the popover/backdrop layer. The cleanest approach: render
-// the full component with open=true and let it fill the space. The popover
-// positioning won't matter since it's already inside our panel.
-
-// However, the existing components render their own backdrop + absolute
-// positioning. To avoid that, we use a wrapper that captures the inner content.
-// The simplest path: render them with open=true inside a relative container
-// and override positioning.
+// Render existing browser components in "embedded" mode inside the panel's
+// content area. Embedded mode strips the backdrop, header, and popover chrome.
 
 function ResourceBrowserInline(props: { resource: AgentResourceBinding }) {
-  // We want to render the Git ResourceBrowser component but it manages its own
-  // resource selection and tabs. It needs open=true. We wrap it so the backdrop
-  // and absolute positioning are contained within our panel.
   return (
     <div class="h-full relative">
       <ResourceBrowser
         open={true}
-        onClose={() => {/* no-op: back button in header handles navigation */}}
+        onClose={() => {}}
         class="!absolute !inset-0 !mb-0 !w-full !h-full !rounded-none !border-0 !shadow-none"
         initialResource={props.resource}
+        embedded={true}
       />
     </div>
   );

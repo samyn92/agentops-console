@@ -101,51 +101,29 @@ func (h *Handlers) GetAgentStatus(w http.ResponseWriter, r *http.Request) {
 	proxyResponse(w, resp)
 }
 
-// ── Session proxy endpoints ──
+// ── Agent conversation endpoints (proxied to runtime) ──
 
-func (h *Handlers) ListSessions(w http.ResponseWriter, r *http.Request) {
-	h.proxyToAgent(w, r, "GET", "/sessions", nil)
+func (h *Handlers) AgentPrompt(w http.ResponseWriter, r *http.Request) {
+	h.proxyToAgent(w, r, "POST", "/prompt", r.Body)
 }
 
-func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
-	h.proxyToAgent(w, r, "POST", "/sessions", r.Body)
+func (h *Handlers) AgentSteer(w http.ResponseWriter, r *http.Request) {
+	h.proxyToAgent(w, r, "POST", "/steer", r.Body)
 }
 
-func (h *Handlers) GetSession(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	h.proxyToAgent(w, r, "GET", "/sessions/"+id, nil)
+func (h *Handlers) AgentAbort(w http.ResponseWriter, r *http.Request) {
+	h.proxyToAgent(w, r, "DELETE", "/abort", nil)
 }
 
-func (h *Handlers) GetSessionMessages(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	h.proxyToAgent(w, r, "GET", "/sessions/"+id+"/messages", nil)
+// AgentSetWindowSize proxies a window size change to the agent runtime.
+func (h *Handlers) AgentSetWindowSize(w http.ResponseWriter, r *http.Request) {
+	h.proxyToAgent(w, r, "PATCH", "/config/window-size", r.Body)
 }
 
-func (h *Handlers) DeleteSession(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	h.proxyToAgent(w, r, "DELETE", "/sessions/"+id, nil)
-}
-
-func (h *Handlers) SessionPrompt(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	h.proxyToAgent(w, r, "POST", "/sessions/"+id+"/prompt", r.Body)
-}
-
-func (h *Handlers) SessionSteer(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	h.proxyToAgent(w, r, "POST", "/sessions/"+id+"/steer", r.Body)
-}
-
-func (h *Handlers) SessionAbort(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	h.proxyToAgent(w, r, "DELETE", "/sessions/"+id+"/abort", nil)
-}
-
-// SessionPromptStream proxies a streaming prompt and relays FEP events to the multiplexer.
-func (h *Handlers) SessionPromptStream(w http.ResponseWriter, r *http.Request) {
+// AgentPromptStream proxies a streaming prompt and relays FEP events to the multiplexer.
+func (h *Handlers) AgentPromptStream(w http.ResponseWriter, r *http.Request) {
 	ns := chi.URLParam(r, "ns")
 	name := chi.URLParam(r, "name")
-	id := chi.URLParam(r, "id")
 
 	agent, err := h.k8s.GetAgent(r.Context(), ns, name)
 	if err != nil {
@@ -154,7 +132,7 @@ func (h *Handlers) SessionPromptStream(w http.ResponseWriter, r *http.Request) {
 	}
 
 	baseURL := h.k8s.GetAgentServiceURL(agent)
-	url := fmt.Sprintf("%s/sessions/%s/prompt/stream", baseURL, id)
+	url := fmt.Sprintf("%s/prompt/stream", baseURL)
 
 	// Read the request body so we can forward it
 	body, err := io.ReadAll(r.Body)
@@ -236,15 +214,13 @@ func (h *Handlers) SessionPromptStream(w http.ResponseWriter, r *http.Request) {
 // ── Interactive control ──
 
 func (h *Handlers) ReplyToPermission(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
 	pid := chi.URLParam(r, "pid")
-	h.proxyToAgent(w, r, "POST", fmt.Sprintf("/sessions/%s/permission/%s/reply", id, pid), r.Body)
+	h.proxyToAgent(w, r, "POST", fmt.Sprintf("/permission/%s/reply", pid), r.Body)
 }
 
 func (h *Handlers) ReplyToQuestion(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
 	qid := chi.URLParam(r, "qid")
-	h.proxyToAgent(w, r, "POST", fmt.Sprintf("/sessions/%s/question/%s/reply", id, qid), r.Body)
+	h.proxyToAgent(w, r, "POST", fmt.Sprintf("/question/%s/reply", qid), r.Body)
 }
 
 // ── AgentRun endpoints ──
@@ -416,6 +392,316 @@ func (h *Handlers) WatchResources(w http.ResponseWriter, r *http.Request) {
 
 	// Block until client disconnects
 	<-r.Context().Done()
+}
+
+// ── Memory (Engram) endpoints ──
+
+// MemoryEnabled checks if an agent has memory configured.
+func (h *Handlers) MemoryEnabled(w http.ResponseWriter, r *http.Request) {
+	ns := chi.URLParam(r, "ns")
+	name := chi.URLParam(r, "name")
+
+	agent, err := h.k8s.GetAgent(r.Context(), ns, name)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "agent not found: %s", err)
+		return
+	}
+
+	enabled := agent.Spec.Memory != nil && agent.Spec.Memory.ServerRef != ""
+	project := name
+	if agent.Spec.Memory != nil && agent.Spec.Memory.Project != "" {
+		project = agent.Spec.Memory.Project
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"enabled": enabled,
+		"project": project,
+	})
+}
+
+// ListMemoryObservations returns recent observations for an agent from Engram.
+func (h *Handlers) ListMemoryObservations(w http.ResponseWriter, r *http.Request) {
+	ns := chi.URLParam(r, "ns")
+	name := chi.URLParam(r, "name")
+
+	agent, err := h.k8s.GetAgent(r.Context(), ns, name)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "agent not found: %s", err)
+		return
+	}
+
+	extra := map[string]string{}
+	if limit := r.URL.Query().Get("limit"); limit != "" {
+		extra["limit"] = limit
+	}
+	if obsType := r.URL.Query().Get("type"); obsType != "" {
+		extra["type"] = obsType
+	}
+	if scope := r.URL.Query().Get("scope"); scope != "" {
+		extra["scope"] = scope
+	}
+
+	resp, err := proxyToEngram(r.Context(), h.k8s, agent, "GET", "/observations/recent", nil, extra)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "engram unreachable: %s", err)
+		return
+	}
+	defer resp.Body.Close()
+	proxyResponse(w, resp)
+}
+
+// GetMemoryObservation returns a single observation by ID from Engram.
+func (h *Handlers) GetMemoryObservation(w http.ResponseWriter, r *http.Request) {
+	ns := chi.URLParam(r, "ns")
+	name := chi.URLParam(r, "name")
+	obsID := chi.URLParam(r, "obsId")
+
+	agent, err := h.k8s.GetAgent(r.Context(), ns, name)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "agent not found: %s", err)
+		return
+	}
+
+	resp, err := proxyToEngram(r.Context(), h.k8s, agent, "GET", fmt.Sprintf("/observations/%s", obsID), nil, nil)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "engram unreachable: %s", err)
+		return
+	}
+	defer resp.Body.Close()
+	proxyResponse(w, resp)
+}
+
+// CreateMemoryObservation creates a new observation in Engram for an agent.
+// The request body should contain: { type, title, content, tags?, scope?, topic_key? }
+// session_id and project are injected automatically.
+func (h *Handlers) CreateMemoryObservation(w http.ResponseWriter, r *http.Request) {
+	ns := chi.URLParam(r, "ns")
+	name := chi.URLParam(r, "name")
+
+	agent, err := h.k8s.GetAgent(r.Context(), ns, name)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "agent not found: %s", err)
+		return
+	}
+
+	// Read body, decode, inject project, re-encode
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "failed to read body: %s", err)
+		return
+	}
+
+	var obs map[string]any
+	if err := json.Unmarshal(body, &obs); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON: %s", err)
+		return
+	}
+
+	// Inject project (scoped to agent name)
+	project := name
+	if agent.Spec.Memory != nil && agent.Spec.Memory.Project != "" {
+		project = agent.Spec.Memory.Project
+	}
+	obs["project"] = project
+
+	// session_id is optional — Engram needs it for observations, but the agent runtime
+	// manages sessions. For user-created observations ("Remember this"), we can use
+	// a synthetic session ID or let Engram handle it.
+	if _, ok := obs["session_id"]; !ok {
+		obs["session_id"] = fmt.Sprintf("console-%s-%s", ns, name)
+	}
+
+	encoded, _ := json.Marshal(obs)
+
+	resp, err := proxyToEngram(r.Context(), h.k8s, agent, "POST", "/observations", strings.NewReader(string(encoded)), nil)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "engram unreachable: %s", err)
+		return
+	}
+	defer resp.Body.Close()
+	proxyResponse(w, resp)
+}
+
+// UpdateMemoryObservation updates an observation by ID in Engram.
+func (h *Handlers) UpdateMemoryObservation(w http.ResponseWriter, r *http.Request) {
+	ns := chi.URLParam(r, "ns")
+	name := chi.URLParam(r, "name")
+	obsID := chi.URLParam(r, "obsId")
+
+	agent, err := h.k8s.GetAgent(r.Context(), ns, name)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "agent not found: %s", err)
+		return
+	}
+
+	resp, err := proxyToEngram(r.Context(), h.k8s, agent, "PATCH", fmt.Sprintf("/observations/%s", obsID), r.Body, nil)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "engram unreachable: %s", err)
+		return
+	}
+	defer resp.Body.Close()
+	proxyResponse(w, resp)
+}
+
+// DeleteMemoryObservation deletes an observation by ID from Engram.
+func (h *Handlers) DeleteMemoryObservation(w http.ResponseWriter, r *http.Request) {
+	ns := chi.URLParam(r, "ns")
+	name := chi.URLParam(r, "name")
+	obsID := chi.URLParam(r, "obsId")
+
+	agent, err := h.k8s.GetAgent(r.Context(), ns, name)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "agent not found: %s", err)
+		return
+	}
+
+	extra := map[string]string{}
+	if hard := r.URL.Query().Get("hard"); hard == "true" {
+		extra["hard"] = "true"
+	}
+
+	resp, err := proxyToEngram(r.Context(), h.k8s, agent, "DELETE", fmt.Sprintf("/observations/%s", obsID), nil, extra)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "engram unreachable: %s", err)
+		return
+	}
+	defer resp.Body.Close()
+	proxyResponse(w, resp)
+}
+
+// SearchMemory searches observations in Engram for an agent.
+func (h *Handlers) SearchMemory(w http.ResponseWriter, r *http.Request) {
+	ns := chi.URLParam(r, "ns")
+	name := chi.URLParam(r, "name")
+
+	agent, err := h.k8s.GetAgent(r.Context(), ns, name)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "agent not found: %s", err)
+		return
+	}
+
+	extra := map[string]string{}
+	if q := r.URL.Query().Get("q"); q != "" {
+		extra["q"] = q
+	}
+	if limit := r.URL.Query().Get("limit"); limit != "" {
+		extra["limit"] = limit
+	}
+	if obsType := r.URL.Query().Get("type"); obsType != "" {
+		extra["type"] = obsType
+	}
+	if scope := r.URL.Query().Get("scope"); scope != "" {
+		extra["scope"] = scope
+	}
+
+	resp, err := proxyToEngram(r.Context(), h.k8s, agent, "GET", "/search", nil, extra)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "engram unreachable: %s", err)
+		return
+	}
+	defer resp.Body.Close()
+	proxyResponse(w, resp)
+}
+
+// GetMemoryContext returns the recent memory context for an agent from Engram.
+func (h *Handlers) GetMemoryContext(w http.ResponseWriter, r *http.Request) {
+	ns := chi.URLParam(r, "ns")
+	name := chi.URLParam(r, "name")
+
+	agent, err := h.k8s.GetAgent(r.Context(), ns, name)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "agent not found: %s", err)
+		return
+	}
+
+	extra := map[string]string{}
+	if scope := r.URL.Query().Get("scope"); scope != "" {
+		extra["scope"] = scope
+	}
+
+	resp, err := proxyToEngram(r.Context(), h.k8s, agent, "GET", "/context", nil, extra)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "engram unreachable: %s", err)
+		return
+	}
+	defer resp.Body.Close()
+	proxyResponse(w, resp)
+}
+
+// GetMemoryStats returns memory statistics from Engram.
+func (h *Handlers) GetMemoryStats(w http.ResponseWriter, r *http.Request) {
+	ns := chi.URLParam(r, "ns")
+	name := chi.URLParam(r, "name")
+
+	agent, err := h.k8s.GetAgent(r.Context(), ns, name)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "agent not found: %s", err)
+		return
+	}
+
+	resp, err := proxyToEngram(r.Context(), h.k8s, agent, "GET", "/stats", nil, nil)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "engram unreachable: %s", err)
+		return
+	}
+	defer resp.Body.Close()
+	proxyResponse(w, resp)
+}
+
+// ListMemorySessions returns recent Engram sessions (work periods) for an agent.
+func (h *Handlers) ListMemorySessions(w http.ResponseWriter, r *http.Request) {
+	ns := chi.URLParam(r, "ns")
+	name := chi.URLParam(r, "name")
+
+	agent, err := h.k8s.GetAgent(r.Context(), ns, name)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "agent not found: %s", err)
+		return
+	}
+
+	extra := map[string]string{}
+	if limit := r.URL.Query().Get("limit"); limit != "" {
+		extra["limit"] = limit
+	}
+
+	resp, err := proxyToEngram(r.Context(), h.k8s, agent, "GET", "/sessions/recent", nil, extra)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "engram unreachable: %s", err)
+		return
+	}
+	defer resp.Body.Close()
+	proxyResponse(w, resp)
+}
+
+// GetMemoryTimeline returns chronological context around an observation.
+func (h *Handlers) GetMemoryTimeline(w http.ResponseWriter, r *http.Request) {
+	ns := chi.URLParam(r, "ns")
+	name := chi.URLParam(r, "name")
+
+	agent, err := h.k8s.GetAgent(r.Context(), ns, name)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "agent not found: %s", err)
+		return
+	}
+
+	extra := map[string]string{}
+	if obsID := r.URL.Query().Get("observation_id"); obsID != "" {
+		extra["observation_id"] = obsID
+	}
+	if before := r.URL.Query().Get("before"); before != "" {
+		extra["before"] = before
+	}
+	if after := r.URL.Query().Get("after"); after != "" {
+		extra["after"] = after
+	}
+
+	resp, err := proxyToEngram(r.Context(), h.k8s, agent, "GET", "/timeline", nil, extra)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "engram unreachable: %s", err)
+		return
+	}
+	defer resp.Body.Close()
+	proxyResponse(w, resp)
 }
 
 // ── Agent proxy helper ──

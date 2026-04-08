@@ -15,7 +15,6 @@ interface QuestionItem {
 interface QuestionPanelProps {
   questionData: {
     id: string;
-    sessionId: string;
     questions: QuestionItem[];
   };
   onResolve: () => void;
@@ -94,7 +93,6 @@ export default function QuestionPanel(props: QuestionPanelProps) {
       await control.replyQuestion(
         agent.namespace,
         agent.name,
-        data().sessionId,
         data().id,
         finalAnswers,
       );

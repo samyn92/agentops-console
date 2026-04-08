@@ -41,7 +41,7 @@ func New(cfg Config, k8sClient *k8s.Client, mux *multiplexer.Multiplexer) *Serve
 
 	// CORS
 	corsOpts := cors.Options{
-		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Content-Type", "X-Requested-With"},
 		AllowCredentials: true,
 		MaxAge:           300,
@@ -70,20 +70,31 @@ func New(cfg Config, k8sClient *k8s.Client, mux *multiplexer.Multiplexer) *Serve
 			r.Get("/agents/{ns}/{name}", h.GetAgent)
 			r.Get("/agents/{ns}/{name}/status", h.GetAgentStatus)
 
-			// Sessions (proxied to agent runtime)
-			r.Get("/agents/{ns}/{name}/sessions", h.ListSessions)
-			r.Post("/agents/{ns}/{name}/sessions", h.CreateSession)
-			r.Get("/agents/{ns}/{name}/sessions/{id}", h.GetSession)
-			r.Get("/agents/{ns}/{name}/sessions/{id}/messages", h.GetSessionMessages)
-			r.Delete("/agents/{ns}/{name}/sessions/{id}", h.DeleteSession)
-			r.Post("/agents/{ns}/{name}/sessions/{id}/prompt", h.SessionPrompt)
-			r.Post("/agents/{ns}/{name}/sessions/{id}/stream", h.SessionPromptStream)
-			r.Post("/agents/{ns}/{name}/sessions/{id}/steer", h.SessionSteer)
-			r.Delete("/agents/{ns}/{name}/sessions/{id}/abort", h.SessionAbort)
+			// Agent conversation (proxied to agent runtime — sessionless)
+			r.Post("/agents/{ns}/{name}/prompt", h.AgentPrompt)
+			r.Post("/agents/{ns}/{name}/stream", h.AgentPromptStream)
+			r.Post("/agents/{ns}/{name}/steer", h.AgentSteer)
+			r.Delete("/agents/{ns}/{name}/abort", h.AgentAbort)
+
+			// Agent live config (proxied to agent runtime)
+			r.Patch("/agents/{ns}/{name}/config/window-size", h.AgentSetWindowSize)
 
 			// Interactive control (proxied to agent runtime)
-			r.Post("/agents/{ns}/{name}/sessions/{id}/permission/{pid}/reply", h.ReplyToPermission)
-			r.Post("/agents/{ns}/{name}/sessions/{id}/question/{qid}/reply", h.ReplyToQuestion)
+			r.Post("/agents/{ns}/{name}/permission/{pid}/reply", h.ReplyToPermission)
+			r.Post("/agents/{ns}/{name}/question/{qid}/reply", h.ReplyToQuestion)
+
+			// Agent memory (proxied to Engram)
+			r.Get("/agents/{ns}/{name}/memory/enabled", h.MemoryEnabled)
+			r.Get("/agents/{ns}/{name}/memory/observations", h.ListMemoryObservations)
+			r.Get("/agents/{ns}/{name}/memory/observations/{obsId}", h.GetMemoryObservation)
+			r.Post("/agents/{ns}/{name}/memory/observations", h.CreateMemoryObservation)
+			r.Patch("/agents/{ns}/{name}/memory/observations/{obsId}", h.UpdateMemoryObservation)
+			r.Delete("/agents/{ns}/{name}/memory/observations/{obsId}", h.DeleteMemoryObservation)
+			r.Get("/agents/{ns}/{name}/memory/search", h.SearchMemory)
+			r.Get("/agents/{ns}/{name}/memory/context", h.GetMemoryContext)
+			r.Get("/agents/{ns}/{name}/memory/stats", h.GetMemoryStats)
+			r.Get("/agents/{ns}/{name}/memory/sessions", h.ListMemorySessions)
+			r.Get("/agents/{ns}/{name}/memory/timeline", h.GetMemoryTimeline)
 
 			// Agent Runs
 			r.Get("/agentruns", h.ListAgentRuns)

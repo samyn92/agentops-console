@@ -1,7 +1,6 @@
 // Header — breadcrumb + agent status bar + neural trace
 import { Show } from 'solid-js';
 import { selectedAgent } from '../../stores/agents';
-import { currentSession } from '../../stores/sessions';
 import { streaming } from '../../stores/chat';
 import NeuralTrace from '../shared/NeuralTrace';
 
@@ -11,7 +10,6 @@ interface HeaderProps {
 
 export default function Header(props: HeaderProps) {
   const agent = () => selectedAgent();
-  const session = () => currentSession();
 
   return (
     <header class={`relative flex flex-col bg-background ${props.class || ''}`}>
@@ -25,13 +23,6 @@ export default function Header(props: HeaderProps) {
             <span class="text-text-secondary">{agent()!.namespace}</span>
             <span class="text-text-muted">/</span>
             <span class="font-medium text-text truncate">{agent()!.name}</span>
-
-            <Show when={session()?.title}>
-              <span class="text-text-muted mx-1">&middot;</span>
-              <span class="text-text-secondary truncate text-xs">
-                {session()!.title}
-              </span>
-            </Show>
           </Show>
         </div>
       </div>

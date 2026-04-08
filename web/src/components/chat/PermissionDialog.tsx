@@ -10,7 +10,6 @@ import { getToolIcon } from '../../lib/detect';
 interface PermissionDialogProps {
   permission: {
     id: string;
-    sessionId: string;
     toolName: string;
     input: string;
     description: string;
@@ -39,7 +38,6 @@ export default function PermissionDialog(props: PermissionDialogProps) {
       await control.replyPermission(
         agent.namespace,
         agent.name,
-        perm().sessionId,
         perm().id,
         response,
       );

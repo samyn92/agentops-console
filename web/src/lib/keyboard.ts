@@ -1,7 +1,6 @@
 // Keyboard shortcuts — global hotkeys for the console
 import { useNavigate } from '@solidjs/router';
 import { agentList, selectAgent, selectedAgent } from '../stores/agents';
-import { startNewChat } from '../stores/sessions';
 import { toggleLeftPanel, toggleRightPanel } from '../stores/view';
 
 interface Shortcut {
@@ -42,9 +41,11 @@ export function registerKeyboardShortcuts(navigate: ReturnType<typeof useNavigat
     {
       key: 'n',
       meta: true,
-      description: 'New chat',
+      description: 'Focus composer',
       action: () => {
-        startNewChat();
+        // Focus the composer textarea
+        const textarea = document.querySelector('.composer-input textarea') as HTMLTextAreaElement | null;
+        textarea?.focus();
       },
     },
     {
@@ -106,7 +107,7 @@ export function getShortcutList(): Array<{ keys: string; description: string }> 
 
   return [
     { keys: `${mod}K`, description: 'Cycle to next agent' },
-    { keys: `${mod}N`, description: 'New chat' },
+    { keys: `${mod}N`, description: 'Focus composer' },
     { keys: `${mod}1`, description: 'Toggle agents panel' },
     { keys: `${mod}3`, description: 'Toggle runs panel' },
     { keys: `${mod},`, description: 'Go to Settings' },

@@ -1,19 +1,15 @@
-// Chat store — FEP event state machine with per-session state.
-// Each session maintains independent messages, streaming state, and interactive
-// requests. Switching sessions shows the correct state instantly; background
-// sessions continue streaming uninterrupted.
-import { createSignal, batch, createEffect } from 'solid-js';
-import { streamPrompt, sessions as sessionsAPI } from '../lib/api';
+// Chat store — FEP event state machine with per-agent state.
+// Each agent maintains independent messages, streaming state, and interactive
+// requests. One conversation per agent — no sessions.
+import { createSignal, batch, createEffect, onCleanup } from 'solid-js';
+import { streamPrompt, conversation as conversationAPI, agents as agentsAPI } from '../lib/api';
 import { selectedAgent } from './agents';
-import { currentSessionId, setCurrentSessionId, createSession, onSessionDeleted, notifyPromptCompleted, triggerDelayedSessionRefetch, sessionList } from './sessions';
 import { getSelectedContext, clearContextItems } from './resources';
 import type {
   FEPEvent,
   Usage,
   ToolMetadata,
-  RuntimeMessage,
-  RuntimeMessagePart,
-  Session,
+  RuntimeStatus,
 } from '../types';
 import type {
   ChatMessage,
@@ -24,10 +20,10 @@ import type {
   StepFinishPart,
 } from '../types';
 
-// ── Per-session state ──
+// ── Per-agent state ──
 
-interface SessionChatState {
-  // Reactive signals (each session owns its own)
+interface AgentChatState {
+  // Reactive signals (each agent owns its own)
   messages: ReturnType<typeof createSignal<ChatMessage[]>>;
   streaming: ReturnType<typeof createSignal<boolean>>;
   currentStep: ReturnType<typeof createSignal<number>>;
@@ -41,12 +37,10 @@ interface SessionChatState {
   pendingQuestion: ReturnType<typeof createSignal<PendingQuestionState | null>>;
   // Non-reactive
   abortController: AbortController | null;
-  loaded: boolean; // whether we've fetched history from runtime
 }
 
 interface PendingPermissionState {
   id: string;
-  sessionId: string;
   toolName: string;
   input: string;
   description: string;
@@ -54,7 +48,6 @@ interface PendingPermissionState {
 
 interface PendingQuestionState {
   id: string;
-  sessionId: string;
   questions: Array<{
     question: string;
     header: string;
@@ -63,14 +56,18 @@ interface PendingQuestionState {
   }>;
 }
 
-// ── Session state registry ──
+// ── Agent state registry ──
 
-const sessionStates = new Map<string, SessionChatState>();
+const agentStates = new Map<string, AgentChatState>();
 // Reactive trigger so SolidJS re-evaluates currentState() when the Map mutates
 const [stateVersion, setStateVersion] = createSignal(0);
 
-function getOrCreateState(sessionId: string): SessionChatState {
-  let state = sessionStates.get(sessionId);
+function agentKey(ns: string, name: string): string {
+  return `${ns}/${name}`;
+}
+
+function getOrCreateState(key: string): AgentChatState {
+  let state = agentStates.get(key);
   if (!state) {
     state = {
       messages: createSignal<ChatMessage[]>([]),
@@ -85,35 +82,22 @@ function getOrCreateState(sessionId: string): SessionChatState {
       pendingPermission: createSignal<PendingPermissionState | null>(null),
       pendingQuestion: createSignal<PendingQuestionState | null>(null),
       abortController: null,
-      loaded: false,
     };
-    sessionStates.set(sessionId, state);
+    agentStates.set(key, state);
     setStateVersion((v) => v + 1); // notify reactive consumers
   }
   return state;
 }
 
-/** Remove a session's state from the registry (e.g. on delete). */
-export function removeSessionState(sessionId: string) {
-  const state = sessionStates.get(sessionId);
-  if (state?.abortController) {
-    state.abortController.abort();
-  }
-  sessionStates.delete(sessionId);
-  setStateVersion((v) => v + 1); // notify reactive consumers
-}
+// ── Current-agent derived accessors ──
+// These read from whichever agent is currently selected.
+// Components bind to these; when selectedAgent changes, they re-render.
 
-// Register cleanup callback with sessions store (avoids circular import)
-onSessionDeleted(removeSessionState);
-
-// ── Current-session derived accessors ──
-// These read from whichever session is currently selected.
-// Components bind to these; when currentSessionId changes, they re-render.
-
-function currentState(): SessionChatState | null {
-  const id = currentSessionId();
+function currentState(): AgentChatState | null {
+  const agent = selectedAgent();
   stateVersion(); // subscribe to Map mutations
-  return id ? sessionStates.get(id) ?? null : null;
+  if (!agent) return null;
+  return agentStates.get(agentKey(agent.namespace, agent.name)) ?? null;
 }
 
 export const messages = () => currentState()?.messages[0]() ?? [];
@@ -138,272 +122,87 @@ export function setPendingQuestion(val: PendingQuestionState | null) {
   if (state) state.pendingQuestion[1](val);
 }
 
-// ── Streaming sessions (for sidebar indicators) ──
+// ── Runtime status polling (sliding window gauge) ──
 
-const [streamingSessionIds, setStreamingSessionIds] = createSignal<Set<string>>(new Set());
-export { streamingSessionIds };
+const [runtimeStatus, setRuntimeStatus] = createSignal<RuntimeStatus | null>(null);
+export { runtimeStatus };
 
-function markStreaming(sessionId: string, isStreaming: boolean) {
-  setStreamingSessionIds((prev) => {
+let statusPollTimer: ReturnType<typeof setInterval> | null = null;
+
+async function fetchRuntimeStatus() {
+  const agent = selectedAgent();
+  if (!agent) {
+    setRuntimeStatus(null);
+    return;
+  }
+  try {
+    const status = await agentsAPI.status(agent.namespace, agent.name) as RuntimeStatus;
+    setRuntimeStatus(status);
+  } catch {
+    // Agent unreachable — clear status
+    setRuntimeStatus(null);
+  }
+}
+
+// Poll runtime status when agent changes or after streaming finishes.
+// Uses a reactive effect to start/stop polling based on selected agent.
+createEffect(() => {
+  const agent = selectedAgent();
+
+  // Clean up previous timer
+  if (statusPollTimer) {
+    clearInterval(statusPollTimer);
+    statusPollTimer = null;
+  }
+
+  if (!agent) {
+    setRuntimeStatus(null);
+    return;
+  }
+
+  // Fetch immediately on agent change
+  fetchRuntimeStatus();
+
+  // Poll every 5 seconds
+  statusPollTimer = setInterval(fetchRuntimeStatus, 5000);
+});
+
+/** Trigger an immediate status refresh (e.g. after stream finishes). */
+export function refreshRuntimeStatus() {
+  fetchRuntimeStatus();
+}
+
+/** Update the sliding window size on the runtime (live, no pod restart). */
+export async function setWindowSize(size: number) {
+  const agent = selectedAgent();
+  if (!agent) return;
+  try {
+    await conversationAPI.setWindowSize(agent.namespace, agent.name, size);
+    // Refresh status to pick up the new window_size
+    await fetchRuntimeStatus();
+  } catch (err) {
+    console.error('Failed to set window size:', err);
+  }
+}
+
+// ── Streaming agents (for sidebar indicators) ──
+
+const [streamingAgentKeys, setStreamingAgentKeys] = createSignal<Set<string>>(new Set());
+export { streamingAgentKeys };
+
+function markStreaming(key: string, isStreaming: boolean) {
+  setStreamingAgentKeys((prev) => {
     const next = new Set(prev);
     if (isStreaming) {
-      next.add(sessionId);
+      next.add(key);
     } else {
-      next.delete(sessionId);
+      next.delete(key);
     }
     return next;
   });
 }
 
-// ── Load session messages from runtime ──
-
-export async function loadSessionMessages(sessionId: string) {
-  const agent = selectedAgent();
-  if (!agent) return;
-
-  const state = getOrCreateState(sessionId);
-  if (state.loaded) return; // already fetched
-
-  try {
-    const runtimeMsgs = await sessionsAPI.messages(agent.namespace, agent.name, sessionId);
-    // Guard: if sendMessage already populated messages while we were fetching,
-    // don't overwrite them — mark loaded and bail.
-    if (state.messages[0]().length > 0) {
-      state.loaded = true;
-      return;
-    }
-
-    // Look up session metadata for timestamps and usage
-    const session = sessionList()?.find((s: Session) => s.id === sessionId);
-    const createdTs = session?.created_at ? new Date(session.created_at).getTime() : 0;
-    const updatedTs = session?.updated_at ? new Date(session.updated_at).getTime() : 0;
-
-    const chatMsgs = mapRuntimeMessages(runtimeMsgs, createdTs, updatedTs);
-
-    // Inject per-step usage into each assistant message so TokenBadge renders
-    // after a browser refresh. Each turn has step_usages[0..N] matching the N
-    // assistant messages within that turn. If step_usages is unavailable (old
-    // sessions), fall back to putting the turn total on the last assistant message.
-    const turnUsages = session?.turn_usages;
-    if (turnUsages && turnUsages.length > 0) {
-      // Group assistant message indices by turn.
-      // Turn boundaries: user messages separate turns.
-      const turns: number[][] = []; // turns[i] = [assistantMsgIdx, ...]
-      let currentTurn: number[] = [];
-      for (let i = 0; i < chatMsgs.length; i++) {
-        if (chatMsgs[i].role === 'user') {
-          if (currentTurn.length > 0) {
-            turns.push(currentTurn);
-            currentTurn = [];
-          }
-        } else if (chatMsgs[i].role === 'assistant') {
-          currentTurn.push(i);
-        }
-      }
-      if (currentTurn.length > 0) {
-        turns.push(currentTurn);
-      }
-
-      // Inject step usages per turn
-      for (let t = 0; t < Math.min(turns.length, turnUsages.length); t++) {
-        const tu = turnUsages[t];
-        const assistantIdxs = turns[t];
-        const stepUsages = tu.step_usages;
-
-        if (stepUsages && stepUsages.length > 0) {
-          // Per-step breakdown available: inject each step's usage into its assistant message
-          for (let s = 0; s < Math.min(assistantIdxs.length, stepUsages.length); s++) {
-            const msg = chatMsgs[assistantIdxs[s]];
-            if (msg.parts) {
-              msg.parts.push({
-                type: 'step-finish',
-                stepNumber: s + 1,
-                usage: stepUsages[s] as Usage,
-                finishReason: 'stop',
-                toolCallCount: 0,
-              } as StepFinishPart);
-            }
-          }
-        } else {
-          // Fallback: only turn total available, put it on the last assistant message
-          const lastIdx = assistantIdxs[assistantIdxs.length - 1];
-          const msg = chatMsgs[lastIdx];
-          if (msg.parts) {
-            msg.parts.push({
-              type: 'step-finish',
-              stepNumber: tu.steps || 0,
-              usage: tu.usage as Usage,
-              finishReason: 'stop',
-              toolCallCount: 0,
-            } as StepFinishPart);
-          }
-        }
-      }
-    }
-
-    batch(() => {
-      state.messages[1](chatMsgs);
-      // Restore usage and model signals from session metadata
-      if (session?.total_usage) {
-        state.totalUsage[1]({
-          input_tokens: session.total_usage.input_tokens,
-          output_tokens: session.total_usage.output_tokens,
-          total_tokens: session.total_usage.total_tokens,
-          reasoning_tokens: session.total_usage.reasoning_tokens,
-          cache_creation_tokens: session.total_usage.cache_creation_tokens,
-          cache_read_tokens: session.total_usage.cache_read_tokens,
-        });
-      }
-      // Restore last step usage for context window gauge — use the last
-      // turn's last step_usage, which reflects the current context size.
-      if (turnUsages && turnUsages.length > 0) {
-        const lastTurn = turnUsages[turnUsages.length - 1];
-        const stepUsages = lastTurn.step_usages;
-        if (stepUsages && stepUsages.length > 0) {
-          const lastStep = stepUsages[stepUsages.length - 1];
-          state.lastStepUsage[1](lastStep as Usage);
-        } else if (lastTurn.usage) {
-          state.lastStepUsage[1](lastTurn.usage as Usage);
-        }
-      }
-      if (session?.model) {
-        state.activeModel[1](session.model);
-      }
-    });
-    state.loaded = true;
-  } catch (err) {
-    console.error('Failed to load session messages:', err);
-    // Still mark loaded to avoid retry loops
-    state.loaded = true;
-  }
-}
-
-// Auto-load messages when session changes
-createEffect(() => {
-  const sessionId = currentSessionId();
-  if (sessionId) {
-    loadSessionMessages(sessionId);
-  }
-});
-
-// ── Message format mapper: RuntimeMessage[] -> ChatMessage[] ──
-
-function mapRuntimeMessages(runtimeMsgs: RuntimeMessage[], createdTs: number, updatedTs: number): ChatMessage[] {
-  const chatMsgs: ChatMessage[] = [];
-
-  // We'll distribute timestamps: first user message gets createdAt,
-  // last assistant message gets updatedAt. Others interpolate or use 0.
-  let firstUserAssigned = false;
-
-  for (const msg of runtimeMsgs) {
-    if (msg.role === 'user') {
-      // User messages: extract text parts into content string
-      const textContent = msg.content
-        ?.filter((p) => p.type === 'text')
-        .map((p) => p.text ?? '')
-        .join('') ?? '';
-      const ts = !firstUserAssigned && createdTs ? createdTs : 0;
-      firstUserAssigned = true;
-      chatMsgs.push({
-        role: 'user',
-        content: textContent,
-        timestamp: ts,
-      });
-    } else if (msg.role === 'assistant') {
-      // Assistant messages: convert parts to MessagePart[]
-      const parts: MessagePart[] = [];
-      // Map tool-call parts to track IDs for pairing with tool-results
-      const toolCalls = new Map<string, ToolPart>();
-
-      for (const part of msg.content ?? []) {
-        switch (part.type) {
-          case 'text':
-            if (part.text) {
-              parts.push({ type: 'text', id: '', content: part.text } as TextPart);
-            }
-            break;
-          case 'reasoning':
-            if (part.text) {
-              parts.push({ type: 'reasoning', id: '', content: part.text } as ReasoningPart);
-            }
-            break;
-          case 'tool-call': {
-            const tp: ToolPart = {
-              type: 'tool',
-              id: part.tool_call_id ?? '',
-              toolName: part.tool_name ?? '',
-              input: part.input ?? '',
-              output: '',
-              isError: false,
-              status: 'completed', // historical = completed
-            };
-            toolCalls.set(tp.id, tp);
-            parts.push(tp);
-            break;
-          }
-          // tool-result parts are in separate "tool" role messages; handled below
-        }
-      }
-
-      chatMsgs.push({ role: 'assistant', parts, timestamp: 0 });
-    } else if (msg.role === 'tool') {
-      // Tool-result messages: pair with the last assistant message's tool parts
-      const lastAssistant = chatMsgs[chatMsgs.length - 1];
-      if (lastAssistant?.role === 'assistant' && lastAssistant.parts) {
-        for (const part of msg.content ?? []) {
-          if (part.type === 'tool-result' && part.tool_call_id) {
-            const toolPart = lastAssistant.parts.find(
-              (p) => p.type === 'tool' && (p as ToolPart).id === part.tool_call_id,
-            ) as ToolPart | undefined;
-            if (toolPart) {
-              toolPart.output = extractToolOutput(part);
-              toolPart.isError = part.output?.type === 'error';
-              toolPart.status = part.output?.type === 'error' ? 'error' : 'completed';
-            }
-          }
-        }
-      }
-    }
-  }
-
-  // Assign timestamps to all assistant messages.
-  // We only have created_at / updated_at on the session, so distribute:
-  // first assistant → createdTs, last assistant → updatedTs,
-  // any in between → linear interpolation.
-  const assistantIdxs: number[] = [];
-  for (let i = 0; i < chatMsgs.length; i++) {
-    if (chatMsgs[i].role === 'assistant') assistantIdxs.push(i);
-  }
-  if (assistantIdxs.length > 0) {
-    const startTs = createdTs || updatedTs;
-    const endTs = updatedTs || createdTs;
-    for (let j = 0; j < assistantIdxs.length; j++) {
-      const idx = assistantIdxs[j];
-      const t = assistantIdxs.length === 1
-        ? endTs
-        : startTs + (endTs - startTs) * (j / (assistantIdxs.length - 1));
-      chatMsgs[idx] = { ...chatMsgs[idx], timestamp: Math.round(t) };
-    }
-  }
-
-  return chatMsgs;
-}
-
-function extractToolOutput(part: RuntimeMessagePart): string {
-  if (!part.output) return '';
-  switch (part.output.type) {
-    case 'text':
-      return part.output.text ?? '';
-    case 'error':
-      return part.output.error ?? '';
-    case 'media':
-      return part.output.text ?? '[media]';
-    default:
-      return '';
-  }
-}
-
-// ── Send message (session-scoped) ──
+// ── Send message (agent-scoped) ──
 
 export async function sendMessage(prompt: string) {
   const agent = selectedAgent();
@@ -415,19 +214,8 @@ export async function sendMessage(prompt: string) {
     clearContextItems(); // clear after capturing
   }
 
-  // Ensure we have a session
-  let sessionId = currentSessionId();
-  if (!sessionId) {
-    sessionId = await createSession();
-    if (!sessionId) return;
-    // Schedule a delayed refetch to catch the AI-generated title.
-    // Title generation fires immediately on the runtime (before agent work)
-    // but takes ~1-2s to complete.
-    triggerDelayedSessionRefetch(2000);
-  }
-
-  const state = getOrCreateState(sessionId);
-  state.loaded = true; // prevent loadSessionMessages from overwriting our messages
+  const key = agentKey(agent.namespace, agent.name);
+  const state = getOrCreateState(key);
   const [, setMsgs] = state.messages;
   const [, setStr] = state.streaming;
   const [, setStep] = state.currentStep;
@@ -450,21 +238,20 @@ export async function sendMessage(prompt: string) {
     setAToolIn(null);
   });
 
-  markStreaming(sessionId, true);
+  markStreaming(key, true);
   state.abortController = new AbortController();
 
-  // Capture sessionId for the closure — even if user switches sessions mid-stream,
-  // events continue writing to the correct session's state.
-  const capturedSessionId = sessionId;
+  // Capture for the closure — even if user switches agents mid-stream,
+  // events continue writing to the correct agent's state.
+  const capturedKey = key;
   const capturedState = state;
 
   try {
     await streamPrompt(
       agent.namespace,
       agent.name,
-      capturedSessionId,
       prompt,
-      (event) => handleFEPEvent(capturedState, capturedSessionId, event),
+      (event) => handleFEPEvent(capturedState, capturedKey, event),
       state.abortController.signal,
       context.length > 0 ? context : undefined,
     );
@@ -480,39 +267,41 @@ export async function sendMessage(prompt: string) {
       capturedState.activeToolInput[1](null);
     });
     capturedState.abortController = null;
-    markStreaming(capturedSessionId, false);
+    markStreaming(capturedKey, false);
+    // Refresh runtime status after stream completes (updates sliding window gauge)
+    fetchRuntimeStatus();
   }
 }
 
-/** Abort the stream for the current session. */
+/** Abort the stream for the current agent. */
 export function abortStream() {
-  const id = currentSessionId();
-  if (!id) return;
-  const state = sessionStates.get(id);
+  const agent = selectedAgent();
+  if (!agent) return;
+  const key = agentKey(agent.namespace, agent.name);
+  const state = agentStates.get(key);
   if (state?.abortController) {
     state.abortController.abort();
     state.abortController = null;
   }
   state?.streaming[1](false);
-  markStreaming(id, false);
+  markStreaming(key, false);
 }
 
 /** Steer the current agent mid-execution. */
 export async function steerAgent(message: string) {
   const agent = selectedAgent();
-  const sessionId = currentSessionId();
-  if (!agent || !sessionId) return;
+  if (!agent) return;
 
   try {
-    await sessionsAPI.steer(agent.namespace, agent.name, sessionId, message);
+    await conversationAPI.steer(agent.namespace, agent.name, message);
   } catch (err) {
     console.error('Failed to steer:', err);
   }
 }
 
-// ── FEP Event Handler (session-scoped) ──
+// ── FEP Event Handler (agent-scoped) ──
 
-function handleFEPEvent(state: SessionChatState, sessionId: string, event: FEPEvent) {
+function handleFEPEvent(state: AgentChatState, key: string, event: FEPEvent) {
   const [, setMsgs] = state.messages;
   const [, setStr] = state.streaming;
   const [, setStep] = state.currentStep;
@@ -528,8 +317,6 @@ function handleFEPEvent(state: SessionChatState, sessionId: string, event: FEPEv
   switch (event.type) {
     case 'agent_start':
       // Use server timestamp (RFC3339 UTC) for the assistant message if available.
-      // This ensures the displayed time reflects when the server started processing,
-      // not when the client sent the request.
       if (event.timestamp) {
         const serverTs = new Date(event.timestamp).getTime();
         if (!isNaN(serverTs)) {
@@ -546,30 +333,22 @@ function handleFEPEvent(state: SessionChatState, sessionId: string, event: FEPEv
       break;
 
     case 'agent_finish':
-      // Only update usage/model here — streaming state is handled in the
-      // `finally` block of sendMessage to avoid double state transitions.
       batch(() => {
         setUsage(event.total_usage);
         setModel(event.model || null);
       });
-      // Refetch session list to pick up AI-generated title
-      notifyPromptCompleted();
       break;
 
     case 'agent_error':
       appendPart(state, { type: 'error', error: event.error || 'Unknown error' });
-      // Streaming state is handled in the `finally` block of sendMessage.
-      notifyPromptCompleted();
       break;
 
     case 'step_start': {
       const stepNum = event.step_number || 0;
       setStep(stepNum);
 
-      // On step > 0, the previous step is done (step_finish already appended its
-      // usage part). Create a new assistant message so each step gets its own
-      // bubble + TokenBadge — matching the post-refresh structure where the runtime
-      // stores one assistant message per step.
+      // On step > 0, create a new assistant message so each step gets its own
+      // bubble + TokenBadge.
       if (stepNum > 0) {
         batch(() => {
           finalizeActiveText(state);
@@ -585,8 +364,6 @@ function handleFEPEvent(state: SessionChatState, sessionId: string, event: FEPEv
     }
 
     case 'step_finish':
-      // Track the latest step's usage for the context window gauge.
-      // Also append a visual part when there's usage data (for history restoration).
       if (event.usage && event.usage.total_tokens > 0) {
         setLastStep(event.usage);
         appendPart(state, {
@@ -661,9 +438,6 @@ function handleFEPEvent(state: SessionChatState, sessionId: string, event: FEPEv
           metadata = JSON.parse(event.metadata) as ToolMetadata;
         } catch { /* skip */ }
       }
-      // Scan backwards through assistant messages to find the matching tool call.
-      // Normally the tool is on the last assistant message, but with per-step
-      // message splitting a late result could target a previous one.
       setMsgs((prev) => {
         const updated = [...prev];
         for (let idx = updated.length - 1; idx >= 0; idx--) {
@@ -699,7 +473,6 @@ function handleFEPEvent(state: SessionChatState, sessionId: string, event: FEPEv
     case 'permission_asked':
       setPerm({
         id: event.id || '',
-        sessionId: event.session_id || '',
         toolName: event.tool_name || '',
         input: event.input || '',
         description: event.description || '',
@@ -709,7 +482,6 @@ function handleFEPEvent(state: SessionChatState, sessionId: string, event: FEPEv
     case 'question_asked':
       setQ({
         id: event.id || '',
-        sessionId: event.session_id || '',
         questions: (event.questions as any) || [],
       });
       break;
@@ -726,14 +498,14 @@ function handleFEPEvent(state: SessionChatState, sessionId: string, event: FEPEv
 
     case 'session_idle':
       setStr(false);
-      markStreaming(sessionId, false);
+      markStreaming(key, false);
       break;
   }
 }
 
 // ── Helpers ──
 
-function appendPart(state: SessionChatState, part: MessagePart) {
+function appendPart(state: AgentChatState, part: MessagePart) {
   state.messages[1]((prev) => {
     const updated = [...prev];
     const lastMsg = updated[updated.length - 1];
@@ -747,10 +519,9 @@ function appendPart(state: SessionChatState, part: MessagePart) {
   });
 }
 
-function finalizeActiveText(state: SessionChatState) {
+function finalizeActiveText(state: AgentChatState) {
   const text = state.activeText[0]();
   if (text && text.content) {
-    // Batch the appendPart + signal clear to coalesce into a single reactive update
     batch(() => {
       appendPart(state, { type: 'text', id: text.id, content: text.content } as TextPart);
       state.activeText[1](null);
@@ -760,7 +531,7 @@ function finalizeActiveText(state: SessionChatState) {
   }
 }
 
-function finalizeActiveReasoning(state: SessionChatState) {
+function finalizeActiveReasoning(state: AgentChatState) {
   const reasoning = state.activeReasoning[0]();
   if (reasoning && reasoning.content) {
     batch(() => {

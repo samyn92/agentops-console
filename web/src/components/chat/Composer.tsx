@@ -1,116 +1,101 @@
 // Composer — input area with send/stop/steer functionality
-import { createSignal, Show, createMemo, For } from 'solid-js';
-import { streaming, lastStepUsage, activeModel } from '../../stores/chat';
-import { sendMessage, abortStream, steerAgent } from '../../stores/chat';
+import { createSignal, Show, createMemo, createEffect, For, onCleanup } from 'solid-js';
+import { streaming, runtimeStatus } from '../../stores/chat';
+import { sendMessage, abortStream, steerAgent, setWindowSize } from '../../stores/chat';
 import { selectedAgent } from '../../stores/agents';
-import { formatTokens } from '../../lib/format';
 import { selectedContextItems, removeContextItem, selectedContextCount, clearContextItems } from '../../stores/resources';
 import { resourceContextKey } from '../../types/api';
 import type { ResourceContext } from '../../types';
 import AgentResourcesPanel from '../resources/AgentResourcesPanel';
 
-// ── Model context window sizes (tokens) ──
+// ── Sliding window indicator (clickable — opens config popover) ──
 
-const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
-  // OpenAI
-  'gpt-4': 8_192,
-  'gpt-4-32k': 32_768,
-  'gpt-4-turbo': 128_000,
-  'gpt-4-turbo-preview': 128_000,
-  'gpt-4o': 128_000,
-  'gpt-4o-mini': 128_000,
-  'gpt-4.1': 1_047_576,
-  'gpt-4.1-mini': 1_047_576,
-  'gpt-4.1-nano': 1_047_576,
-  'o1': 200_000,
-  'o1-mini': 128_000,
-  'o1-preview': 128_000,
-  'o3': 200_000,
-  'o3-mini': 200_000,
-  'o4-mini': 200_000,
-  'gpt-3.5-turbo': 16_385,
-  // Anthropic
-  'claude-3-opus': 200_000,
-  'claude-3-sonnet': 200_000,
-  'claude-3-haiku': 200_000,
-  'claude-3.5-sonnet': 200_000,
-  'claude-3.5-haiku': 200_000,
-  'claude-3.7-sonnet': 200_000,
-  'claude-4-sonnet': 200_000,
-  'claude-4-opus': 200_000,
-  'claude-opus-4': 200_000,
-  'claude-sonnet-4': 200_000,
-  // Google
-  'gemini-pro': 1_000_000,
-  'gemini-1.5-pro': 1_000_000,
-  'gemini-1.5-flash': 1_000_000,
-  'gemini-2.0-flash': 1_000_000,
-  'gemini-2.5-pro': 1_000_000,
-  'gemini-2.5-flash': 1_000_000,
-  // Mistral
-  'mistral-large': 128_000,
-  'mistral-medium': 32_000,
-  'mistral-small': 32_000,
-};
+function SlidingWindowIndicator(props: { messages: number; windowSize: number }) {
+  const [open, setOpen] = createSignal(false);
+  const [localSize, setLocalSize] = createSignal(props.windowSize);
+  let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 
-/** Best-effort lookup: match model string against known context windows. */
-function getContextWindow(model: string | null): number | null {
-  if (!model) return null;
-  const lower = model.toLowerCase();
-  // Exact match first
-  if (MODEL_CONTEXT_WINDOWS[lower]) return MODEL_CONTEXT_WINDOWS[lower];
-  // Prefix/substring match (handles versioned names like "gpt-4o-2024-08-06")
-  for (const [key, size] of Object.entries(MODEL_CONTEXT_WINDOWS)) {
-    if (lower.includes(key) || lower.startsWith(key)) return size;
-  }
-  return null;
-}
-
-// ── Context gauge component ──
-
-function ContextGauge(props: { inputTokens: number; contextWindow: number | null }) {
-  const pct = createMemo(() => {
-    if (!props.contextWindow || props.contextWindow === 0) return null;
-    return Math.min((props.inputTokens / props.contextWindow) * 100, 100);
+  // Sync local state when props change (e.g. after server confirms)
+  createEffect(() => {
+    const ws = props.windowSize;
+    if (!open()) setLocalSize(ws);
   });
 
-  // Color thresholds: green < 50%, yellow 50-80%, red > 80%
-  const color = createMemo(() => {
-    const p = pct();
-    if (p === null) return 'bg-text-muted/30';
-    if (p < 50) return 'bg-success';
-    if (p < 80) return 'bg-warning';
-    return 'bg-error';
+  const pct = createMemo(() => {
+    if (props.windowSize <= 0) return 0;
+    return Math.min((props.messages / props.windowSize) * 100, 100);
   });
 
   const textColor = createMemo(() => {
     const p = pct();
-    if (p === null) return 'text-text-muted/60';
-    if (p < 50) return 'text-text-muted/60';
-    if (p < 80) return 'text-warning';
+    if (p < 75) return 'text-text-muted/60';
+    if (p < 90) return 'text-warning';
     return 'text-error';
   });
 
+  function handleSliderChange(val: number) {
+    setLocalSize(val);
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      setWindowSize(val);
+    }, 300);
+  }
+
+  // Close popover on outside click
+  let containerRef: HTMLSpanElement | undefined;
+  function handleDocClick(e: MouseEvent) {
+    if (containerRef && !containerRef.contains(e.target as Node)) {
+      setOpen(false);
+    }
+  }
+
+  createEffect(() => {
+    if (open()) {
+      document.addEventListener('mousedown', handleDocClick);
+    } else {
+      document.removeEventListener('mousedown', handleDocClick);
+    }
+  });
+
+  onCleanup(() => {
+    document.removeEventListener('mousedown', handleDocClick);
+    clearTimeout(debounceTimer);
+  });
+
   return (
-    <span class={`inline-flex items-center gap-1.5 ${textColor()}`}>
-      {/* Battery icon */}
-      <span class="relative inline-flex items-center">
-        {/* Battery body */}
-        <span class="relative w-5 h-2.5 rounded-[3px] border border-current/40 overflow-hidden">
-          <span
-            class={`absolute inset-y-0 left-0 rounded-[2px] transition-all duration-500 ${color()}`}
-            style={{ width: pct() !== null ? `${pct()}%` : '0%', opacity: pct() !== null ? 0.8 : 0.3 }}
-          />
+    <span ref={containerRef} class="relative inline-flex items-center">
+      <button
+        class={`inline-flex items-center gap-1 ${textColor()} hover:text-text-secondary transition-colors cursor-pointer`}
+        onClick={() => setOpen(!open())}
+        title="Working memory — click to adjust"
+      >
+        <svg class="w-3 h-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+          <line x1="2" y1="4" x2="14" y2="4" />
+          <line x1="2" y1="8" x2="14" y2="8" />
+          <line x1="2" y1="12" x2="14" y2="12" />
+        </svg>
+        <span class="text-[11px] select-none">
+          {props.messages}/{props.windowSize}
         </span>
-        {/* Battery tip */}
-        <span class="w-[2px] h-1.5 rounded-r-[1px] bg-current/40 -ml-px" />
-      </span>
-      <span class="text-[11px] select-none">
-        {formatTokens(props.inputTokens)}
-        <Show when={props.contextWindow}>
-          {' / '}{formatTokens(props.contextWindow!)}
-        </Show>
-      </span>
+      </button>
+
+      <Show when={open()}>
+        <div class="absolute bottom-full left-0 mb-2 bg-surface border border-border rounded-lg shadow-lg p-3 w-48 z-50">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs text-text-secondary font-medium">Working memory</span>
+            <span class="text-xs text-text-muted">{localSize()}</span>
+          </div>
+          <input
+            type="range"
+            min="4"
+            max="100"
+            step="2"
+            value={localSize()}
+            onInput={(e) => handleSliderChange(parseInt(e.currentTarget.value))}
+            class="w-full h-1 bg-surface-2 rounded-full appearance-none cursor-pointer accent-accent"
+          />
+        </div>
+      </Show>
     </span>
   );
 }
@@ -123,10 +108,11 @@ interface ComposerProps {
 
 function ContextChip(props: { item: ResourceContext; onRemove: () => void }) {
   const isK8s = () => props.item.kind === 'kubernetes';
+  const isGitHub = () => props.item.kind === 'github-repo' || props.item.kind === 'github-org';
+  const isGitLab = () => props.item.kind === 'gitlab-project' || props.item.kind === 'gitlab-group';
 
   const label = () => {
     if (isK8s()) {
-      // For k8s items, show kind:name from the path (namespace/name)
       const name = props.item.path?.split('/').pop() || props.item.title || props.item.item_type;
       return name;
     }
@@ -140,55 +126,84 @@ function ContextChip(props: { item: ResourceContext; onRemove: () => void }) {
       case 'branch':
         return props.item.path || 'branch';
       case 'issue':
-        return `#${props.item.number}`;
+        return `#${props.item.number}` + (props.item.title ? ` ${props.item.title}` : '');
       case 'merge_request':
-        return `!${props.item.number}`;
+        return `!${props.item.number}` + (props.item.title ? ` ${props.item.title}` : '');
       default:
         return props.item.item_type;
     }
   };
 
-  const icon = () => {
+  // Human-readable type label
+  const typeLabel = () => {
     if (isK8s()) {
-      // Kubernetes resource icons
-      switch (props.item.item_type) {
-        case 'deployment': return 'M4 4h16v4H4zM4 10h16v4H4zM4 16h16v4H4z';
-        case 'pod': return 'M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z';
-        case 'service': return 'M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z';
-        case 'event': return 'M13 10V3L4 14h7v7l9-11h-7z';
-        default: return 'M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z';
-      }
+      return props.item.item_type; // deployment, pod, service, etc.
     }
     switch (props.item.item_type) {
-      case 'file': return 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z';
-      case 'directory': return 'M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z';
-      case 'commit': return 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z';
-      case 'branch': return 'M13 7h8m0 0v8m0-8l-8 8-4-4-6 6';
-      case 'issue': return 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z';
-      case 'merge_request': return 'M4 6h16M4 10h16M4 14h16M4 18h16';
-      default: return 'M19 11H5m14 0a2 2 0 012 2v6';
+      case 'file': return 'file';
+      case 'directory': return 'dir';
+      case 'commit': return 'commit';
+      case 'branch': return 'branch';
+      case 'issue': return 'issue';
+      case 'merge_request': return isGitHub() ? 'PR' : 'MR';
+      default: return props.item.item_type;
     }
   };
 
-  const chipColor = () => isK8s() ? 'bg-[#326CE5]/10 text-[#326CE5] border-[#326CE5]/20' : 'bg-accent/10 text-accent border-accent/20';
+  // Platform icon (branded SVG)
+  const platformIcon = () => {
+    if (isK8s()) {
+      return (
+        <svg class="w-3.5 h-3.5 flex-shrink-0" viewBox="0 0 722 702" fill="#326CE5">
+          <path d="M358.986 1.456c-10.627.472-19.969 4.96-28.832 10.08l-248.96 144a68.8 68.8 0 00-25.344 25.504 64.64 64.64 0 00-8.832 34.56v288a64.64 64.64 0 008.832 34.56 68.8 68.8 0 0025.344 25.504l248.96 144c8.64 5.024 17.952 9.312 28.352 10.08a68.8 68.8 0 0036.288-10.08l248.96-144a68.8 68.8 0 0025.344-25.504 64.64 64.64 0 008.832-34.56v-288a64.64 64.64 0 00-8.832-34.56 68.8 68.8 0 00-25.344-25.504l-248.96-144c-9.152-5.344-18.816-9.152-28.768-10.08a78.08 78.08 0 00-7.04 0z"/>
+        </svg>
+      );
+    }
+    if (isGitLab()) {
+      return (
+        <svg class="w-3.5 h-3.5 flex-shrink-0" viewBox="0 0 24 24" fill="#E24329">
+          <path d="M22.65 14.39L12 22.13 1.35 14.39a.84.84 0 01-.3-.94l1.22-3.78 2.44-7.51A.42.42 0 014.82 2a.43.43 0 01.58 0 .42.42 0 01.11.18l2.44 7.49h8.1l2.44-7.51A.42.42 0 0118.6 2a.43.43 0 01.58 0 .42.42 0 01.11.18l2.44 7.51L23 13.45a.84.84 0 01-.35.94z"/>
+        </svg>
+      );
+    }
+    // Default: GitHub
+    return (
+      <svg class="w-3.5 h-3.5 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+      </svg>
+    );
+  };
+
+  const chipColor = () => {
+    if (isK8s()) return 'bg-[#326CE5]/10 text-[#326CE5] border-[#326CE5]/25';
+    if (isGitLab()) return 'bg-[#E24329]/10 text-[#E24329] border-[#E24329]/25';
+    return 'bg-accent/10 text-accent border-accent/25';
+  };
+
+  const typeBadgeColor = () => {
+    if (isK8s()) return 'bg-[#326CE5]/15 text-[#326CE5]';
+    if (isGitLab()) return 'bg-[#E24329]/15 text-[#E24329]';
+    return 'bg-accent/15 text-accent';
+  };
 
   return (
     <span
-      class={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded-md ${chipColor()} font-medium max-w-[160px]`}
+      class={`inline-flex items-center gap-1.5 px-2 py-1 text-xs rounded-lg border ${chipColor()} font-medium max-w-[240px]`}
       title={`${props.item.item_type}: ${props.item.title || props.item.path || ''} (${props.item.resource_name})`}
     >
-      <svg class="w-2.5 h-2.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d={icon()} />
-      </svg>
+      {platformIcon()}
+      <span class={`text-[9px] uppercase tracking-wide font-semibold px-1 py-0.5 rounded ${typeBadgeColor()}`}>
+        {typeLabel()}
+      </span>
       <span class="truncate">{label()}</span>
       <button
-        class="flex-shrink-0 hover:text-error transition-colors"
+        class="flex-shrink-0 ml-0.5 hover:text-error transition-colors opacity-60 hover:opacity-100"
         onClick={(e) => {
           e.stopPropagation();
           props.onRemove();
         }}
       >
-        <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
         </svg>
       </button>
@@ -410,10 +425,10 @@ export default function Composer(props: ComposerProps) {
               <span class="text-accent">Steer mode</span>
               {' — guide the agent\'s next action'}
             </Show>
-            <Show when={!streaming() && lastStepUsage()}>
-              <ContextGauge
-                inputTokens={lastStepUsage()!.input_tokens}
-                contextWindow={getContextWindow(activeModel())}
+            <Show when={!streaming() && runtimeStatus()?.messages != null && runtimeStatus()?.window_size}>
+              <SlidingWindowIndicator
+                messages={runtimeStatus()!.messages!}
+                windowSize={runtimeStatus()!.window_size!}
               />
             </Show>
           </span>

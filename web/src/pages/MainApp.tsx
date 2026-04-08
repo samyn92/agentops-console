@@ -1,14 +1,12 @@
-// MainApp — three-panel layout: Left Sidebar (agents/sessions) + Center Stage + Right Panel (runs).
+// MainApp — three-panel layout: Left Sidebar (agents) + Center Stage + Right Panel (memory/runs).
 // Both sidebars are collapsible to a thin strip with hamburger icons.
-// Center content switches between EmptyState / AgentDetail / ChatView based on selection state.
+// Center content switches between EmptyState / ChatView based on agent selection.
 import { onMount, onCleanup, Show } from 'solid-js';
 import { startEventStream, stopEventStream } from '../stores/events';
 import { selectedAgent } from '../stores/agents';
-import { currentSessionId, draftMode } from '../stores/sessions';
 import Sidebar from '../components/layout/Sidebar';
-import RunsPanel from '../components/layout/RunsPanel';
+import RightPanel from '../components/layout/RightPanel';
 import ChatView from '../components/chat/ChatView';
-import AgentDetail from '../components/agents/AgentDetail';
 import EmptyState from '../components/shared/EmptyState';
 
 export default function MainApp() {
@@ -22,21 +20,18 @@ export default function MainApp() {
   });
 
   // Content routing:
-  // - No agent selected → EmptyState
-  // - Agent selected + session or draft → ChatView
-  // - Agent selected, no session, no draft → AgentDetail
-  const showChat = () => currentSessionId() !== null || draftMode();
-  const showAgentDetail = () => selectedAgent() !== null && !showChat();
-  const showEmpty = () => selectedAgent() === null;
+  // - No agent selected -> EmptyState
+  // - Agent selected -> ChatView (one conversation per agent)
+  const hasAgent = () => selectedAgent() !== null;
 
   return (
     <div class="flex h-screen bg-background text-text overflow-hidden">
-      {/* ── Left Sidebar (agents + sessions) ── */}
+      {/* ── Left Sidebar (agents) ── */}
       <Sidebar />
 
       {/* ── Center Stage ── */}
       <div class="flex-1 flex flex-col min-w-0">
-        <Show when={showEmpty()}>
+        <Show when={!hasAgent()}>
           <div class="flex-1 flex items-center justify-center min-h-0">
             <EmptyState
               title="Select an Agent"
@@ -45,19 +40,13 @@ export default function MainApp() {
           </div>
         </Show>
 
-        <Show when={showAgentDetail()}>
-          <main class="flex-1 overflow-y-auto min-h-0">
-            <AgentDetail />
-          </main>
-        </Show>
-
-        <Show when={showChat()}>
+        <Show when={hasAgent()}>
           <ChatView class="flex-1 min-h-0" />
         </Show>
       </div>
 
-      {/* ── Right Panel (runs) ── */}
-      <RunsPanel />
+      {/* ── Right Panel (memory / runs) ── */}
+      <RightPanel />
     </div>
   );
 }

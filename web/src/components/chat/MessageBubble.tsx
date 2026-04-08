@@ -1,7 +1,7 @@
 // MessageBubble — single message (user or assistant) with Material You chat styling.
 // Follows M3 chat bubble guidelines: asymmetric radii, density-aware spacing,
 // body-medium typography (14/20), label-small timestamps (11/16).
-import { For, Show, createMemo } from 'solid-js';
+import { For, Show, createMemo, createSignal } from 'solid-js';
 import type {
   ChatMessage, MessagePart, TextPart, ReasoningPart, ToolPart,
   SourcePart, ErrorPart,
@@ -11,6 +11,8 @@ import ReasoningBlock from './ReasoningBlock';
 import ToolCallCard from './ToolCallCard';
 import SourceReference from './SourceReference';
 import ToolInputPreview from './ToolInputPreview';
+import { memoryEnabled } from '../../stores/memory';
+import RememberAction from './RememberAction';
 
 interface MessageBubbleProps {
   message: ChatMessage;
@@ -115,7 +117,7 @@ export default function MessageBubble(props: MessageBubbleProps) {
 
   return (
     <Show when={hasVisibleContent()}>
-      <div class={`${topSpacing()} ${props.class || ''}`}>
+      <div class={`group ${topSpacing()} ${props.class || ''}`}>
         <div class="max-w-[92%] md:max-w-[80%] space-y-1.5">
           {/* Render grouped parts */}
           <For each={groups()}>
@@ -196,12 +198,17 @@ export default function MessageBubble(props: MessageBubbleProps) {
             />
           </Show>
 
-          {/* Footer row — timestamp */}
-          <Show when={hasFooter()}>
-            <div class="flex items-center px-0.5">
-              <span class="chat-timestamp">
-                {formatTime(msg().timestamp)}
-              </span>
+          {/* Footer row — timestamp + remember action */}
+          <Show when={hasFooter() || (msg().role === 'assistant' && memoryEnabled())}>
+            <div class="flex items-center px-0.5 gap-2">
+              <Show when={msg().timestamp}>
+                <span class="chat-timestamp">
+                  {formatTime(msg().timestamp)}
+                </span>
+              </Show>
+              <Show when={msg().role === 'assistant' && memoryEnabled()}>
+                <RememberAction message={msg()} />
+              </Show>
             </div>
           </Show>
         </div>

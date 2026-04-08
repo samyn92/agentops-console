@@ -14,8 +14,6 @@ import type {
   GitBranch,
   GitMergeRequest,
   GitIssue,
-  Session,
-  RuntimeMessage,
   NamespaceInfo,
   PodInfo,
   K8sNamespace,
@@ -31,6 +29,12 @@ import type {
   K8sConfigMap,
   K8sSecret,
   K8sEvent,
+  MemoryEnabledResponse,
+  MemoryObservation,
+  MemorySearchResult,
+  MemorySession,
+  MemoryContext,
+  MemoryStats,
 } from '../types';
 
 const BASE = '/api/v1';
@@ -68,6 +72,19 @@ async function del<T>(path: string): Promise<T> {
   return res.json();
 }
 
+async function patch<T>(path: string, body?: unknown): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(data.error || res.statusText);
+  }
+  return res.json();
+}
+
 // ── Agents ──
 
 export const agents = {
@@ -76,32 +93,24 @@ export const agents = {
   status: (ns: string, name: string) => get<Record<string, unknown>>(`/agents/${ns}/${name}/status`),
 };
 
-// ── Sessions (proxied to agent runtime) ──
+// ── Agent conversation (sessionless — one conversation per agent) ──
 
-export const sessions = {
-  list: (ns: string, name: string) =>
-    get<Session[]>(`/agents/${ns}/${name}/sessions`),
+export const conversation = {
+  /** Non-streaming prompt */
+  prompt: (ns: string, name: string, prompt: string) =>
+    post<{ output: string; model: string }>(`/agents/${ns}/${name}/prompt`, { prompt }),
 
-  create: (ns: string, name: string, title?: string) =>
-    post<{ id: string; title: string }>(`/agents/${ns}/${name}/sessions`, { title }),
+  /** Mid-execution steering */
+  steer: (ns: string, name: string, message: string) =>
+    post<{ ok: boolean }>(`/agents/${ns}/${name}/steer`, { message }),
 
-  get: (ns: string, name: string, id: string) =>
-    get<Session>(`/agents/${ns}/${name}/sessions/${id}`),
+  /** Abort generation */
+  abort: (ns: string, name: string) =>
+    del<{ ok: boolean }>(`/agents/${ns}/${name}/abort`),
 
-  delete: (ns: string, name: string, id: string) =>
-    del<{ ok: boolean }>(`/agents/${ns}/${name}/sessions/${id}`),
-
-  messages: (ns: string, name: string, id: string) =>
-    get<RuntimeMessage[]>(`/agents/${ns}/${name}/sessions/${id}/messages`),
-
-  prompt: (ns: string, name: string, id: string, prompt: string) =>
-    post<{ output: string; model: string }>(`/agents/${ns}/${name}/sessions/${id}/prompt`, { prompt }),
-
-  steer: (ns: string, name: string, id: string, message: string) =>
-    post<{ ok: boolean }>(`/agents/${ns}/${name}/sessions/${id}/steer`, { message }),
-
-  abort: (ns: string, name: string, id: string) =>
-    del<{ ok: boolean }>(`/agents/${ns}/${name}/sessions/${id}/abort`),
+  /** Set sliding window size (live — no pod restart needed) */
+  setWindowSize: (ns: string, name: string, size: number) =>
+    patch<{ ok: boolean; window_size: number; messages: number }>(`/agents/${ns}/${name}/config/window-size`, { size }),
 };
 
 // ── Streaming prompt (returns ReadableStream for SSE) ──
@@ -109,7 +118,6 @@ export const sessions = {
 export async function streamPrompt(
   ns: string,
   name: string,
-  sessionId: string,
   prompt: string,
   onEvent: (event: FEPEvent) => void,
   signal?: AbortSignal,
@@ -120,7 +128,7 @@ export async function streamPrompt(
     body.context = context;
   }
 
-  const res = await fetch(`${BASE}/agents/${ns}/${name}/sessions/${sessionId}/stream`, {
+  const res = await fetch(`${BASE}/agents/${ns}/${name}/stream`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
     body: JSON.stringify(body),
@@ -274,11 +282,86 @@ export const kubernetesBrowse = {
 // ── Permission / Question replies ──
 
 export const control = {
-  replyPermission: (ns: string, name: string, sessionId: string, permId: string, response: string) =>
-    post<{ ok: boolean }>(`/agents/${ns}/${name}/sessions/${sessionId}/permission/${permId}/reply`, { response }),
+  replyPermission: (ns: string, name: string, permId: string, response: string) =>
+    post<{ ok: boolean }>(`/agents/${ns}/${name}/permission/${permId}/reply`, { response }),
 
-  replyQuestion: (ns: string, name: string, sessionId: string, qId: string, answers: string[][]) =>
-    post<{ ok: boolean }>(`/agents/${ns}/${name}/sessions/${sessionId}/question/${qId}/reply`, { answers }),
+  replyQuestion: (ns: string, name: string, qId: string, answers: string[][]) =>
+    post<{ ok: boolean }>(`/agents/${ns}/${name}/question/${qId}/reply`, { answers }),
+};
+
+// ── Memory (Engram) ──
+
+export const memory = {
+  /** Check if memory is enabled for an agent */
+  enabled: (ns: string, name: string) =>
+    get<MemoryEnabledResponse>(`/agents/${ns}/${name}/memory/enabled`),
+
+  /** List recent observations for an agent */
+  listObservations: (ns: string, name: string, opts?: { limit?: number; type?: string; scope?: string }) => {
+    const params = new URLSearchParams();
+    if (opts?.limit) params.set('limit', String(opts.limit));
+    if (opts?.type) params.set('type', opts.type);
+    if (opts?.scope) params.set('scope', opts.scope);
+    const qs = params.toString();
+    return get<MemoryObservation[]>(`/agents/${ns}/${name}/memory/observations${qs ? `?${qs}` : ''}`);
+  },
+
+  /** Get full observation by ID */
+  getObservation: (ns: string, name: string, id: number) =>
+    get<MemoryObservation>(`/agents/${ns}/${name}/memory/observations/${id}`),
+
+  /** Create a new observation ("Remember this") */
+  createObservation: (ns: string, name: string, obs: {
+    type: string;
+    title: string;
+    content: string;
+    tags?: string[];
+    scope?: string;
+    topic_key?: string;
+  }) => post<MemoryObservation>(`/agents/${ns}/${name}/memory/observations`, obs),
+
+  /** Update an observation */
+  updateObservation: (ns: string, name: string, id: number, updates: {
+    title?: string;
+    content?: string;
+    type?: string;
+    scope?: string;
+    topic_key?: string;
+  }) => patch<MemoryObservation>(`/agents/${ns}/${name}/memory/observations/${id}`, updates),
+
+  /** Delete an observation */
+  deleteObservation: (ns: string, name: string, id: number, hard?: boolean) =>
+    del<{ ok: boolean }>(`/agents/${ns}/${name}/memory/observations/${id}${hard ? '?hard=true' : ''}`),
+
+  /** Full-text search across agent memories */
+  search: (ns: string, name: string, query: string, opts?: { limit?: number; type?: string }) => {
+    const params = new URLSearchParams({ q: query });
+    if (opts?.limit) params.set('limit', String(opts.limit));
+    if (opts?.type) params.set('type', opts.type);
+    return get<MemorySearchResult[]>(`/agents/${ns}/${name}/memory/search?${params.toString()}`);
+  },
+
+  /** Get recent context (sessions + observations) */
+  context: (ns: string, name: string) =>
+    get<MemoryContext>(`/agents/${ns}/${name}/memory/context`),
+
+  /** Get memory stats */
+  stats: (ns: string, name: string) =>
+    get<MemoryStats>(`/agents/${ns}/${name}/memory/stats`),
+
+  /** List recent Engram sessions (work periods) */
+  sessions: (ns: string, name: string, limit?: number) => {
+    const qs = limit ? `?limit=${limit}` : '';
+    return get<MemorySession[]>(`/agents/${ns}/${name}/memory/sessions${qs}`);
+  },
+
+  /** Timeline around a specific observation */
+  timeline: (ns: string, name: string, observationId: number, opts?: { before?: number; after?: number }) => {
+    const params = new URLSearchParams({ observation_id: String(observationId) });
+    if (opts?.before) params.set('before', String(opts.before));
+    if (opts?.after) params.set('after', String(opts.after));
+    return get<MemoryObservation[]>(`/agents/${ns}/${name}/memory/timeline?${params.toString()}`);
+  },
 };
 
 // ── Global SSE connection ──

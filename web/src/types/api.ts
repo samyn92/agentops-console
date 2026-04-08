@@ -326,7 +326,7 @@ export function resourceContextKey(ctx: ResourceContext): string {
   }
 }
 
-// ---- Session ----
+// ---- Session (legacy — types kept for potential future use with Engram memory) ----
 
 export interface SessionUsage {
   input_tokens: number
@@ -337,25 +337,7 @@ export interface SessionUsage {
   cache_read_tokens: number
 }
 
-export interface TurnUsage {
-  usage: SessionUsage
-  model: string
-  steps: number
-  step_usages?: SessionUsage[]
-}
-
-export interface Session {
-  id: string
-  title: string
-  created_at: string
-  updated_at: string
-  message_count: number
-  total_usage?: SessionUsage
-  model?: string
-  turn_usages?: TurnUsage[]
-}
-
-// ---- Runtime Messages (from GET /sessions/{id}/messages) ----
+// ---- Runtime Messages ----
 // Mirrors the Go serializableMessage / serializablePartOK / serializableToolOutput types.
 
 export interface RuntimeToolOutput {
@@ -583,5 +565,91 @@ export interface RuntimeStatus {
   output: string
   model: string
   steps: number
-  sessionId?: string
+  messages?: number
+  window_size?: number
+  turns?: number
+  memory_enabled?: boolean
+}
+
+// ---- Memory (Engram) ----
+
+export interface MemoryEnabledResponse {
+  enabled: boolean
+  project: string
+}
+
+export type MemoryObservationType =
+  | 'decision'
+  | 'architecture'
+  | 'bugfix'
+  | 'pattern'
+  | 'config'
+  | 'discovery'
+  | 'learning'
+  | 'preference'
+  | string  // Engram allows custom types
+
+export interface MemoryObservation {
+  id: number
+  session_id: string
+  type: MemoryObservationType
+  title: string
+  content: string
+  tool_name?: string
+  project?: string
+  scope?: 'project' | 'personal'
+  topic_key?: string
+  revision_count?: number
+  duplicate_count?: number
+  last_seen_at?: string
+  created_at: string
+  updated_at: string
+  deleted_at?: string | null
+}
+
+export interface MemorySearchResult {
+  id: number
+  type: MemoryObservationType
+  title: string
+  content: string
+  rank: number
+  project?: string
+  created_at?: string
+}
+
+export interface MemorySession {
+  id: string
+  project: string
+  directory?: string
+  started_at: string
+  ended_at?: string
+  summary?: string
+  status: 'active' | 'completed'
+}
+
+export interface MemoryContext {
+  recent_observations: Array<{
+    id?: number
+    type: string
+    title: string
+    content: string
+  }>
+  recent_sessions: Array<{
+    id?: string
+    summary: string
+    started_at?: string
+    ended_at?: string
+  }>
+  recent_prompts?: Array<{
+    content: string
+    created_at: string
+  }>
+}
+
+export interface MemoryStats {
+  total_sessions: number
+  total_observations: number
+  total_prompts: number
+  total_projects: number
+  active_sessions?: number
 }
