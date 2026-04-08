@@ -128,7 +128,7 @@ func (c *Client) registerWatchers(ctx context.Context) {
 	registerInformerHandler[*agentsv1alpha1.Agent](c, ctx, "Agent")
 	registerInformerHandler[*agentsv1alpha1.AgentRun](c, ctx, "AgentRun")
 	registerInformerHandler[*agentsv1alpha1.Channel](c, ctx, "Channel")
-	registerInformerHandler[*agentsv1alpha1.MCPServer](c, ctx, "MCPServer")
+	registerInformerHandler[*agentsv1alpha1.AgentTool](c, ctx, "AgentTool")
 	registerInformerHandler[*agentsv1alpha1.AgentResource](c, ctx, "AgentResource")
 }
 
@@ -180,6 +180,26 @@ func (c *Client) GetAgent(ctx context.Context, namespace, name string) (*agentsv
 		return nil, err
 	}
 	return agent, nil
+}
+
+// PatchAgentMemoryWindowSize patches the Agent CR's spec.memory.windowSize field.
+func (c *Client) PatchAgentMemoryWindowSize(ctx context.Context, namespace, name string, windowSize int) error {
+	agent := &agentsv1alpha1.Agent{}
+	if err := c.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, agent); err != nil {
+		return fmt.Errorf("get agent: %w", err)
+	}
+
+	patch := client.MergeFrom(agent.DeepCopy())
+
+	if agent.Spec.Memory == nil {
+		agent.Spec.Memory = &agentsv1alpha1.MemorySpec{}
+	}
+	agent.Spec.Memory.WindowSize = windowSize
+
+	if err := c.client.Patch(ctx, agent, patch); err != nil {
+		return fmt.Errorf("patch agent: %w", err)
+	}
+	return nil
 }
 
 // GetAgentServiceURL returns the URL to reach an agent's HTTP server.
@@ -265,10 +285,10 @@ func (c *Client) GetChannel(ctx context.Context, namespace, name string) (*agent
 	return ch, nil
 }
 
-// ── MCPServer operations ──
+// ── AgentTool operations ──
 
-func (c *Client) ListMCPServers(ctx context.Context) (*agentsv1alpha1.MCPServerList, error) {
-	list := &agentsv1alpha1.MCPServerList{}
+func (c *Client) ListAgentTools(ctx context.Context) (*agentsv1alpha1.AgentToolList, error) {
+	list := &agentsv1alpha1.AgentToolList{}
 	opts := &client.ListOptions{}
 	if c.namespace != "" {
 		opts.Namespace = c.namespace
@@ -279,12 +299,12 @@ func (c *Client) ListMCPServers(ctx context.Context) (*agentsv1alpha1.MCPServerL
 	return list, nil
 }
 
-func (c *Client) GetMCPServer(ctx context.Context, namespace, name string) (*agentsv1alpha1.MCPServer, error) {
-	mcp := &agentsv1alpha1.MCPServer{}
-	if err := c.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, mcp); err != nil {
+func (c *Client) GetAgentTool(ctx context.Context, namespace, name string) (*agentsv1alpha1.AgentTool, error) {
+	tool := &agentsv1alpha1.AgentTool{}
+	if err := c.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, tool); err != nil {
 		return nil, err
 	}
-	return mcp, nil
+	return tool, nil
 }
 
 // ── AgentResource operations ──

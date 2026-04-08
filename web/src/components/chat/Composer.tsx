@@ -1,7 +1,7 @@
 // Composer — input area with send/stop/steer functionality
 import { createSignal, Show, createMemo, createEffect, For, onCleanup } from 'solid-js';
 import { streaming, runtimeStatus } from '../../stores/chat';
-import { sendMessage, abortStream, steerAgent, setWindowSize } from '../../stores/chat';
+import { sendMessage, abortStream, steerAgent, setWindowSize, clearWorkingMemory } from '../../stores/chat';
 import { selectedAgent } from '../../stores/agents';
 import { selectedContextItems, removeContextItem, selectedContextCount, clearContextItems } from '../../stores/resources';
 import { resourceContextKey } from '../../types/api';
@@ -13,7 +13,9 @@ import AgentResourcesPanel from '../resources/AgentResourcesPanel';
 function SlidingWindowIndicator(props: { messages: number; windowSize: number }) {
   const [open, setOpen] = createSignal(false);
   const [localSize, setLocalSize] = createSignal(props.windowSize);
+  const [saving, setSaving] = createSignal(false);
   let debounceTimer: ReturnType<typeof setTimeout> | undefined;
+  let sliderRef: HTMLInputElement | undefined;
 
   // Sync local state when props change (e.g. after server confirms)
   createEffect(() => {
@@ -21,9 +23,15 @@ function SlidingWindowIndicator(props: { messages: number; windowSize: number })
     if (!open()) setLocalSize(ws);
   });
 
+  // Keep slider DOM element in sync with localSize (SolidJS range input quirk)
+  createEffect(() => {
+    const val = localSize();
+    if (sliderRef) sliderRef.value = String(val);
+  });
+
   const pct = createMemo(() => {
-    if (props.windowSize <= 0) return 0;
-    return Math.min((props.messages / props.windowSize) * 100, 100);
+    if (localSize() <= 0) return 0;
+    return Math.min((props.messages / localSize()) * 100, 100);
   });
 
   const textColor = createMemo(() => {
@@ -35,9 +43,14 @@ function SlidingWindowIndicator(props: { messages: number; windowSize: number })
 
   function handleSliderChange(val: number) {
     setLocalSize(val);
+    setSaving(true);
     clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => {
-      setWindowSize(val);
+    debounceTimer = setTimeout(async () => {
+      try {
+        await setWindowSize(val);
+      } finally {
+        setSaving(false);
+      }
     }, 300);
   }
 
@@ -75,25 +88,52 @@ function SlidingWindowIndicator(props: { messages: number; windowSize: number })
           <line x1="2" y1="12" x2="14" y2="12" />
         </svg>
         <span class="text-[11px] select-none">
-          {props.messages}/{props.windowSize}
+          {props.messages}/{localSize()}
         </span>
       </button>
 
       <Show when={open()}>
-        <div class="absolute bottom-full left-0 mb-2 bg-surface border border-border rounded-lg shadow-lg p-3 w-48 z-50">
+        <div class="absolute bottom-full left-0 mb-2 bg-surface border border-border rounded-lg shadow-lg p-3 w-52 z-50">
           <div class="flex items-center justify-between mb-2">
             <span class="text-xs text-text-secondary font-medium">Working memory</span>
-            <span class="text-xs text-text-muted">{localSize()}</span>
+            <span class="text-xs font-mono tabular-nums text-text-muted">
+              {localSize()}
+              <Show when={saving()}>
+                <span class="text-accent ml-1 text-[10px]">...</span>
+              </Show>
+            </span>
           </div>
           <input
+            ref={sliderRef}
             type="range"
             min="4"
             max="100"
             step="2"
             value={localSize()}
             onInput={(e) => handleSliderChange(parseInt(e.currentTarget.value))}
-            class="w-full h-1 bg-surface-2 rounded-full appearance-none cursor-pointer accent-accent"
+            class="w-full h-1.5 bg-surface-2 rounded-full appearance-none cursor-pointer
+              [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5
+              [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-accent [&::-webkit-slider-thumb]:cursor-pointer
+              [&::-webkit-slider-thumb]:shadow-sm [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-surface
+              [&::-moz-range-thumb]:w-3.5 [&::-moz-range-thumb]:h-3.5 [&::-moz-range-thumb]:rounded-full
+              [&::-moz-range-thumb]:bg-accent [&::-moz-range-thumb]:cursor-pointer [&::-moz-range-thumb]:border-2
+              [&::-moz-range-thumb]:border-surface"
           />
+          <div class="flex justify-between mt-1 text-[9px] text-text-muted/50">
+            <span>4</span>
+            <span>100</span>
+          </div>
+          <Show when={props.messages > 0}>
+            <button
+              class="w-full mt-2 pt-2 border-t border-border-subtle text-[11px] text-text-muted hover:text-error transition-colors cursor-pointer text-center"
+              onClick={async () => {
+                await clearWorkingMemory();
+                setOpen(false);
+              }}
+            >
+              Clear memory
+            </button>
+          </Show>
         </div>
       </Show>
     </span>

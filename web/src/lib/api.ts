@@ -6,7 +6,7 @@ import type {
   AgentCRD,
   AgentRunResponse,
   ChannelResponse,
-  MCPServerResponse,
+  AgentToolResponse,
   AgentResourceBinding,
   ResourceContext,
   GitFile,
@@ -111,6 +111,10 @@ export const conversation = {
   /** Set sliding window size (live — no pod restart needed) */
   setWindowSize: (ns: string, name: string, size: number) =>
     patch<{ ok: boolean; window_size: number; messages: number }>(`/agents/${ns}/${name}/config/window-size`, { size }),
+
+  /** Clear working memory (drops all messages, resets turn counter) */
+  clearWorkingMemory: (ns: string, name: string) =>
+    del<{ ok: boolean; window_size: number; messages: number }>(`/agents/${ns}/${name}/working-memory`),
 };
 
 // ── Streaming prompt (returns ReadableStream for SSE) ──
@@ -186,11 +190,11 @@ export const channels = {
   get: (ns: string, name: string) => get<ChannelResponse>(`/channels/${ns}/${name}`),
 };
 
-// ── MCP Servers ──
+// ── Agent Tools ──
 
-export const mcpServers = {
-  list: () => get<MCPServerResponse[]>('/mcpservers'),
-  get: (ns: string, name: string) => get<MCPServerResponse>(`/mcpservers/${ns}/${name}`),
+export const agentTools = {
+  list: () => get<AgentToolResponse[]>('/agenttools'),
+  get: (ns: string, name: string) => get<AgentToolResponse>(`/agenttools/${ns}/${name}`),
 };
 
 // ── Agent Resources ──

@@ -22,7 +22,7 @@ export interface AgentSpec {
   env?: Record<string, string>
   secrets?: Array<{ name: string; secretKeyRef: { name: string; key: string } }>
   storage?: { size: string; storageClassName?: string }
-  mcpServers?: Array<{ name: string; permissions?: object; directTools?: string[] }>
+  tools?: Array<{ name: string; permissions?: object; directTools?: string[]; autoContext?: boolean }>
   toolHooks?: {
     blockedCommands?: string[]
     allowedPaths?: string[]
@@ -124,24 +124,38 @@ export interface ChannelResponse {
   }
 }
 
-// ---- MCPServer CR ----
+// ---- AgentTool CR ----
 
-export interface MCPServerResponse {
+export type AgentToolSourceType = 'oci' | 'configMap' | 'inline' | 'mcpServer' | 'mcpEndpoint' | 'skill';
+
+export interface AgentToolResponse {
   metadata: {
     name: string
     namespace: string
     creationTimestamp: string
   }
   spec: {
-    mode: "deploy" | "external"
-    image?: string
-    url?: string
-    tools?: string[]
+    description?: string
+    category?: string
+    oci?: { ref: string; digest?: string; pullPolicy?: string }
+    configMap?: { name: string; key: string }
+    inline?: { content: string }
+    mcpServer?: { image: string; port?: number; command?: string[]; env?: Record<string, string>; serviceAccountName?: string }
+    mcpEndpoint?: { url: string; transport?: string; headers?: Record<string, string> }
+    skill?: { ref: string; digest?: string; pullPolicy?: string }
+    defaultPermissions?: { requireApproval?: boolean; mode?: string; rules?: string[] }
   }
   status?: {
     phase: string
-    ready: boolean
-    tools?: string[]
+    sourceType?: AgentToolSourceType
+    serviceURL?: string
+    conditions?: Array<{
+      type: string
+      status: string
+      reason?: string
+      message?: string
+      lastTransitionTime?: string
+    }>
   }
 }
 
@@ -153,7 +167,6 @@ export type AgentResourceKind =
   | 'gitlab-project'
   | 'gitlab-group'
   | 'git-repo'
-  | 'mcp-endpoint'
   | 's3-bucket'
   | 'documentation';
 
@@ -196,7 +209,7 @@ export function isBrowsableResource(kind: AgentResourceKind): boolean {
 }
 
 /** Get the display icon type for a resource kind */
-export function resourceKindIcon(kind: AgentResourceKind): 'github' | 'gitlab' | 'git' | 'mcp' | 's3' | 'docs' {
+export function resourceKindIcon(kind: AgentResourceKind): 'github' | 'gitlab' | 'git' | 's3' | 'docs' {
   switch (kind) {
     case 'github-repo':
     case 'github-org':
@@ -206,8 +219,6 @@ export function resourceKindIcon(kind: AgentResourceKind): 'github' | 'gitlab' |
       return 'gitlab';
     case 'git-repo':
       return 'git';
-    case 'mcp-endpoint':
-      return 'mcp';
     case 's3-bucket':
       return 's3';
     case 'documentation':
@@ -377,7 +388,7 @@ export interface NamespaceInfo {
   agents: number
   runs: number
   channels: number
-  mcpServers: number
+  agentTools: number
 }
 
 export interface PodInfo {

@@ -1,4 +1,4 @@
-// AgentDetail — agent info panel (model, tools, MCP servers, system prompt)
+// AgentDetail — agent info panel (model, tools, system prompt)
 // Mode-aware: task agents get a runs-centric view, daemon agents show sessions/config.
 import { createResource, Show, For, onMount } from 'solid-js';
 import { agents as agentsAPI } from '../../lib/api';
@@ -144,13 +144,13 @@ export default function AgentDetail(props: AgentDetailProps) {
                   </Section>
                 </Show>
 
-                {/* MCP Servers */}
-                <Show when={spec().mcpServers?.length}>
-                  <Section title="MCP Servers">
+                {/* Agent Tools */}
+                <Show when={spec().tools?.length}>
+                  <Section title="Tools">
                     <div class="flex flex-wrap gap-1.5">
-                      <For each={spec().mcpServers}>
-                        {(mcp) => (
-                          <Badge variant="info">{mcp.name}</Badge>
+                      <For each={spec().tools}>
+                        {(tool) => (
+                          <Badge variant="info">{tool.name}</Badge>
                         )}
                       </For>
                     </div>

@@ -115,9 +115,40 @@ func (h *Handlers) AgentAbort(w http.ResponseWriter, r *http.Request) {
 	h.proxyToAgent(w, r, "DELETE", "/abort", nil)
 }
 
-// AgentSetWindowSize proxies a window size change to the agent runtime.
+// AgentSetWindowSize patches the window size on both the live runtime AND the Agent CR
+// so the setting persists across pod restarts.
 func (h *Handlers) AgentSetWindowSize(w http.ResponseWriter, r *http.Request) {
-	h.proxyToAgent(w, r, "PATCH", "/config/window-size", r.Body)
+	ns := chi.URLParam(r, "ns")
+	name := chi.URLParam(r, "name")
+
+	// Read body so we can send it to the runtime AND parse the size for the CR patch.
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "failed to read body: %s", err)
+		return
+	}
+
+	var req struct {
+		Size int `json:"size"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil || req.Size < 2 {
+		writeError(w, http.StatusBadRequest, "size is required and must be >= 2")
+		return
+	}
+
+	// 1. Patch the Agent CR (durable — survives restarts).
+	if err := h.k8s.PatchAgentMemoryWindowSize(r.Context(), ns, name, req.Size); err != nil {
+		slog.Warn("failed to patch Agent CR window size", "agent", name, "ns", ns, "error", err)
+		// Don't fail the request — still apply to the runtime for immediate effect.
+	}
+
+	// 2. Proxy to the runtime (immediate effect on the running pod).
+	h.proxyToAgent(w, r, "PATCH", "/config/window-size", bytes.NewReader(body))
+}
+
+// AgentClearWorkingMemory clears the agent's in-memory conversation window.
+func (h *Handlers) AgentClearWorkingMemory(w http.ResponseWriter, r *http.Request) {
+	h.proxyToAgent(w, r, "DELETE", "/working-memory", nil)
 }
 
 // AgentPromptStream proxies a streaming prompt and relays FEP events to the multiplexer.
@@ -274,27 +305,27 @@ func (h *Handlers) GetChannel(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, ch)
 }
 
-// ── MCP Server endpoints ──
+// ── AgentTool endpoints ──
 
-func (h *Handlers) ListMCPServers(w http.ResponseWriter, r *http.Request) {
-	servers, err := h.k8s.ListMCPServers(r.Context())
+func (h *Handlers) ListAgentTools(w http.ResponseWriter, r *http.Request) {
+	tools, err := h.k8s.ListAgentTools(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list MCP servers: %s", err)
+		writeError(w, http.StatusInternalServerError, "failed to list agent tools: %s", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, servers.Items)
+	writeJSON(w, http.StatusOK, tools.Items)
 }
 
-func (h *Handlers) GetMCPServer(w http.ResponseWriter, r *http.Request) {
+func (h *Handlers) GetAgentTool(w http.ResponseWriter, r *http.Request) {
 	ns := chi.URLParam(r, "ns")
 	name := chi.URLParam(r, "name")
 
-	mcp, err := h.k8s.GetMCPServer(r.Context(), ns, name)
+	tool, err := h.k8s.GetAgentTool(r.Context(), ns, name)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "MCP server not found: %s", err)
+		writeError(w, http.StatusNotFound, "agent tool not found: %s", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, mcp)
+	writeJSON(w, http.StatusOK, tool)
 }
 
 // ── Kubernetes resource endpoints ──

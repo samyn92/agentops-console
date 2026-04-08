@@ -185,6 +185,24 @@ export async function setWindowSize(size: number) {
   }
 }
 
+/** Clear the agent's working memory (drops all messages, resets turn counter). */
+export async function clearWorkingMemory() {
+  const agent = selectedAgent();
+  if (!agent) return;
+  try {
+    await conversationAPI.clearWorkingMemory(agent.namespace, agent.name);
+    // Clear local chat messages for this agent too
+    const key = agentKey(agent.namespace, agent.name);
+    const state = agentStates.get(key);
+    if (state) {
+      state.messages[1]([]);
+    }
+    await fetchRuntimeStatus();
+  } catch (err) {
+    console.error('Failed to clear working memory:', err);
+  }
+}
+
 // ── Streaming agents (for sidebar indicators) ──
 
 const [streamingAgentKeys, setStreamingAgentKeys] = createSignal<Set<string>>(new Set());

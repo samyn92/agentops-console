@@ -78,6 +78,7 @@ func New(cfg Config, k8sClient *k8s.Client, mux *multiplexer.Multiplexer) *Serve
 
 			// Agent live config (proxied to agent runtime)
 			r.Patch("/agents/{ns}/{name}/config/window-size", h.AgentSetWindowSize)
+			r.Delete("/agents/{ns}/{name}/working-memory", h.AgentClearWorkingMemory)
 
 			// Interactive control (proxied to agent runtime)
 			r.Post("/agents/{ns}/{name}/permission/{pid}/reply", h.ReplyToPermission)
@@ -105,9 +106,9 @@ func New(cfg Config, k8sClient *k8s.Client, mux *multiplexer.Multiplexer) *Serve
 			r.Get("/channels", h.ListChannels)
 			r.Get("/channels/{ns}/{name}", h.GetChannel)
 
-			// MCP Servers
-			r.Get("/mcpservers", h.ListMCPServers)
-			r.Get("/mcpservers/{ns}/{name}", h.GetMCPServer)
+			// Agent Tools
+			r.Get("/agenttools", h.ListAgentTools)
+			r.Get("/agenttools/{ns}/{name}", h.GetAgentTool)
 
 			// Agent Resources
 			r.Get("/agentresources", h.ListAgentResources)

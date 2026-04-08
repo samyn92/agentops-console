@@ -1,15 +1,15 @@
 // AgentResourcesPanel — unified "Agent Resources" popover panel.
-// Shows all resource types (Git repos, Kubernetes cluster, MCP servers) in a
+// Shows all resource types (Git repos, Kubernetes cluster, Agent Tools) in a
 // single list. Clicking an entry drills into its specific browser view.
 import { createSignal, Show, For, createMemo, createResource } from 'solid-js';
 import { selectedAgent } from '../../stores/agents';
 import { browsableResources, allResources, selectedContextCount, clearContextItems } from '../../stores/resources';
-import { mcpServers, kubernetesBrowse } from '../../lib/api';
+import { agentTools, kubernetesBrowse } from '../../lib/api';
 import { resourceKindIcon } from '../../types/api';
-import type { AgentResourceBinding, MCPServerResponse } from '../../types';
+import type { AgentResourceBinding, AgentToolResponse } from '../../types';
 import ResourceBrowser from './ResourceBrowser';
 import KubernetesBrowser from './KubernetesBrowser';
-import MCPBrowser from './MCPBrowser';
+import ToolBrowser from './ToolBrowser';
 
 // ── Types ──
 
@@ -17,7 +17,7 @@ type DrillView =
   | { type: 'list' }
   | { type: 'git'; resource: AgentResourceBinding }
   | { type: 'kubernetes' }
-  | { type: 'mcp' };
+  | { type: 'tools' };
 
 // ── SVG brand icons ──
 
@@ -45,10 +45,10 @@ function KubernetesIcon(props: { class?: string }) {
   );
 }
 
-function MCPIcon(props: { class?: string }) {
+function ToolIcon(props: { class?: string }) {
   return (
     <svg class={props.class || 'w-4 h-4'} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 7.5l-2.25-1.313M21 7.5v2.25m0-2.25l-2.25 1.313M3 7.5l2.25-1.313M3 7.5l2.25 1.313M3 7.5v2.25m9 3l2.25-1.313M12 12.75l-2.25-1.313M12 12.75V15m0 6.75l2.25-1.313M12 21.75V19.5m0 2.25l-2.25-1.313m0-16.875L12 2.25l2.25 1.313M21 14.25v2.25l-2.25 1.313m-13.5 0L3 16.5v-2.25" />
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M11.42 15.17l-5.66-5.66a8 8 0 1111.31 0l-5.65 5.66zm0 0l4.24 4.24M4.93 4.93l4.24 4.24" />
     </svg>
   );
 }
@@ -59,7 +59,7 @@ interface ResourceEntry {
   id: string;
   label: string;
   subtitle?: string;
-  icon: 'github' | 'gitlab' | 'kubernetes' | 'mcp';
+  icon: 'github' | 'gitlab' | 'kubernetes' | 'tools';
   color: string;    // tailwind text color or hex
   bgColor: string;  // hover/active bg
   onClick: () => void;
@@ -73,7 +73,7 @@ function ResourceEntryRow(props: { entry: ResourceEntry }) {
       case 'github': return <GitHubIcon class="w-4 h-4" />;
       case 'gitlab': return <GitLabIcon class="w-4 h-4" />;
       case 'kubernetes': return <KubernetesIcon class="w-4 h-4" />;
-      case 'mcp': return <MCPIcon class="w-4 h-4" />;
+      case 'tools': return <ToolIcon class="w-4 h-4" />;
     }
   };
 
@@ -122,15 +122,15 @@ export default function AgentResourcesPanel(props: AgentResourcesPanelProps) {
   const [view, setView] = createSignal<DrillView>({ type: 'list' });
   const ctxCount = () => selectedContextCount();
 
-  // Fetch MCP server list to show count/status in the list
-  const [mcpList] = createResource(
+  // Fetch AgentTool list to show count/status in the list
+  const [toolList] = createResource(
     () => props.open,
     async (isOpen) => {
       if (!isOpen) return [];
       const agent = selectedAgent();
       if (!agent) return [];
       try {
-        return await mcpServers.list();
+        return await agentTools.list();
       } catch {
         return [];
       }
@@ -163,7 +163,6 @@ export default function AgentResourcesPanel(props: AgentResourcesPanelProps) {
   // Build entries list
   const gitResources = createMemo(() => browsableResources());
   const allRes = createMemo(() => allResources());
-  const mcpResources = createMemo(() => allRes().filter(r => r.kind === 'mcp-endpoint'));
 
   const entries = createMemo<ResourceEntry[]>(() => {
     const result: ResourceEntry[] = [];
@@ -198,22 +197,19 @@ export default function AgentResourcesPanel(props: AgentResourcesPanelProps) {
       onClick: () => setView({ type: 'kubernetes' }),
     });
 
-    // MCP servers
-    const servers = mcpList() || [];
-    const readyCount = servers.filter((s: MCPServerResponse) => s.status?.phase === 'Ready').length;
-    const totalTools = servers.reduce((sum: number, s: MCPServerResponse) => sum + (s.status?.tools?.length || 0), 0);
-    if (servers.length > 0 || mcpResources().length > 0) {
+    // Agent Tools
+    const tools = toolList() || [];
+    const readyCount = tools.filter((t: AgentToolResponse) => t.status?.phase === 'Ready').length;
+    if (tools.length > 0) {
       result.push({
-        id: 'mcp',
-        label: 'MCP Servers',
-        subtitle: servers.length > 0
-          ? `${readyCount}/${servers.length} ready, ${totalTools} tools`
-          : 'No servers discovered',
-        icon: 'mcp',
+        id: 'tools',
+        label: 'Agent Tools',
+        subtitle: `${readyCount}/${tools.length} ready`,
+        icon: 'tools',
         color: 'text-purple-400',
         bgColor: 'bg-purple-500/10 text-purple-400',
-        badge: servers.length > 0 ? `${servers.length}` : undefined,
-        onClick: () => setView({ type: 'mcp' }),
+        badge: `${tools.length}`,
+        onClick: () => setView({ type: 'tools' }),
       });
     }
 
@@ -227,7 +223,7 @@ export default function AgentResourcesPanel(props: AgentResourcesPanelProps) {
       case 'list': return 'Agent Resources';
       case 'git': return v.resource.displayName;
       case 'kubernetes': return 'Kubernetes';
-      case 'mcp': return 'MCP Servers';
+      case 'tools': return 'Agent Tools';
     }
   };
 
@@ -248,8 +244,8 @@ export default function AgentResourcesPanel(props: AgentResourcesPanelProps) {
       }
       case 'kubernetes':
         return <KubernetesIcon class="w-3.5 h-3.5 text-[#326CE5]" />;
-      case 'mcp':
-        return <MCPIcon class="w-3.5 h-3.5 text-purple-400" />;
+      case 'tools':
+        return <ToolIcon class="w-3.5 h-3.5 text-purple-400" />;
     }
   };
 
@@ -340,9 +336,9 @@ export default function AgentResourcesPanel(props: AgentResourcesPanelProps) {
             <KubernetesBrowserInline />
           </Show>
 
-          {/* MCP drill-in: embed MCPBrowser in inline mode */}
-          <Show when={view().type === 'mcp'}>
-            <MCPBrowserInline />
+          {/* Tools drill-in: embed ToolBrowser in inline mode */}
+          <Show when={view().type === 'tools'}>
+            <ToolBrowserInline />
           </Show>
         </div>
       </div>
@@ -381,10 +377,10 @@ function KubernetesBrowserInline() {
   );
 }
 
-function MCPBrowserInline() {
+function ToolBrowserInline() {
   return (
     <div class="h-full relative">
-      <MCPBrowser
+      <ToolBrowser
         open={true}
         onClose={() => {}}
         class="!absolute !inset-0 !mb-0 !w-full !h-full !rounded-none !border-0 !shadow-none !max-h-none !max-w-none"

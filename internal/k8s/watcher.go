@@ -17,7 +17,7 @@ const (
 // ResourceEvent is emitted when a watched CRD changes.
 type ResourceEvent struct {
 	Type         EventType   `json:"type"`
-	ResourceKind string      `json:"resourceKind"` // Agent, AgentRun, Channel, MCPServer
+	ResourceKind string      `json:"resourceKind"` // Agent, AgentRun, Channel, AgentTool, AgentResource
 	Namespace    string      `json:"namespace"`
 	Name         string      `json:"name"`
 	Resource     interface{} `json:"-"` // full K8s object (not serialized directly)

@@ -23,7 +23,7 @@ const engramDefaultPort = 7437
 // resolveEngramURL determines the Engram HTTP URL for an agent by reading spec.memory.serverRef.
 // Resolution order:
 //  1. ENGRAM_URL_OVERRIDE env var (dev mode)
-//  2. Look up MCPServer CR by serverRef name → service URL: http://mcp-{name}.{ns}.svc:{port}
+//  2. Look up AgentTool CR by serverRef name → use status.serviceURL if available
 //  3. Fallback: http://{serverRef}.{ns}.svc:7437 (for manually deployed Engram)
 //
 // Returns ("", "") if the agent has no memory configured.
@@ -45,32 +45,19 @@ func resolveEngramURL(ctx context.Context, k8sClient *k8s.Client, agent *agentsv
 		return override, project
 	}
 
-	// Try MCPServer CR lookup
-	mcp, err := k8sClient.GetMCPServer(ctx, ns, serverRef)
-	if err == nil && mcp != nil {
-		// MCPServer CR found — construct URL the same way as the operator
-		name := fmt.Sprintf("mcp-%s", mcp.Name)
-		port := mcp.Spec.Port
-		if port == 0 {
-			port = 8080
-		}
-		url := fmt.Sprintf("http://%s.%s.svc:%d", name, mcp.Namespace, port)
-		slog.Debug("resolved engram URL from MCPServer CR", "serverRef", serverRef, "url", url)
-		return url, project
+	// Try AgentTool CR lookup
+	tool, err := k8sClient.GetAgentTool(ctx, ns, serverRef)
+	if err == nil && tool != nil && tool.Status.ServiceURL != "" {
+		slog.Debug("resolved engram URL from AgentTool CR", "serverRef", serverRef, "url", tool.Status.ServiceURL)
+		return tool.Status.ServiceURL, project
 	}
 
 	// Also try in the agents namespace if the agent is elsewhere
 	if ns != "agents" {
-		mcp, err = k8sClient.GetMCPServer(ctx, "agents", serverRef)
-		if err == nil && mcp != nil {
-			name := fmt.Sprintf("mcp-%s", mcp.Name)
-			port := mcp.Spec.Port
-			if port == 0 {
-				port = 8080
-			}
-			url := fmt.Sprintf("http://%s.%s.svc:%d", name, mcp.Namespace, port)
-			slog.Debug("resolved engram URL from MCPServer CR (agents namespace)", "serverRef", serverRef, "url", url)
-			return url, project
+		tool, err = k8sClient.GetAgentTool(ctx, "agents", serverRef)
+		if err == nil && tool != nil && tool.Status.ServiceURL != "" {
+			slog.Debug("resolved engram URL from AgentTool CR (agents namespace)", "serverRef", serverRef, "url", tool.Status.ServiceURL)
+			return tool.Status.ServiceURL, project
 		}
 	}
 
