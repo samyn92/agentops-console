@@ -7,10 +7,30 @@ import type {
   AgentRunResponse,
   ChannelResponse,
   MCPServerResponse,
+  AgentResourceBinding,
+  ResourceContext,
+  GitFile,
+  GitCommit,
+  GitBranch,
+  GitMergeRequest,
+  GitIssue,
   Session,
   RuntimeMessage,
   NamespaceInfo,
   PodInfo,
+  K8sNamespace,
+  K8sNamespaceSummary,
+  K8sPod,
+  K8sDeployment,
+  K8sStatefulSet,
+  K8sDaemonSet,
+  K8sJob,
+  K8sCronJob,
+  K8sService,
+  K8sIngress,
+  K8sConfigMap,
+  K8sSecret,
+  K8sEvent,
 } from '../types';
 
 const BASE = '/api/v1';
@@ -93,11 +113,17 @@ export async function streamPrompt(
   prompt: string,
   onEvent: (event: FEPEvent) => void,
   signal?: AbortSignal,
+  context?: ResourceContext[],
 ): Promise<void> {
+  const body: Record<string, unknown> = { prompt };
+  if (context && context.length > 0) {
+    body.context = context;
+  }
+
   const res = await fetch(`${BASE}/agents/${ns}/${name}/sessions/${sessionId}/stream`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-    body: JSON.stringify({ prompt }),
+    body: JSON.stringify(body),
     signal,
   });
 
@@ -159,11 +185,90 @@ export const mcpServers = {
   get: (ns: string, name: string) => get<MCPServerResponse>(`/mcpservers/${ns}/${name}`),
 };
 
+// ── Agent Resources ──
+
+export const agentResources = {
+  /** List all AgentResource CRs */
+  list: () => get<unknown[]>('/agentresources'),
+
+  /** Get a specific AgentResource CR */
+  getResource: (ns: string, name: string) => get<unknown>(`/agentresources/${ns}/${name}`),
+
+  /** List resources bound to a specific agent (enriched with binding metadata) */
+  forAgent: (ns: string, agentName: string) =>
+    get<AgentResourceBinding[]>(`/agents/${ns}/${agentName}/resources`),
+
+  /** Browse files/tree for a browsable resource */
+  files: (ns: string, agentName: string, resName: string, path?: string, ref?: string) => {
+    const params = new URLSearchParams();
+    if (path) params.set('path', path);
+    if (ref) params.set('ref', ref);
+    return get<GitFile[]>(`/agents/${ns}/${agentName}/resources/${resName}/files?${params}`);
+  },
+
+  /** Get file content */
+  fileContent: (ns: string, agentName: string, resName: string, path: string, ref?: string) => {
+    const params = new URLSearchParams({ path });
+    if (ref) params.set('ref', ref);
+    return get<unknown>(`/agents/${ns}/${agentName}/resources/${resName}/files/content?${params}`);
+  },
+
+  /** Browse commits */
+  commits: (ns: string, agentName: string, resName: string, ref?: string, path?: string, page?: number) => {
+    const params = new URLSearchParams();
+    if (ref) params.set('ref', ref);
+    if (path) params.set('path', path);
+    if (page) params.set('page', String(page));
+    return get<GitCommit[]>(`/agents/${ns}/${agentName}/resources/${resName}/commits?${params}`);
+  },
+
+  /** Browse branches */
+  branches: (ns: string, agentName: string, resName: string, page?: number) => {
+    const params = new URLSearchParams();
+    if (page) params.set('page', String(page));
+    return get<GitBranch[]>(`/agents/${ns}/${agentName}/resources/${resName}/branches?${params}`);
+  },
+
+  /** Browse merge requests / pull requests */
+  mergeRequests: (ns: string, agentName: string, resName: string, state?: string, page?: number) => {
+    const params = new URLSearchParams();
+    if (state) params.set('state', state);
+    if (page) params.set('page', String(page));
+    return get<GitMergeRequest[]>(`/agents/${ns}/${agentName}/resources/${resName}/mergerequests?${params}`);
+  },
+
+  /** Browse issues */
+  issues: (ns: string, agentName: string, resName: string, state?: string, page?: number) => {
+    const params = new URLSearchParams();
+    if (state) params.set('state', state);
+    if (page) params.set('page', String(page));
+    return get<GitIssue[]>(`/agents/${ns}/${agentName}/resources/${resName}/issues?${params}`);
+  },
+};
+
 // ── Kubernetes ──
 
 export const kubernetes = {
   namespaces: () => get<NamespaceInfo[]>('/kubernetes/namespaces'),
   pods: (ns: string) => get<PodInfo[]>(`/kubernetes/namespaces/${ns}/pods`),
+};
+
+// ── Kubernetes Resource Browser ──
+
+export const kubernetesBrowse = {
+  namespaces: () => get<K8sNamespace[]>('/kubernetes/browse/namespaces'),
+  namespaceSummary: (ns: string) => get<K8sNamespaceSummary>(`/kubernetes/browse/namespaces/${ns}/summary`),
+  pods: (ns: string) => get<K8sPod[]>(`/kubernetes/browse/namespaces/${ns}/pods`),
+  deployments: (ns: string) => get<K8sDeployment[]>(`/kubernetes/browse/namespaces/${ns}/deployments`),
+  statefulsets: (ns: string) => get<K8sStatefulSet[]>(`/kubernetes/browse/namespaces/${ns}/statefulsets`),
+  daemonsets: (ns: string) => get<K8sDaemonSet[]>(`/kubernetes/browse/namespaces/${ns}/daemonsets`),
+  jobs: (ns: string) => get<K8sJob[]>(`/kubernetes/browse/namespaces/${ns}/jobs`),
+  cronjobs: (ns: string) => get<K8sCronJob[]>(`/kubernetes/browse/namespaces/${ns}/cronjobs`),
+  services: (ns: string) => get<K8sService[]>(`/kubernetes/browse/namespaces/${ns}/services`),
+  ingresses: (ns: string) => get<K8sIngress[]>(`/kubernetes/browse/namespaces/${ns}/ingresses`),
+  configmaps: (ns: string) => get<K8sConfigMap[]>(`/kubernetes/browse/namespaces/${ns}/configmaps`),
+  secrets: (ns: string) => get<K8sSecret[]>(`/kubernetes/browse/namespaces/${ns}/secrets`),
+  events: (ns: string) => get<K8sEvent[]>(`/kubernetes/browse/namespaces/${ns}/events`),
 };
 
 // ── Permission / Question replies ──

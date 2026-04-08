@@ -1,25 +1,70 @@
-// View store — tracks which top-level view is active in the main content area.
+// View store — tracks layout state for both sidebars.
 import { createSignal } from 'solid-js';
 
-export type AppView = 'agents' | 'runs';
+export type PanelState = 'collapsed' | 'expanded';
 
-const STORAGE_KEY = 'agentops:view';
+// ── Left panel (agents/sessions) ──
 
-function loadPersistedView(): AppView {
+const LEFT_KEY = 'agentops:leftPanel';
+
+function loadLeftState(): PanelState {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw === 'runs') return 'runs';
+    const raw = localStorage.getItem(LEFT_KEY);
+    if (raw === 'collapsed') return 'collapsed';
   } catch { /* ignore */ }
-  return 'agents';
+  return 'expanded';
 }
 
-const [activeView, setActiveViewRaw] = createSignal<AppView>(loadPersistedView());
+const [leftPanelState, setLeftPanelStateRaw] = createSignal<PanelState>(loadLeftState());
 
-export { activeView };
+export { leftPanelState };
 
-export function setActiveView(view: AppView) {
-  setActiveViewRaw(view);
+export function setLeftPanelState(state: PanelState) {
+  setLeftPanelStateRaw(state);
   try {
-    localStorage.setItem(STORAGE_KEY, view);
+    localStorage.setItem(LEFT_KEY, state);
   } catch { /* ignore */ }
+}
+
+export function toggleLeftPanel() {
+  const current = leftPanelState();
+  setLeftPanelState(current === 'collapsed' ? 'expanded' : 'collapsed');
+}
+
+// ── Right panel (runs) ──
+
+const RIGHT_KEY = 'agentops:rightPanel';
+
+function loadRightState(): PanelState {
+  try {
+    const raw = localStorage.getItem(RIGHT_KEY);
+    if (raw === 'expanded') return 'expanded';
+  } catch { /* ignore */ }
+  return 'collapsed';
+}
+
+const [rightPanelState, setRightPanelStateRaw] = createSignal<PanelState>(loadRightState());
+
+export { rightPanelState };
+
+export function setRightPanelState(state: PanelState) {
+  setRightPanelStateRaw(state);
+  try {
+    localStorage.setItem(RIGHT_KEY, state);
+  } catch { /* ignore */ }
+}
+
+export function toggleRightPanel() {
+  const current = rightPanelState();
+  setRightPanelState(current === 'collapsed' ? 'expanded' : 'collapsed');
+}
+
+// Legacy exports — kept so existing imports don't break.
+export type RightPanelState = PanelState;
+export type AppView = 'agents' | 'runs';
+export const activeView = () => 'agents' as const;
+export function setActiveView(_view: AppView) {
+  if (_view === 'runs') {
+    setRightPanelState('expanded');
+  }
 }

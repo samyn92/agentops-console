@@ -327,6 +327,81 @@
   opacity: 1;
 }
 
+/* ===== Sidebar Vertical Divider (agents ↔ sessions) ===== */
+/* Hidden by default — sits right under the last agent card.
+   Only visible on hover so the user can grab it when needed. */
+.sidebar-divider {
+  position: relative;
+  cursor: row-resize;
+  height: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  z-index: 5;
+}
+
+.sidebar-divider__track {
+  width: 0;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--border-main);
+  opacity: 0;
+  transition: opacity 0.2s ease, width 0.2s ease;
+}
+
+.sidebar-divider:hover .sidebar-divider__track {
+  opacity: 1;
+  width: 32px;
+  background: var(--text-muted);
+}
+
+.sidebar-divider--active .sidebar-divider__track {
+  opacity: 1;
+  width: 48px;
+  background: var(--accent);
+}
+
+/* ===== Agent Card (M3 card component) ===== */
+/* M3 shape: Small (8dp/rounded-lg). Surface tint via border for selection.
+   Compact card with 3 content rows. */
+.agent-card {
+  position: relative;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  background: transparent;
+  transition:
+    background-color 200ms ease,
+    border-color 200ms ease,
+    box-shadow 200ms ease;
+  cursor: pointer;
+}
+
+.agent-card:hover {
+  background: var(--bg-hover);
+}
+
+.agent-card--selected {
+  background: var(--accent-muted);
+  border-color: color-mix(in srgb, var(--accent) 25%, transparent);
+  box-shadow: var(--shadow-sm);
+}
+
+.agent-card--selected:hover {
+  background: var(--accent-muted);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+/* Material You overrides for agent cards */
+.material .agent-card {
+  border-radius: 16px;
+}
+
+.material .agent-card--selected {
+  box-shadow: var(--shadow-md);
+}
+
 /* ===== Panel resize handle (three-panel layout) ===== */
 .panel-resize-handle {
   transition: background-color 0.15s ease;
@@ -521,6 +596,236 @@
   border-radius: 6px;
 }
 
+/* ===== Chat Bubble System (Material You M3) =====
+   M3 chat spec: asymmetric radii (tail corner 4dp, others 20dp),
+   body-medium typography (14/20, +0.25 tracking),
+   label-small timestamps (11/16, +0.5 tracking).
+   Spacing: 6dp between same-role, 16dp between role changes. */
+
+/* ── User bubble ── */
+.chat-bubble-user {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border-radius: 20px 20px 4px 20px;
+  box-shadow: var(--shadow-sm);
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+/* ── Assistant bubble ── */
+.chat-bubble-assistant {
+  background: var(--assistant-bubble);
+  border: 1px solid var(--assistant-bubble-border);
+  border-radius: 20px 20px 20px 4px;
+  box-shadow: var(--shadow-sm);
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+/* ── Timestamp (M3 label-small: 11/16, +0.5 tracking) ── */
+.chat-timestamp {
+  font-size: 11px;
+  line-height: 16px;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  opacity: 0.5;
+  padding: 0 4px;
+  user-select: none;
+}
+
+/* ── Material You overrides for chat bubbles ── */
+.material .chat-bubble-user {
+  border-radius: 20px 20px 4px 20px;
+  box-shadow: var(--shadow-sm);
+}
+
+.material .chat-bubble-assistant {
+  border-radius: 20px 20px 20px 4px;
+  box-shadow: none;
+  border-width: 1px;
+}
+
+/* ===== Agent Thinking — "Orbital Trace" =====
+   3 dots orbiting an elliptical path with staggered phase offsets,
+   a faint center core pulse, and a subtle track ellipse.
+   M3 decelerate easing, 2.4s rhythm family. No bubble — floats free. */
+
+.agent-thinking {
+  animation: agent-thinking-enter 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes agent-thinking-enter {
+  from { opacity: 0; transform: scale(0.8); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* Container — positions the orbit system */
+.agent-thinking__orbit {
+  position: relative;
+  width: 40px;
+  height: 40px;
+}
+
+/* Elliptical track — barely visible outline */
+.agent-thinking__track {
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  border: 1px solid var(--accent);
+  opacity: 0.08;
+}
+
+/* Orbiting dots — absolute positioned, animated via translate on a circular path.
+   Each dot uses the same orbit keyframe but with a phase offset via animation-delay,
+   creating a chasing / trailing effect. */
+.agent-thinking__dot {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  top: 50%;
+  left: 50%;
+  margin: -3.5px 0 0 -3.5px;
+  animation: orbit-spin 2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  /* Soft trailing glow */
+  box-shadow: 0 0 6px 1px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+.agent-thinking__dot--1 {
+  animation-delay: 0s;
+  opacity: 1;
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
+}
+
+.agent-thinking__dot--2 {
+  animation-delay: -0.65s;
+  opacity: 0.6;
+  width: 6px;
+  height: 6px;
+  margin: -3px 0 0 -3px;
+}
+
+.agent-thinking__dot--3 {
+  animation-delay: -1.3s;
+  opacity: 0.3;
+  width: 5px;
+  height: 5px;
+  margin: -2.5px 0 0 -2.5px;
+}
+
+/* The orbit path — an elliptical translate cycle.
+   Radius: 14px horizontal, 14px vertical (circle). */
+@keyframes orbit-spin {
+  0%   { transform: rotate(0deg)   translateX(14px) rotate(0deg); }
+  100% { transform: rotate(360deg) translateX(14px) rotate(-360deg); }
+}
+
+/* Center core — a faint breathing dot */
+.agent-thinking__core {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 4px;
+  height: 4px;
+  margin: -2px 0 0 -2px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: core-breathe 2.4s ease-in-out infinite;
+}
+
+@keyframes core-breathe {
+  0%, 100% { opacity: 0.2; transform: scale(1); }
+  50%      { opacity: 0.6; transform: scale(1.5); }
+}
+
+/* Dark mode: slightly stronger glow */
+:root.dark .agent-thinking__dot {
+  box-shadow: 0 0 8px 2px color-mix(in srgb, var(--accent) 50%, transparent);
+}
+
+:root.dark .agent-thinking__track {
+  opacity: 0.1;
+}
+
+/* Reduced motion: static arrangement, no spin */
+@media (prefers-reduced-motion: reduce) {
+  .agent-thinking { animation: none !important; }
+  .agent-thinking__dot { animation: none !important; }
+  .agent-thinking__dot--1 { transform: translateX(14px); opacity: 0.8; }
+  .agent-thinking__dot--2 { transform: translateY(-14px); opacity: 0.5; }
+  .agent-thinking__dot--3 { transform: translateX(-14px); opacity: 0.3; }
+  .agent-thinking__core { animation: none !important; opacity: 0.4; }
+}
+
+/* ── Sidebar variant — compact inline orbit ── */
+.agent-thinking--sidebar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 0;
+  animation: none;
+}
+
+.agent-thinking__orbit--sm {
+  position: relative;
+  width: 18px;
+  height: 18px;
+}
+
+.agent-thinking__orbit--sm .agent-thinking__track {
+  inset: 2px;
+}
+
+.agent-thinking__orbit--sm .agent-thinking__dot {
+  animation-name: orbit-spin-sm;
+  box-shadow: 0 0 4px 1px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.agent-thinking__orbit--sm .agent-thinking__dot--1 {
+  width: 4px;
+  height: 4px;
+  margin: -2px 0 0 -2px;
+}
+
+.agent-thinking__orbit--sm .agent-thinking__dot--2 {
+  width: 3px;
+  height: 3px;
+  margin: -1.5px 0 0 -1.5px;
+}
+
+.agent-thinking__orbit--sm .agent-thinking__dot--3 {
+  width: 2.5px;
+  height: 2.5px;
+  margin: -1.25px 0 0 -1.25px;
+}
+
+.agent-thinking__orbit--sm .agent-thinking__core {
+  width: 2px;
+  height: 2px;
+  margin: -1px 0 0 -1px;
+}
+
+/* Smaller orbit radius (6px) for the sidebar */
+@keyframes orbit-spin-sm {
+  0%   { transform: rotate(0deg)   translateX(6px) rotate(0deg); }
+  100% { transform: rotate(360deg) translateX(6px) rotate(-360deg); }
+}
+
+:root.dark .agent-thinking__orbit--sm .agent-thinking__dot {
+  box-shadow: 0 0 5px 1px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-thinking__orbit--sm .agent-thinking__dot { animation: none !important; }
+  .agent-thinking__orbit--sm .agent-thinking__dot--1 { transform: translateX(6px); }
+  .agent-thinking__orbit--sm .agent-thinking__dot--2 { transform: translateY(-6px); }
+  .agent-thinking__orbit--sm .agent-thinking__dot--3 { transform: translateX(-6px); }
+  .agent-thinking__orbit--sm .agent-thinking__core { animation: none !important; }
+}
+
 /* ===== Highlight.js Theme (adapts to light/dark via CSS vars) ===== */
 /* Based on GitHub theme — uses the app's design tokens */
 
@@ -646,6 +951,44 @@
     opacity: 1;
     transform: translateY(0) scale(1);
   }
+}
+
+/* ===== Resource Browser Panel ===== */
+.resource-browser-panel {
+  display: flex;
+  flex-direction: column;
+  backdrop-filter: blur(12px);
+}
+
+/* Resource chip hover micro-interaction */
+.resource-chip {
+  transition: all 0.15s ease;
+}
+
+.resource-chip:hover {
+  transform: translateY(-1px);
+}
+
+.resource-chip:active {
+  transform: translateY(0);
+}
+
+/* Resource tab active indicator animation */
+.resource-tab {
+  transition: color 0.15s ease;
+}
+
+.resource-tab::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 8px;
+  right: 8px;
+  height: 2px;
+  background: var(--accent);
+  border-radius: 1px;
+  transform: scaleX(0);
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* Streaming text cursor — soft breathing glow */

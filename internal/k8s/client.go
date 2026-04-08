@@ -11,7 +11,10 @@ import (
 	"time"
 
 	agentsv1alpha1 "github.com/samyn92/agenticops-core/api/v1alpha1"
+	appsv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -126,6 +129,7 @@ func (c *Client) registerWatchers(ctx context.Context) {
 	registerInformerHandler[*agentsv1alpha1.AgentRun](c, ctx, "AgentRun")
 	registerInformerHandler[*agentsv1alpha1.Channel](c, ctx, "Channel")
 	registerInformerHandler[*agentsv1alpha1.MCPServer](c, ctx, "MCPServer")
+	registerInformerHandler[*agentsv1alpha1.AgentResource](c, ctx, "AgentResource")
 }
 
 func registerInformerHandler[T client.Object](c *Client, ctx context.Context, kind string) {
@@ -283,6 +287,69 @@ func (c *Client) GetMCPServer(ctx context.Context, namespace, name string) (*age
 	return mcp, nil
 }
 
+// ── AgentResource operations ──
+
+func (c *Client) ListAgentResources(ctx context.Context) (*agentsv1alpha1.AgentResourceList, error) {
+	list := &agentsv1alpha1.AgentResourceList{}
+	opts := &client.ListOptions{}
+	if c.namespace != "" {
+		opts.Namespace = c.namespace
+	}
+	if err := c.client.List(ctx, list, opts); err != nil {
+		return nil, err
+	}
+	return list, nil
+}
+
+func (c *Client) GetAgentResource(ctx context.Context, namespace, name string) (*agentsv1alpha1.AgentResource, error) {
+	res := &agentsv1alpha1.AgentResource{}
+	if err := c.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, res); err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
+// ListAgentResourcesForAgent returns the AgentResource CRs bound to a specific agent.
+func (c *Client) ListAgentResourcesForAgent(ctx context.Context, agent *agentsv1alpha1.Agent) ([]agentsv1alpha1.AgentResource, error) {
+	all, err := c.ListAgentResources(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Build a set of bound resource names from the agent's resourceBindings
+	boundNames := make(map[string]bool, len(agent.Spec.ResourceBindings))
+	for _, binding := range agent.Spec.ResourceBindings {
+		boundNames[binding.Name] = true
+	}
+
+	var matched []agentsv1alpha1.AgentResource
+	for _, res := range all.Items {
+		if boundNames[res.Name] && res.Namespace == agent.Namespace {
+			matched = append(matched, res)
+		}
+	}
+	return matched, nil
+}
+
+// GetAgentResourceCredentials reads the secret referenced by an AgentResource's credentials field.
+func (c *Client) GetAgentResourceCredentials(ctx context.Context, namespace string, res *agentsv1alpha1.AgentResource) (string, error) {
+	if res.Spec.Credentials == nil {
+		return "", fmt.Errorf("resource %s has no credentials configured", res.Name)
+	}
+	secret := &corev1.Secret{}
+	if err := c.client.Get(ctx, client.ObjectKey{
+		Namespace: namespace,
+		Name:      res.Spec.Credentials.Name,
+	}, secret); err != nil {
+		return "", fmt.Errorf("secret %s not found: %w", res.Spec.Credentials.Name, err)
+	}
+	val, ok := secret.Data[res.Spec.Credentials.Key]
+	if !ok {
+		return "", fmt.Errorf("key %s not found in secret %s", res.Spec.Credentials.Key, res.Spec.Credentials.Name)
+	}
+	return string(val), nil
+}
+
 // ── Kubernetes resource browsing ──
 
 func (c *Client) ListNamespaces(ctx context.Context) (*corev1.NamespaceList, error) {
@@ -295,6 +362,86 @@ func (c *Client) ListNamespaces(ctx context.Context) (*corev1.NamespaceList, err
 
 func (c *Client) ListPods(ctx context.Context, namespace string) (*corev1.PodList, error) {
 	list := &corev1.PodList{}
+	if err := c.client.List(ctx, list, &client.ListOptions{Namespace: namespace}); err != nil {
+		return nil, err
+	}
+	return list, nil
+}
+
+func (c *Client) ListDeployments(ctx context.Context, namespace string) (*appsv1.DeploymentList, error) {
+	list := &appsv1.DeploymentList{}
+	if err := c.client.List(ctx, list, &client.ListOptions{Namespace: namespace}); err != nil {
+		return nil, err
+	}
+	return list, nil
+}
+
+func (c *Client) ListStatefulSets(ctx context.Context, namespace string) (*appsv1.StatefulSetList, error) {
+	list := &appsv1.StatefulSetList{}
+	if err := c.client.List(ctx, list, &client.ListOptions{Namespace: namespace}); err != nil {
+		return nil, err
+	}
+	return list, nil
+}
+
+func (c *Client) ListDaemonSets(ctx context.Context, namespace string) (*appsv1.DaemonSetList, error) {
+	list := &appsv1.DaemonSetList{}
+	if err := c.client.List(ctx, list, &client.ListOptions{Namespace: namespace}); err != nil {
+		return nil, err
+	}
+	return list, nil
+}
+
+func (c *Client) ListJobs(ctx context.Context, namespace string) (*batchv1.JobList, error) {
+	list := &batchv1.JobList{}
+	if err := c.client.List(ctx, list, &client.ListOptions{Namespace: namespace}); err != nil {
+		return nil, err
+	}
+	return list, nil
+}
+
+func (c *Client) ListCronJobs(ctx context.Context, namespace string) (*batchv1.CronJobList, error) {
+	list := &batchv1.CronJobList{}
+	if err := c.client.List(ctx, list, &client.ListOptions{Namespace: namespace}); err != nil {
+		return nil, err
+	}
+	return list, nil
+}
+
+func (c *Client) ListServices(ctx context.Context, namespace string) (*corev1.ServiceList, error) {
+	list := &corev1.ServiceList{}
+	if err := c.client.List(ctx, list, &client.ListOptions{Namespace: namespace}); err != nil {
+		return nil, err
+	}
+	return list, nil
+}
+
+func (c *Client) ListIngresses(ctx context.Context, namespace string) (*networkingv1.IngressList, error) {
+	list := &networkingv1.IngressList{}
+	if err := c.client.List(ctx, list, &client.ListOptions{Namespace: namespace}); err != nil {
+		return nil, err
+	}
+	return list, nil
+}
+
+func (c *Client) ListConfigMaps(ctx context.Context, namespace string) (*corev1.ConfigMapList, error) {
+	list := &corev1.ConfigMapList{}
+	if err := c.client.List(ctx, list, &client.ListOptions{Namespace: namespace}); err != nil {
+		return nil, err
+	}
+	return list, nil
+}
+
+func (c *Client) ListSecrets(ctx context.Context, namespace string) (*corev1.SecretList, error) {
+	list := &corev1.SecretList{}
+	if err := c.client.List(ctx, list, &client.ListOptions{Namespace: namespace}); err != nil {
+		return nil, err
+	}
+	return list, nil
+}
+
+func (c *Client) ListEvents(ctx context.Context, namespace string) (*corev1.EventList, error) {
+	list := &corev1.EventList{}
 	if err := c.client.List(ctx, list, &client.ListOptions{Namespace: namespace}); err != nil {
 		return nil, err
 	}

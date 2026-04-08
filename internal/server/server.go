@@ -98,9 +98,37 @@ func New(cfg Config, k8sClient *k8s.Client, mux *multiplexer.Multiplexer) *Serve
 			r.Get("/mcpservers", h.ListMCPServers)
 			r.Get("/mcpservers/{ns}/{name}", h.GetMCPServer)
 
-			// Kubernetes
+			// Agent Resources
+			r.Get("/agentresources", h.ListAgentResources)
+			r.Get("/agentresources/{ns}/{name}", h.GetAgentResource)
+			r.Get("/agents/{ns}/{name}/resources", h.ListAgentResourcesForAgent)
+
+			// Resource browsing (proxy to GitHub/GitLab APIs)
+			r.Get("/agents/{ns}/{name}/resources/{resName}/files", h.BrowseResourceFiles)
+			r.Get("/agents/{ns}/{name}/resources/{resName}/files/content", h.BrowseResourceFileContent)
+			r.Get("/agents/{ns}/{name}/resources/{resName}/commits", h.BrowseResourceCommits)
+			r.Get("/agents/{ns}/{name}/resources/{resName}/branches", h.BrowseResourceBranches)
+			r.Get("/agents/{ns}/{name}/resources/{resName}/mergerequests", h.BrowseResourceMergeRequests)
+			r.Get("/agents/{ns}/{name}/resources/{resName}/issues", h.BrowseResourceIssues)
+
+			// Kubernetes (legacy — kept for backward compatibility)
 			r.Get("/kubernetes/namespaces", h.ListNamespaces)
 			r.Get("/kubernetes/namespaces/{ns}/pods", h.ListPods)
+
+			// Kubernetes resource browser (enhanced)
+			r.Get("/kubernetes/browse/namespaces", h.ListNamespacesEnhanced)
+			r.Get("/kubernetes/browse/namespaces/{ns}/summary", h.ListNamespaceResourceSummary)
+			r.Get("/kubernetes/browse/namespaces/{ns}/pods", h.ListPodsEnhanced)
+			r.Get("/kubernetes/browse/namespaces/{ns}/deployments", h.ListDeployments)
+			r.Get("/kubernetes/browse/namespaces/{ns}/statefulsets", h.ListStatefulSets)
+			r.Get("/kubernetes/browse/namespaces/{ns}/daemonsets", h.ListDaemonSets)
+			r.Get("/kubernetes/browse/namespaces/{ns}/jobs", h.ListJobs)
+			r.Get("/kubernetes/browse/namespaces/{ns}/cronjobs", h.ListCronJobs)
+			r.Get("/kubernetes/browse/namespaces/{ns}/services", h.ListServicesK8s)
+			r.Get("/kubernetes/browse/namespaces/{ns}/ingresses", h.ListIngresses)
+			r.Get("/kubernetes/browse/namespaces/{ns}/configmaps", h.ListConfigMaps)
+			r.Get("/kubernetes/browse/namespaces/{ns}/secrets", h.ListSecretsMetadata)
+			r.Get("/kubernetes/browse/namespaces/{ns}/events", h.ListEventsK8s)
 		})
 	})
 

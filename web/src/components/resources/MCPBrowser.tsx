@@ -13,6 +13,8 @@ interface MCPBrowserProps {
   onClose: () => void;
   /** Optional: CSS class for the root element */
   class?: string;
+  /** When true, skip rendering backdrop and header (parent panel handles those) */
+  embedded?: boolean;
 }
 
 export default function MCPBrowser(props: MCPBrowserProps) {
@@ -48,14 +50,18 @@ export default function MCPBrowser(props: MCPBrowserProps) {
 
   return (
     <Show when={props.open}>
-      {/* Backdrop */}
-      <div class="fixed inset-0 z-40" onClick={() => props.onClose()} />
+      {/* Backdrop — skip in embedded mode */}
+      <Show when={!props.embedded}>
+        <div class="fixed inset-0 z-40" onClick={() => props.onClose()} />
+      </Show>
 
       {/* Popover panel */}
       <div
-        class={`absolute z-50 w-80 max-h-96 bg-surface border border-border rounded-xl shadow-lg overflow-hidden ${props.class || ''}`}
+        class={`${props.embedded ? '' : 'absolute z-50'} bg-surface ${props.embedded ? '' : 'w-80 max-h-96 border border-border rounded-xl shadow-lg'} overflow-hidden ${props.class || ''}`}
+        style={props.embedded ? { width: '100%', height: '100%' } : {}}
       >
-        {/* Header */}
+        {/* Header — skip in embedded mode */}
+        <Show when={!props.embedded}>
         <div class="flex items-center justify-between px-3 py-2 border-b border-border">
           <span class="text-xs font-semibold text-text uppercase tracking-wide">
             MCP Servers
@@ -69,9 +75,10 @@ export default function MCPBrowser(props: MCPBrowserProps) {
             </svg>
           </button>
         </div>
+        </Show>
 
         {/* Content */}
-        <div class="overflow-y-auto max-h-80">
+        <div class={`overflow-y-auto ${props.embedded ? 'h-full' : 'max-h-80'}`}>
           <Show when={serverList.loading}>
             <div class="flex items-center justify-center py-6">
               <Spinner size="sm" />

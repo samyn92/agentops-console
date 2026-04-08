@@ -1,23 +1,17 @@
-// MainApp — single-shell layout with Sidebar + Header + content area.
-// Content switches between Agent views (detail/chat) and Runs based on view + session state.
-import { createSignal, onMount, onCleanup, Show } from 'solid-js';
+// MainApp — three-panel layout: Left Sidebar (agents/sessions) + Center Stage + Right Panel (runs).
+// Both sidebars are collapsible to a thin strip with hamburger icons.
+// Center content switches between EmptyState / AgentDetail / ChatView based on selection state.
+import { onMount, onCleanup, Show } from 'solid-js';
 import { startEventStream, stopEventStream } from '../stores/events';
 import { selectedAgent } from '../stores/agents';
 import { currentSessionId, draftMode } from '../stores/sessions';
-import { activeView } from '../stores/view';
 import Sidebar from '../components/layout/Sidebar';
-import Header from '../components/layout/Header';
-import MobileDrawer from '../components/layout/MobileDrawer';
+import RunsPanel from '../components/layout/RunsPanel';
 import ChatView from '../components/chat/ChatView';
 import AgentDetail from '../components/agents/AgentDetail';
-import RunList from '../components/runs/RunList';
-import RunDetail from '../components/runs/RunDetail';
 import EmptyState from '../components/shared/EmptyState';
 
 export default function MainApp() {
-  const [drawerOpen, setDrawerOpen] = createSignal(false);
-  const [selectedRun, setSelectedRun] = createSignal<{ ns: string; name: string } | null>(null);
-
   // Start global SSE on mount
   onMount(() => {
     startEventStream();
@@ -27,7 +21,7 @@ export default function MainApp() {
     stopEventStream();
   });
 
-  // Agent view logic:
+  // Content routing:
   // - No agent selected → EmptyState
   // - Agent selected + session or draft → ChatView
   // - Agent selected, no session, no draft → AgentDetail
@@ -37,73 +31,33 @@ export default function MainApp() {
 
   return (
     <div class="flex h-screen bg-background text-text overflow-hidden">
-      {/* Desktop sidebar */}
-      <div class="hidden md:flex">
-        <Sidebar />
-      </div>
+      {/* ── Left Sidebar (agents + sessions) ── */}
+      <Sidebar />
 
-      {/* Mobile drawer */}
-      <div class="md:hidden">
-        <MobileDrawer
-          open={drawerOpen()}
-          onClose={() => setDrawerOpen(false)}
-        >
-          <Sidebar class="w-full h-full" />
-        </MobileDrawer>
-      </div>
-
-      {/* Main content area */}
+      {/* ── Center Stage ── */}
       <div class="flex-1 flex flex-col min-w-0">
-        <Header onMenuClick={() => setDrawerOpen(true)} />
-
-        {/* ── Agents view ── */}
-        <Show when={activeView() === 'agents'}>
-          <Show when={showEmpty()}>
-            <div class="flex-1 flex items-center justify-center min-h-0">
-              <EmptyState
-                title="Select an Agent"
-                description="Choose an agent from the sidebar to get started."
-              />
-            </div>
-          </Show>
-
-          <Show when={showAgentDetail()}>
-            <main class="flex-1 overflow-y-auto min-h-0">
-              <AgentDetail />
-            </main>
-          </Show>
-
-          <Show when={showChat()}>
-            <ChatView class="flex-1 min-h-0" />
-          </Show>
+        <Show when={showEmpty()}>
+          <div class="flex-1 flex items-center justify-center min-h-0">
+            <EmptyState
+              title="Select an Agent"
+              description="Choose an agent from the sidebar to get started."
+            />
+          </div>
         </Show>
 
-        {/* ── Runs view ── */}
-        <Show when={activeView() === 'runs'}>
-          <main class="flex-1 overflow-hidden flex min-h-0">
-            {/* Run list */}
-            <div class="w-[360px] min-w-[300px] border-r border-border overflow-y-auto">
-              <RunList onSelect={(ns, name) => setSelectedRun({ ns, name })} />
-            </div>
-
-            {/* Run detail */}
-            <div class="flex-1 overflow-y-auto">
-              <Show
-                when={selectedRun()}
-                fallback={
-                  <div class="flex items-center justify-center h-full text-sm text-text-muted">
-                    Select a run to view details
-                  </div>
-                }
-              >
-                {(run) => (
-                  <RunDetail namespace={run().ns} name={run().name} />
-                )}
-              </Show>
-            </div>
+        <Show when={showAgentDetail()}>
+          <main class="flex-1 overflow-y-auto min-h-0">
+            <AgentDetail />
           </main>
         </Show>
+
+        <Show when={showChat()}>
+          <ChatView class="flex-1 min-h-0" />
+        </Show>
       </div>
+
+      {/* ── Right Panel (runs) ── */}
+      <RunsPanel />
     </div>
   );
 }

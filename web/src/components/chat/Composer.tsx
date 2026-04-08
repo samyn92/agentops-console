@@ -1,10 +1,13 @@
 // Composer — input area with send/stop/steer functionality
-import { createSignal, Show, createMemo } from 'solid-js';
+import { createSignal, Show, createMemo, For } from 'solid-js';
 import { streaming, lastStepUsage, activeModel } from '../../stores/chat';
 import { sendMessage, abortStream, steerAgent } from '../../stores/chat';
 import { selectedAgent } from '../../stores/agents';
 import { formatTokens } from '../../lib/format';
-import MCPBrowser from '../resources/MCPBrowser';
+import { selectedContextItems, removeContextItem, selectedContextCount, clearContextItems } from '../../stores/resources';
+import { resourceContextKey } from '../../types/api';
+import type { ResourceContext } from '../../types';
+import AgentResourcesPanel from '../resources/AgentResourcesPanel';
 
 // ── Model context window sizes (tokens) ──
 
@@ -116,10 +119,87 @@ interface ComposerProps {
   class?: string;
 }
 
+// ── Context chip for selected resource items ──
+
+function ContextChip(props: { item: ResourceContext; onRemove: () => void }) {
+  const isK8s = () => props.item.kind === 'kubernetes';
+
+  const label = () => {
+    if (isK8s()) {
+      // For k8s items, show kind:name from the path (namespace/name)
+      const name = props.item.path?.split('/').pop() || props.item.title || props.item.item_type;
+      return name;
+    }
+    switch (props.item.item_type) {
+      case 'file':
+        return props.item.path?.split('/').pop() || props.item.path || 'file';
+      case 'directory':
+        return (props.item.path?.split('/').pop() || props.item.path || 'dir') + '/';
+      case 'commit':
+        return props.item.sha?.slice(0, 7) || 'commit';
+      case 'branch':
+        return props.item.path || 'branch';
+      case 'issue':
+        return `#${props.item.number}`;
+      case 'merge_request':
+        return `!${props.item.number}`;
+      default:
+        return props.item.item_type;
+    }
+  };
+
+  const icon = () => {
+    if (isK8s()) {
+      // Kubernetes resource icons
+      switch (props.item.item_type) {
+        case 'deployment': return 'M4 4h16v4H4zM4 10h16v4H4zM4 16h16v4H4z';
+        case 'pod': return 'M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z';
+        case 'service': return 'M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z';
+        case 'event': return 'M13 10V3L4 14h7v7l9-11h-7z';
+        default: return 'M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z';
+      }
+    }
+    switch (props.item.item_type) {
+      case 'file': return 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z';
+      case 'directory': return 'M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z';
+      case 'commit': return 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z';
+      case 'branch': return 'M13 7h8m0 0v8m0-8l-8 8-4-4-6 6';
+      case 'issue': return 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z';
+      case 'merge_request': return 'M4 6h16M4 10h16M4 14h16M4 18h16';
+      default: return 'M19 11H5m14 0a2 2 0 012 2v6';
+    }
+  };
+
+  const chipColor = () => isK8s() ? 'bg-[#326CE5]/10 text-[#326CE5] border-[#326CE5]/20' : 'bg-accent/10 text-accent border-accent/20';
+
+  return (
+    <span
+      class={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded-md ${chipColor()} font-medium max-w-[160px]`}
+      title={`${props.item.item_type}: ${props.item.title || props.item.path || ''} (${props.item.resource_name})`}
+    >
+      <svg class="w-2.5 h-2.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d={icon()} />
+      </svg>
+      <span class="truncate">{label()}</span>
+      <button
+        class="flex-shrink-0 hover:text-error transition-colors"
+        onClick={(e) => {
+          e.stopPropagation();
+          props.onRemove();
+        }}
+      >
+        <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </span>
+  );
+}
+
 export default function Composer(props: ComposerProps) {
   const [input, setInput] = createSignal('');
   const [mode, setMode] = createSignal<'prompt' | 'steer'>('prompt');
-  const [mcpOpen, setMcpOpen] = createSignal(false);
+  const [resourcesOpen, setResourcesOpen] = createSignal(false);
   let textareaRef: HTMLTextAreaElement | undefined;
 
   function autoResize() {
@@ -176,6 +256,7 @@ export default function Composer(props: ComposerProps) {
 
   const isDisabled = () => !selectedAgent();
   const isProcessing = () => streaming();
+  const ctxCount = () => selectedContextCount();
 
   const placeholder = () => {
     if (isDisabled()) return 'Select an agent to start...';
@@ -187,15 +268,34 @@ export default function Composer(props: ComposerProps) {
   return (
     <div class={`bg-background px-4 py-3 ${props.class || ''}`}>
       <div class="max-w-3xl mx-auto">
+        {/* Selected resource context chips */}
+        <Show when={ctxCount() > 0}>
+          <div class="flex flex-wrap items-center gap-1 mb-1.5 px-1">
+            <For each={selectedContextItems()}>
+              {(item) => (
+                <ContextChip item={item} onRemove={() => removeContextItem(resourceContextKey(item))} />
+              )}
+            </For>
+            <Show when={ctxCount() > 1}>
+              <button
+                class="text-[10px] text-text-muted hover:text-error transition-colors ml-1"
+                onClick={() => clearContextItems()}
+              >
+                Clear all
+              </button>
+            </Show>
+          </div>
+        </Show>
+
         <div
-          class={`composer-input flex items-end gap-2 border border-border rounded-xl px-3 py-2 ${
+          class={`composer-input flex items-end gap-1.5 border border-border rounded-xl px-3 py-2 ${
             isProcessing() ? 'composer-processing' : ''
           }`}
         >
           {/* Steer mode indicator */}
           <Show when={streaming()}>
             <button
-              class={`flex-shrink-0 self-end mb-0.5 p-1 rounded-md transition-colors ${
+              class={`flex-shrink-0 self-center p-1 rounded-lg transition-colors ${
                 mode() === 'steer'
                   ? 'bg-accent/20 text-accent'
                   : 'text-text-muted hover:text-text-secondary'
@@ -209,25 +309,33 @@ export default function Composer(props: ComposerProps) {
             </button>
           </Show>
 
-          {/* MCP browser toggle */}
+          {/* Agent Resources panel toggle */}
           <Show when={!streaming() && selectedAgent()}>
-            <div class="relative flex-shrink-0 self-end mb-0.5">
+            <div class="relative flex-shrink-0 self-center">
               <button
-                class={`p-1 rounded-md transition-colors ${
-                  mcpOpen()
-                    ? 'bg-purple-500/20 text-purple-400'
-                    : 'text-text-muted hover:text-text-secondary'
+                class={`p-1 rounded-lg transition-colors ${
+                  resourcesOpen()
+                    ? 'bg-accent/20 text-accent'
+                    : ctxCount() > 0
+                      ? 'text-accent'
+                      : 'text-text-muted hover:text-text-secondary'
                 }`}
-                onClick={() => setMcpOpen(!mcpOpen())}
-                title="Browse MCP server tools"
+                onClick={() => setResourcesOpen(!resourcesOpen())}
+                title="Browse agent resources"
               >
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 7.5l-2.25-1.313M21 7.5v2.25m0-2.25l-2.25 1.313M3 7.5l2.25-1.313M3 7.5l2.25 1.313M3 7.5v2.25m9 3l2.25-1.313M12 12.75l-2.25-1.313M12 12.75V15m0 6.75l2.25-1.313M12 21.75V19.5m0 2.25l-2.25-1.313m0-16.875L12 2.25l2.25 1.313M21 14.25v2.25l-2.25 1.313m-13.5 0L3 16.5v-2.25" />
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
                 </svg>
+                {/* Selection count dot */}
+                <Show when={ctxCount() > 0 && !resourcesOpen()}>
+                  <span class="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 text-[8px] font-bold bg-accent text-white rounded-full flex items-center justify-center leading-none">
+                    {ctxCount()}
+                  </span>
+                </Show>
               </button>
-              <MCPBrowser
-                open={mcpOpen()}
-                onClose={() => setMcpOpen(false)}
+              <AgentResourcesPanel
+                open={resourcesOpen()}
+                onClose={() => setResourcesOpen(false)}
                 class="bottom-full left-0 mb-2"
               />
             </div>
@@ -236,7 +344,7 @@ export default function Composer(props: ComposerProps) {
           {/* Textarea */}
           <textarea
             ref={textareaRef}
-            class="flex-1 bg-transparent text-sm text-text placeholder-text-muted resize-none outline-none min-h-[24px] max-h-[200px] py-0.5"
+            class="flex-1 bg-transparent text-sm text-text placeholder-text-muted resize-none outline-none min-h-[24px] max-h-[200px] leading-[24px]"
             placeholder={placeholder()}
             value={input()}
             disabled={isDisabled()}
@@ -249,7 +357,7 @@ export default function Composer(props: ComposerProps) {
           />
 
           {/* Action buttons */}
-          <div class="flex items-center gap-1 flex-shrink-0 self-end">
+          <div class="flex items-center gap-1 flex-shrink-0 self-center">
             <Show
               when={streaming()}
               fallback={

@@ -1,7 +1,9 @@
 // AgentDetail — agent info panel (model, tools, MCP servers, system prompt)
-import { createResource, Show, For } from 'solid-js';
+// Mode-aware: task agents get a runs-centric view, daemon agents show sessions/config.
+import { createResource, Show, For, onMount } from 'solid-js';
 import { agents as agentsAPI } from '../../lib/api';
-import { selectedAgent } from '../../stores/agents';
+import { selectedAgent, agentList } from '../../stores/agents';
+import { rightPanelState, setRightPanelState } from '../../stores/view';
 import Badge from '../shared/Badge';
 import Spinner from '../shared/Spinner';
 import { formatDateTime } from '../../lib/format';
@@ -23,6 +25,22 @@ export default function AgentDetail(props: AgentDetailProps) {
       return agentsAPI.get(key.ns, key.name);
     },
   );
+
+  // Check if the selected agent is a task agent
+  const isTaskAgent = () => {
+    const a = agent();
+    if (!a) return false;
+    const list = agentList();
+    const found = list?.find((ag) => ag.namespace === a.namespace && ag.name === a.name);
+    return found?.mode === 'task';
+  };
+
+  // Auto-expand runs panel for task agents (runs are their primary view)
+  onMount(() => {
+    if (isTaskAgent() && rightPanelState() === 'collapsed') {
+      setRightPanelState('expanded');
+    }
+  });
 
   return (
     <div class={`space-y-4 ${props.class || ''}`}>
@@ -61,6 +79,22 @@ export default function AgentDetail(props: AgentDetailProps) {
                   </Badge>
                 </Show>
               </div>
+
+              {/* Task agent hint */}
+              <Show when={isTaskAgent()}>
+                <div class="mx-4 mt-3 p-3 rounded-lg bg-info/5 border border-info/15">
+                  <div class="flex items-center gap-2 mb-1">
+                    <svg class="w-4 h-4 text-info" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 010 1.972l-11.54 6.347a1.125 1.125 0 01-1.667-.986V5.653z" />
+                    </svg>
+                    <span class="text-xs font-medium text-info">Task Agent</span>
+                  </div>
+                  <p class="text-xs text-text-secondary">
+                    This agent runs as one-shot jobs. Runs are triggered by channels, schedules, or other agents.
+                    View activity in the runs panel on the right.
+                  </p>
+                </div>
+              </Show>
 
               {/* Properties */}
               <div class="px-4 space-y-3">

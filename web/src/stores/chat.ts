@@ -6,6 +6,7 @@ import { createSignal, batch, createEffect } from 'solid-js';
 import { streamPrompt, sessions as sessionsAPI } from '../lib/api';
 import { selectedAgent } from './agents';
 import { currentSessionId, setCurrentSessionId, createSession, onSessionDeleted, notifyPromptCompleted, triggerDelayedSessionRefetch, sessionList } from './sessions';
+import { getSelectedContext, clearContextItems } from './resources';
 import type {
   FEPEvent,
   Usage,
@@ -408,6 +409,12 @@ export async function sendMessage(prompt: string) {
   const agent = selectedAgent();
   if (!agent) return;
 
+  // Capture selected resource context before clearing (per-turn injection)
+  const context = getSelectedContext();
+  if (context.length > 0) {
+    clearContextItems(); // clear after capturing
+  }
+
   // Ensure we have a session
   let sessionId = currentSessionId();
   if (!sessionId) {
@@ -459,6 +466,7 @@ export async function sendMessage(prompt: string) {
       prompt,
       (event) => handleFEPEvent(capturedState, capturedSessionId, event),
       state.abortController.signal,
+      context.length > 0 ? context : undefined,
     );
   } catch (err) {
     if ((err as Error).name !== 'AbortError') {

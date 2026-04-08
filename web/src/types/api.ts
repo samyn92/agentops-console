@@ -145,6 +145,187 @@ export interface MCPServerResponse {
   }
 }
 
+// ---- AgentResource CR ----
+
+export type AgentResourceKind =
+  | 'github-repo'
+  | 'github-org'
+  | 'gitlab-project'
+  | 'gitlab-group'
+  | 'git-repo'
+  | 'mcp-endpoint'
+  | 's3-bucket'
+  | 'documentation';
+
+export interface AgentResourceBinding {
+  name: string
+  namespace: string
+  kind: AgentResourceKind
+  displayName: string
+  description?: string
+  phase: string
+  readOnly: boolean
+  autoContext: boolean
+  hasCredentials: boolean
+  github?: {
+    owner: string
+    repo: string
+    defaultBranch?: string
+    apiURL?: string
+  }
+  githubOrg?: {
+    org: string
+    repoFilter?: string[]
+    apiURL?: string
+  }
+  gitlab?: {
+    baseURL: string
+    project: string
+    defaultBranch?: string
+  }
+  gitlabGroup?: {
+    baseURL: string
+    group: string
+    projects?: string[]
+  }
+}
+
+/** Check if a resource kind supports file/commit/branch/MR/issue browsing */
+export function isBrowsableResource(kind: AgentResourceKind): boolean {
+  return kind === 'github-repo' || kind === 'gitlab-project';
+}
+
+/** Get the display icon type for a resource kind */
+export function resourceKindIcon(kind: AgentResourceKind): 'github' | 'gitlab' | 'git' | 'mcp' | 's3' | 'docs' {
+  switch (kind) {
+    case 'github-repo':
+    case 'github-org':
+      return 'github';
+    case 'gitlab-project':
+    case 'gitlab-group':
+      return 'gitlab';
+    case 'git-repo':
+      return 'git';
+    case 'mcp-endpoint':
+      return 'mcp';
+    case 's3-bucket':
+      return 's3';
+    case 'documentation':
+      return 'docs';
+  }
+}
+
+// ---- Git Forge Browser Types ----
+
+export interface GitFile {
+  name: string
+  path: string
+  type: 'file' | 'dir' | 'tree' | 'blob' | 'submodule' | 'symlink' // GitHub uses file/dir, GitLab uses tree/blob
+  size?: number
+  sha?: string
+  id?: string // GitLab
+}
+
+export interface GitCommit {
+  sha?: string         // GitHub
+  id?: string          // GitLab
+  short_id?: string    // GitLab
+  message: string
+  title?: string       // GitLab
+  author_name?: string // GitLab
+  authored_date?: string // GitLab
+  committed_date?: string // GitLab
+  commit?: {           // GitHub nested
+    author: { name: string; email: string; date: string }
+    committer: { name: string; email: string; date: string }
+    message: string
+  }
+  author?: {           // GitHub top-level
+    login?: string
+    avatar_url?: string
+  }
+}
+
+export interface GitBranch {
+  name: string
+  commit?: { sha?: string; id?: string }
+  protected?: boolean
+  default?: boolean   // GitLab
+}
+
+export interface GitMergeRequest {
+  // Common
+  title: string
+  state: string
+  // GitHub PR fields
+  number?: number
+  html_url?: string
+  user?: { login: string; avatar_url?: string }
+  created_at?: string
+  updated_at?: string
+  draft?: boolean
+  // GitLab MR fields
+  iid?: number
+  web_url?: string
+  author?: { username: string; avatar_url?: string }
+  source_branch?: string
+  target_branch?: string
+}
+
+export interface GitIssue {
+  // Common
+  title: string
+  state: string
+  // GitHub
+  number?: number
+  html_url?: string
+  user?: { login: string; avatar_url?: string }
+  labels?: Array<{ name: string; color?: string }>
+  created_at?: string
+  updated_at?: string
+  // GitLab
+  iid?: number
+  web_url?: string
+  author?: { username: string; avatar_url?: string }
+}
+
+// ---- Resource Context (per-turn dynamic context sent to runtime) ----
+
+export interface ResourceContext {
+  resource_name: string        // AgentResource name
+  kind: string                 // e.g. "github-repo"
+  item_type: string            // file, commit, branch, issue, merge_request
+  path?: string                // file path or branch name
+  ref?: string                 // git ref
+  title?: string               // issue/MR title
+  number?: number              // issue/MR number
+  sha?: string                 // commit SHA
+  url?: string                 // web URL for the item
+  description?: string         // extra description text
+}
+
+/** Unique key for a selected resource item (for deduplication) */
+export function resourceContextKey(ctx: ResourceContext): string {
+  // Kubernetes resources use kind=kubernetes
+  if (ctx.kind === 'kubernetes') {
+    return `k8s:${ctx.item_type}:${ctx.path || ctx.title || ''}`;
+  }
+  switch (ctx.item_type) {
+    case 'file':
+      return `${ctx.resource_name}:file:${ctx.path}:${ctx.ref || ''}`;
+    case 'commit':
+      return `${ctx.resource_name}:commit:${ctx.sha}`;
+    case 'branch':
+      return `${ctx.resource_name}:branch:${ctx.path}`;
+    case 'issue':
+      return `${ctx.resource_name}:issue:${ctx.number}`;
+    case 'merge_request':
+      return `${ctx.resource_name}:mr:${ctx.number}`;
+    default:
+      return `${ctx.resource_name}:${ctx.item_type}:${ctx.path || ctx.sha || ctx.number}`;
+  }
+}
+
 // ---- Session ----
 
 export interface SessionUsage {
@@ -229,6 +410,170 @@ export interface PodInfo {
     image: string
     ready: boolean
   }>
+}
+
+// ---- Kubernetes Resource Browser Types ----
+
+export interface K8sNamespace {
+  name: string
+  status: string
+  age: string
+}
+
+export interface K8sNamespaceSummary {
+  pods: number
+  deployments: number
+  statefulSets: number
+  daemonSets: number
+  jobs: number
+  cronJobs: number
+  services: number
+  ingresses: number
+  configMaps: number
+  secrets: number
+}
+
+export interface K8sPod {
+  name: string
+  namespace: string
+  phase: string
+  ready: string
+  restarts: number
+  node: string
+  age: string
+  ip?: string
+  containers: Array<{
+    name: string
+    image: string
+    ready: boolean
+    state: string
+    reason?: string
+  }>
+  labels?: Record<string, string>
+}
+
+export interface K8sDeployment {
+  name: string
+  namespace: string
+  ready: string
+  upToDate: number
+  available: number
+  age: string
+  images: string[]
+  labels?: Record<string, string>
+}
+
+export interface K8sStatefulSet {
+  name: string
+  namespace: string
+  ready: string
+  age: string
+  images: string[]
+  labels?: Record<string, string>
+}
+
+export interface K8sDaemonSet {
+  name: string
+  namespace: string
+  desired: number
+  current: number
+  ready: number
+  available: number
+  age: string
+  labels?: Record<string, string>
+}
+
+export interface K8sJob {
+  name: string
+  namespace: string
+  status: string
+  succeeded: number
+  failed: number
+  age: string
+  duration?: string
+  labels?: Record<string, string>
+}
+
+export interface K8sCronJob {
+  name: string
+  namespace: string
+  schedule: string
+  suspend: boolean
+  active: number
+  lastSchedule?: string
+  age: string
+}
+
+export interface K8sService {
+  name: string
+  namespace: string
+  type: string
+  clusterIP: string
+  externalIP?: string
+  ports: Array<{
+    port: number
+    targetPort: string
+    protocol: string
+    name?: string
+  }>
+  age: string
+  selector?: Record<string, string>
+  labels?: Record<string, string>
+}
+
+export interface K8sIngress {
+  name: string
+  namespace: string
+  class?: string
+  hosts: Array<{ host: string; path?: string }>
+  tls: boolean
+  age: string
+  labels?: Record<string, string>
+}
+
+export interface K8sConfigMap {
+  name: string
+  namespace: string
+  keys: string[]
+  age: string
+}
+
+export interface K8sSecret {
+  name: string
+  namespace: string
+  type: string
+  keys: string[]
+  age: string
+}
+
+export interface K8sEvent {
+  type: string
+  reason: string
+  object: string
+  message: string
+  count: number
+  firstSeen: string
+  lastSeen: string
+  source?: string
+}
+
+/** Kubernetes resource kind identifier for the browser */
+export type K8sResourceKind =
+  | 'pods'
+  | 'deployments'
+  | 'statefulsets'
+  | 'daemonsets'
+  | 'jobs'
+  | 'cronjobs'
+  | 'services'
+  | 'ingresses'
+  | 'configmaps'
+  | 'secrets'
+  | 'events';
+
+/** Unique key for a K8s resource context item */
+export function k8sResourceContextKey(ns: string, kind: string, name: string): string {
+  return `k8s:${ns}:${kind}:${name}`;
 }
 
 // ---- Runtime Status ----

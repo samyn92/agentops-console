@@ -2,7 +2,7 @@
 import { useNavigate } from '@solidjs/router';
 import { agentList, selectAgent, selectedAgent } from '../stores/agents';
 import { startNewChat } from '../stores/sessions';
-import { setActiveView } from '../stores/view';
+import { toggleLeftPanel, toggleRightPanel } from '../stores/view';
 
 interface Shortcut {
   key: string;
@@ -50,19 +50,17 @@ export function registerKeyboardShortcuts(navigate: ReturnType<typeof useNavigat
     {
       key: '1',
       meta: true,
-      description: 'Agents view',
+      description: 'Toggle agents panel',
       action: () => {
-        navigate('/');
-        setActiveView('agents');
+        toggleLeftPanel();
       },
     },
     {
-      key: '2',
+      key: '3',
       meta: true,
-      description: 'Runs view',
+      description: 'Toggle runs panel',
       action: () => {
-        navigate('/');
-        setActiveView('runs');
+        toggleRightPanel();
       },
     },
     {
@@ -109,8 +107,8 @@ export function getShortcutList(): Array<{ keys: string; description: string }> 
   return [
     { keys: `${mod}K`, description: 'Cycle to next agent' },
     { keys: `${mod}N`, description: 'New chat' },
-    { keys: `${mod}1`, description: 'Agents view' },
-    { keys: `${mod}2`, description: 'Runs view' },
+    { keys: `${mod}1`, description: 'Toggle agents panel' },
+    { keys: `${mod}3`, description: 'Toggle runs panel' },
     { keys: `${mod},`, description: 'Go to Settings' },
     { keys: 'Enter', description: 'Send message' },
     { keys: 'Shift+Enter', description: 'New line' },

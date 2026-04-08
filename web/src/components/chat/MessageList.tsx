@@ -1,4 +1,5 @@
-// MessageList — auto-scrolling message list with rAF-debounced scroll
+// MessageList — auto-scrolling message list with rAF-debounced scroll.
+// M3 spacing: 4dp grid, denser grouping for same-role consecutive messages.
 import { For, Show, createEffect, onCleanup } from 'solid-js';
 import {
   messages,
@@ -8,6 +9,7 @@ import {
   activeToolInput,
 } from '../../stores/chat';
 import MessageBubble from './MessageBubble';
+import AgentThinking from './AgentThinking';
 import EmptyState from '../shared/EmptyState';
 
 interface MessageListProps {
@@ -17,7 +19,7 @@ interface MessageListProps {
 export default function MessageList(props: MessageListProps) {
   let listRef: HTMLDivElement | undefined;
   let isUserScrolled = false;
-  let rafId: number | null = null; // rAF guard — at most one pending scroll per frame
+  let rafId: number | null = null;
 
   function scheduleScroll() {
     if (isUserScrolled || !listRef || rafId !== null) return;
@@ -31,26 +33,20 @@ export default function MessageList(props: MessageListProps) {
     if (rafId !== null) cancelAnimationFrame(rafId);
   });
 
-  // Auto-scroll to bottom when new content arrives.
-  // Single rAF guard prevents multiple scroll calls per frame.
   createEffect(() => {
-    // Track dependencies
     messages();
     activeText();
     activeReasoning();
     activeToolInput();
-
     scheduleScroll();
   });
 
   function onScroll() {
     if (!listRef) return;
     const { scrollTop, scrollHeight, clientHeight } = listRef;
-    // Consider "at bottom" if within 100px of the end
     isUserScrolled = scrollHeight - scrollTop - clientHeight > 100;
   }
 
-  // Reset scroll lock when streaming starts
   createEffect(() => {
     if (streaming()) {
       isUserScrolled = false;
@@ -60,10 +56,23 @@ export default function MessageList(props: MessageListProps) {
   const msgs = () => messages();
   const lastIndex = () => msgs().length - 1;
 
+  // Show thinking indicator when streaming but assistant has no visible output yet
+  const showThinking = () => {
+    if (!streaming()) return false;
+    const m = msgs();
+    if (m.length === 0) return true; // streaming started, no messages yet
+    const last = m[m.length - 1];
+    if (last.role !== 'assistant') return false;
+    // Show if assistant has no finalized parts AND no active streaming content
+    const hasParts = last.parts && last.parts.length > 0;
+    const hasActive = !!(activeText()?.content || activeReasoning()?.content || activeToolInput());
+    return !hasParts && !hasActive;
+  };
+
   return (
     <div
       ref={listRef}
-      class={`flex-1 overflow-y-auto px-4 py-4 ${props.class || ''}`}
+      class={`flex-1 overflow-y-auto px-4 py-6 ${props.class || ''}`}
       onScroll={onScroll}
     >
       <Show
@@ -82,16 +91,25 @@ export default function MessageList(props: MessageListProps) {
       >
         <div class="max-w-3xl mx-auto">
           <For each={msgs()}>
-            {(msg, i) => (
-              <MessageBubble
-                message={msg}
-                isLastAssistant={msg.role === 'assistant' && i() === lastIndex()}
-                activeText={i() === lastIndex() ? activeText() : null}
-                activeReasoning={i() === lastIndex() ? activeReasoning() : null}
-                activeToolInput={i() === lastIndex() ? activeToolInput() : null}
-              />
-            )}
+            {(msg, i) => {
+              const prevMsg = () => i() > 0 ? msgs()[i() - 1] : null;
+              const prevSameRole = () => prevMsg()?.role === msg.role;
+
+              return (
+                <MessageBubble
+                  message={msg}
+                  prevSameRole={prevSameRole()}
+                  isLastAssistant={msg.role === 'assistant' && i() === lastIndex()}
+                  activeText={i() === lastIndex() ? activeText() : null}
+                  activeReasoning={i() === lastIndex() ? activeReasoning() : null}
+                  activeToolInput={i() === lastIndex() ? activeToolInput() : null}
+                />
+              );
+            }}
           </For>
+
+          {/* Synaptic Pulse — agent thinking indicator */}
+          <AgentThinking active={showThinking()} />
         </div>
       </Show>
     </div>
