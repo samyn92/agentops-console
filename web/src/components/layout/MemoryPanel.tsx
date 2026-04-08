@@ -1,7 +1,7 @@
 // MemoryPanel — Engram memory browser for the selected agent.
 // Shows observations, search, sessions, and detail views.
 // Only renders when the agent has memory enabled (spec.memory.serverRef set).
-import { For, Show, createSignal, createMemo } from 'solid-js';
+import { For, Show, createSignal, createMemo, createEffect } from 'solid-js';
 import {
   memoryEnabled,
   memoryProject,
@@ -760,6 +760,290 @@ function CreateObservationForm(props: { onClose: () => void; initialContent?: st
             Cancel
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Extract View (AI-assisted memory extraction) ──
+
+function ExtractView() {
+  const [focusHint, setFocusHint] = createSignal('');
+  const [typeHint, setTypeHint] = createSignal('');
+  // Local editable copies of extraction result
+  const [editType, setEditType] = createSignal('');
+  const [editTitle, setEditTitle] = createSignal('');
+  const [editContent, setEditContent] = createSignal('');
+  const [editTags, setEditTags] = createSignal('');
+  const [saving, setSaving] = createSignal(false);
+
+  const TYPES = ['decision', 'discovery', 'bugfix', 'pattern', 'architecture', 'config', 'learning', 'preference'];
+
+  const hasResult = () => extractionResult() !== null;
+  const status = () => runtimeStatus();
+  const msgCount = () => status()?.messages ?? 0;
+
+  // Sync extraction result into editable fields when it arrives
+  createEffect(() => {
+    const r = extractionResult();
+    if (r) {
+      setEditType(r.type || 'learning');
+      setEditTitle(r.title || '');
+      setEditContent(r.content || '');
+      setEditTags((r.tags || []).join(', '));
+    }
+  });
+
+  async function handleExtract() {
+    await extractFromConversation(
+      focusHint().trim() || undefined,
+      typeHint() || undefined,
+    );
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    const tags = editTags().split(',').map(t => t.trim()).filter(Boolean);
+    await saveExtraction({
+      type: editType(),
+      title: editTitle(),
+      content: editContent(),
+      tags,
+    });
+    setSaving(false);
+  }
+
+  function handleDiscard() {
+    discardExtraction();
+    setMemoryView('observations');
+  }
+
+  function handleBack() {
+    discardExtraction();
+    setFocusHint('');
+    setTypeHint('');
+    setMemoryView('observations');
+  }
+
+  return (
+    <div class="flex flex-col h-full">
+      {/* Header */}
+      <div class="flex items-center gap-2 px-3 py-2 border-b border-border-subtle">
+        <button
+          class="p-1 rounded-lg hover:bg-surface-hover text-text-secondary hover:text-text transition-colors"
+          onClick={handleBack}
+          title="Back"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+          </svg>
+        </button>
+        <svg class="w-3.5 h-3.5 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z" />
+        </svg>
+        <span class="text-xs text-text-muted flex-1">Extract from conversation</span>
+        <span class="text-[10px] text-text-muted/60">{msgCount()} msgs</span>
+      </div>
+
+      <div class="flex-1 overflow-y-auto">
+        {/* ── Input phase: before extraction is triggered ── */}
+        <Show when={!hasResult() && !extracting() && !extractionError()}>
+          <div class="px-3 py-3 space-y-3">
+            {/* Focus hint */}
+            <div>
+              <label class="text-[10px] text-text-muted block mb-1">Focus hint <span class="text-text-muted/50">(optional)</span></label>
+              <input
+                type="text"
+                class="w-full px-2.5 py-1.5 text-xs bg-surface-2 text-text rounded-lg border border-border-subtle focus:border-border-hover outline-none transition-colors"
+                placeholder="e.g. why the deployment failed"
+                value={focusHint()}
+                onInput={(e) => setFocusHint((e.target as HTMLInputElement).value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleExtract(); }}
+              />
+            </div>
+
+            {/* Type hint */}
+            <div>
+              <label class="text-[10px] text-text-muted block mb-1">Type hint <span class="text-text-muted/50">(optional)</span></label>
+              <div class="flex flex-wrap gap-1">
+                <button
+                  class={`px-2 py-0.5 text-[10px] rounded-md transition-colors ${
+                    typeHint() === ''
+                      ? 'bg-surface-hover text-text font-medium border border-border-hover'
+                      : 'text-text-muted hover:text-text-secondary bg-surface-2 border border-border-subtle'
+                  }`}
+                  onClick={() => setTypeHint('')}
+                >
+                  Auto
+                </button>
+                <For each={TYPES}>
+                  {(t) => (
+                    <button
+                      class={`px-2 py-0.5 text-[10px] rounded-md transition-colors ${
+                        typeHint() === t
+                          ? 'bg-surface-hover text-text font-medium border border-border-hover'
+                          : 'text-text-muted hover:text-text-secondary bg-surface-2 border border-border-subtle'
+                      }`}
+                      onClick={() => setTypeHint(t)}
+                    >
+                      {typeLabel(t)}
+                    </button>
+                  )}
+                </For>
+              </div>
+            </div>
+
+            {/* Extract button */}
+            <button
+              class="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-[11px] font-medium text-text bg-accent/20 hover:bg-accent/30 rounded-lg transition-colors disabled:opacity-40"
+              onClick={handleExtract}
+              disabled={msgCount() === 0}
+            >
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z" />
+              </svg>
+              Extract knowledge
+            </button>
+
+            <Show when={msgCount() === 0}>
+              <p class="text-[10px] text-text-muted/60 text-center">No messages in working memory to extract from.</p>
+            </Show>
+          </div>
+        </Show>
+
+        {/* ── Loading phase ── */}
+        <Show when={extracting()}>
+          <div class="flex flex-col items-center justify-center py-12 px-4 gap-3">
+            <Spinner size="md" />
+            <p class="text-xs text-text-muted">Analyzing conversation...</p>
+            <p class="text-[10px] text-text-muted/60">The agent's model is extracting knowledge</p>
+          </div>
+        </Show>
+
+        {/* ── Error phase ── */}
+        <Show when={extractionError() && !extracting()}>
+          <div class="px-3 py-3 space-y-3">
+            <div class="flex items-start gap-2 p-2.5 bg-error/10 rounded-lg border border-error/20">
+              <svg class="w-4 h-4 text-error flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+              </svg>
+              <div>
+                <p class="text-xs text-error font-medium">Extraction failed</p>
+                <p class="text-[10px] text-error/80 mt-0.5">{extractionError()}</p>
+              </div>
+            </div>
+            <div class="flex gap-2">
+              <button
+                class="flex-1 px-3 py-1.5 text-[11px] font-medium text-text bg-accent/20 hover:bg-accent/30 rounded-lg transition-colors"
+                onClick={handleExtract}
+              >
+                Retry
+              </button>
+              <button
+                class="flex-1 px-3 py-1.5 text-[11px] text-text-secondary hover:text-text bg-surface-2 hover:bg-surface-hover rounded-lg transition-colors"
+                onClick={handleBack}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </Show>
+
+        {/* ── Review phase: editable pre-filled form ── */}
+        <Show when={hasResult() && !extracting()}>
+          <div class="px-3 py-3 space-y-3">
+            <div class="flex items-center gap-1.5 text-[10px] text-success">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Review and edit before saving
+            </div>
+
+            {/* Type selector */}
+            <div>
+              <label class="text-[10px] text-text-muted block mb-1">Type</label>
+              <div class="flex flex-wrap gap-1">
+                <For each={TYPES}>
+                  {(t) => (
+                    <button
+                      class={`px-2 py-0.5 text-[10px] rounded-md transition-colors ${
+                        editType() === t
+                          ? 'bg-surface-hover text-text font-medium border border-border-hover'
+                          : 'text-text-muted hover:text-text-secondary bg-surface-2 border border-border-subtle'
+                      }`}
+                      onClick={() => setEditType(t)}
+                    >
+                      {typeLabel(t)}
+                    </button>
+                  )}
+                </For>
+              </div>
+            </div>
+
+            {/* Title */}
+            <div>
+              <label class="text-[10px] text-text-muted block mb-1">Title</label>
+              <input
+                type="text"
+                class="w-full px-2.5 py-1.5 text-xs bg-surface-2 text-text rounded-lg border border-border-subtle focus:border-border-hover outline-none transition-colors"
+                value={editTitle()}
+                onInput={(e) => setEditTitle((e.target as HTMLInputElement).value)}
+              />
+            </div>
+
+            {/* Content */}
+            <div>
+              <label class="text-[10px] text-text-muted block mb-1">Content</label>
+              <textarea
+                class="w-full px-2.5 py-1.5 text-xs bg-surface-2 text-text rounded-lg border border-border-subtle focus:border-border-hover outline-none transition-colors font-mono resize-y min-h-[120px]"
+                value={editContent()}
+                onInput={(e) => setEditContent((e.target as HTMLTextAreaElement).value)}
+              />
+            </div>
+
+            {/* Tags */}
+            <div>
+              <label class="text-[10px] text-text-muted block mb-1">Tags <span class="text-text-muted/50">(comma-separated)</span></label>
+              <input
+                type="text"
+                class="w-full px-2.5 py-1.5 text-xs bg-surface-2 text-text rounded-lg border border-border-subtle focus:border-border-hover outline-none transition-colors"
+                placeholder="e.g. kubernetes, deployment, fix"
+                value={editTags()}
+                onInput={(e) => setEditTags((e.target as HTMLInputElement).value)}
+              />
+              <Show when={editTags().trim()}>
+                <div class="flex flex-wrap gap-1 mt-1.5">
+                  <For each={editTags().split(',').map(t => t.trim()).filter(Boolean)}>
+                    {(tag) => (
+                      <span class="px-1.5 py-0.5 text-[10px] bg-surface-hover text-text-secondary rounded-md border border-border-subtle">
+                        {tag}
+                      </span>
+                    )}
+                  </For>
+                </div>
+              </Show>
+            </div>
+
+            {/* Actions */}
+            <div class="flex gap-2 pt-1">
+              <button
+                class="flex-1 px-3 py-1.5 text-[11px] font-medium text-text bg-accent/20 hover:bg-accent/30 rounded-lg transition-colors disabled:opacity-40"
+                onClick={handleSave}
+                disabled={saving() || !editTitle().trim() || !editContent().trim()}
+              >
+                <Show when={saving()} fallback="Save to memory">
+                  <span class="flex items-center justify-center gap-1.5"><Spinner size="sm" /> Saving...</span>
+                </Show>
+              </button>
+              <button
+                class="px-3 py-1.5 text-[11px] text-text-secondary hover:text-text bg-surface-2 hover:bg-surface-hover rounded-lg transition-colors"
+                onClick={handleDiscard}
+              >
+                Discard
+              </button>
+            </div>
+          </div>
+        </Show>
       </div>
     </div>
   );
