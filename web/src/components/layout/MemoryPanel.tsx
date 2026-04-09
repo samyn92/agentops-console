@@ -562,7 +562,7 @@ function DetailView() {
         </div>
       </Show>
 
-      <Show when={obs() && !selectedObservationLoading()}>
+      <Show when={!selectedObservationLoading() && obs()}>
         {(o) => (
           <div class="flex-1 overflow-y-auto">
             <Show when={!editing()} fallback={
