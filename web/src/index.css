@@ -450,50 +450,12 @@
   padding-top: 6px;
 }
 
-/* Variant: within right panel (tighter spacing, slightly different styling) */
-.section-header--panel {
-  padding: 8px 12px 6px;
-  margin: 0;
-  background: var(--bg-secondary);
-  border-top: 1px solid var(--border-main);
-  border-bottom: 1px solid color-mix(in srgb, var(--border-main) 40%, transparent);
-}
-
-.section-header--panel::after {
-  display: none;
-}
-
-.section-header--panel .section-label {
-  font-size: 10px;
-  letter-spacing: 0.08em;
-}
-
-/* Pinned section variant — accent-tinted */
-.section-header--pinned {
-  background: color-mix(in srgb, var(--accent) 5%, var(--bg-secondary));
-  border-top: 1px solid color-mix(in srgb, var(--accent) 15%, var(--border-main));
-  border-bottom: 1px solid color-mix(in srgb, var(--accent) 10%, transparent);
-}
-
-.section-header--pinned .section-label {
-  color: var(--accent);
-}
-
-:root.dark .section-header--pinned {
-  background: color-mix(in srgb, var(--accent) 6%, var(--bg-secondary));
-  border-top-color: color-mix(in srgb, var(--accent) 20%, var(--border-main));
-}
-
 /* Material You overrides */
 .material .section-header::after {
   opacity: 0.3;
   height: 2px;
   border-radius: 1px;
   background: var(--accent);
-}
-
-.material .section-header--panel {
-  border-radius: 0;
 }
 
 /* ===== Markdown Prose ===== */

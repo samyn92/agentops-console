@@ -60,7 +60,7 @@ export default function AgentCard(props: AgentCardProps) {
         <span class={`font-medium text-text truncate flex-1 ${isCompact() ? 'text-xs' : 'text-sm'}`}>
           {props.agent.name}
         </span>
-        <Show when={props.agent.phase && props.agent.phase !== 'Running'}>
+        <Show when={props.agent.phase && props.agent.phase !== 'Running' && props.agent.phase !== 'Ready'}>
           <span class={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
             props.agent.phase === 'Pending' ? 'bg-warning/15 text-warning' :
             props.agent.phase === 'Failed' ? 'bg-error/15 text-error' :

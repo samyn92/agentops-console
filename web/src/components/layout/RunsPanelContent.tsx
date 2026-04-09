@@ -103,8 +103,8 @@ export default function RunsPanelContent() {
           <div class="flex flex-col">
             {/* Pinned section header */}
             <Show when={agent() && pinCount() > 0}>
-              <div class="section-header--panel section-header--pinned">
-                <span class="section-label">
+              <div class="section-header section-header--first">
+                <span class="section-label" style={{ color: 'var(--accent)' }}>
                   {agent()!.name} — {pinCount()} runs
                 </span>
               </div>
@@ -127,7 +127,7 @@ export default function RunsPanelContent() {
                 return (
                   <>
                     <Show when={showSeparator()}>
-                      <div class="section-header--panel">
+                      <div class="section-header">
                         <span class="section-label">
                           Other Agents
                         </span>
