@@ -416,14 +416,46 @@
   background-color: var(--accent);
 }
 
-/* ===== Subtle fade for section headers ===== */
-/* Type scale: xs=12px, sm=14px, base=16px. Weights: 400 (normal), 600 (semibold) only. */
+/* ===== Section Headers ===== */
+/* Cohesive section divider system used across sidebar, right panel, and memory panel.
+   A thin ruled line with an uppercase label creates clear visual hierarchy between groups. */
+
 .section-label {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text-muted);
+}
+
+/* Section header with ruled line — the primary visual separator */
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px 6px;
+}
+
+/* The ruled line that extends after the label */
+.section-header::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-main);
+  opacity: 0.6;
+}
+
+/* Variant: first section doesn't need top padding */
+.section-header--first {
+  padding-top: 6px;
+}
+
+/* Material You overrides */
+.material .section-header::after {
+  opacity: 0.3;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--accent);
 }
 
 /* ===== Markdown Prose ===== */
@@ -1475,24 +1507,53 @@
   border-color: color-mix(in srgb, var(--success) 20%, transparent);
 }
 
-/* ===== Run Card — Task Agent View ===== */
-/* Card component for the central task agent timeline.
-   Slightly elevated on hover, accent border when active. */
+/* ===== Run Card — Right-Panel Execution Cards ===== */
+/* Mirrors .agent-card shape: rounded, transparent bg, accent border selection.
+   Clicking a run card opens the RunDetailView in the center stage. */
 
 .run-card {
+  position: relative;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
   transition:
+    background-color 200ms ease,
     border-color 200ms ease,
-    box-shadow 200ms ease,
-    background-color 200ms ease;
+    box-shadow 200ms ease;
 }
 
 .run-card:hover {
-  border-color: var(--border-hover);
+  background: var(--bg-hover);
 }
 
-.run-card--active {
-  border-color: color-mix(in srgb, var(--accent) 30%, var(--border-main));
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 8%, transparent);
+.run-card--selected {
+  background: var(--accent-muted);
+  border-color: color-mix(in srgb, var(--accent) 25%, transparent);
+  box-shadow: var(--shadow-sm);
+}
+
+.run-card--selected:hover {
+  background: var(--accent-muted);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.run-card--pinned {
+  background: color-mix(in srgb, var(--accent) 4%, transparent);
+}
+
+.run-card--pinned:hover {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+/* Active phase pulse indicator on run cards */
+.run-card--running {
+  border-color: color-mix(in srgb, var(--success) 20%, transparent);
+}
+
+.run-card--failed {
+  border-color: color-mix(in srgb, var(--error) 15%, transparent);
 }
 
 /* Git workspace detail block inside expanded run */
@@ -1513,8 +1574,178 @@
   border-radius: 16px;
 }
 
+.material .run-card--selected {
+  box-shadow: var(--shadow-md);
+}
+
 .material .git-workspace-detail {
   border-radius: 12px;
+}
+
+/* ===== Sidebar Agent Hierarchy ===== */
+/* Tree structure: daemons as groups with nested task agents.
+   Uses a visual tree connector (vertical line + horizontal branch)
+   to show the delegation relationship. */
+
+.sidebar-agent-group {
+  margin-bottom: 2px;
+}
+
+.sidebar-nested-tasks {
+  margin-left: 12px;
+  padding-left: 0;
+  position: relative;
+}
+
+/* Tree connector — vertical line from daemon to last child */
+.sidebar-nested-tasks::before {
+  content: '';
+  position: absolute;
+  left: 10px;
+  top: 0;
+  bottom: 16px;
+  width: 1px;
+  background: var(--border-main);
+  opacity: 0.5;
+}
+
+.sidebar-nested-task {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+}
+
+/* Horizontal branch from vertical line to child card */
+.sidebar-tree-connector {
+  position: absolute;
+  left: 10px;
+  top: 18px;
+  width: 10px;
+  height: 1px;
+  background: var(--border-main);
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+
+/* Nudge the nested card to make room for the connector */
+.sidebar-nested-task > .agent-card {
+  margin-left: 20px;
+  flex: 1;
+}
+
+/* Compact agent card variant — smaller padding for nested tasks */
+.agent-card--compact {
+  padding: 6px 10px;
+  border-radius: 8px;
+}
+
+.agent-card--compact:hover {
+  background: var(--bg-hover);
+}
+
+/* ── Sidebar Indicator Badges (channel/schedule on agent cards) ── */
+.sidebar-indicator-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 4px;
+  border-radius: 9999px;
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.sidebar-indicator-badge--channel {
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
+  color: var(--warning);
+  border: 1px solid color-mix(in srgb, var(--warning) 20%, transparent);
+}
+
+.sidebar-indicator-badge--schedule {
+  background: color-mix(in srgb, var(--info) 12%, transparent);
+  color: var(--info);
+  border: 1px solid color-mix(in srgb, var(--info) 20%, transparent);
+}
+
+:root.dark .sidebar-indicator-badge--channel {
+  background: color-mix(in srgb, var(--warning) 15%, transparent);
+  border-color: color-mix(in srgb, var(--warning) 25%, transparent);
+}
+
+:root.dark .sidebar-indicator-badge--schedule {
+  background: color-mix(in srgb, var(--info) 15%, transparent);
+  border-color: color-mix(in srgb, var(--info) 25%, transparent);
+}
+
+/* ── Sidebar Channel Pills (below agent card in Channels section) ── */
+.sidebar-channel-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 6px;
+  border-radius: 9999px;
+  font-size: 10px;
+  font-weight: 500;
+  background: color-mix(in srgb, var(--warning) 8%, transparent);
+  color: var(--warning);
+  border: 1px solid color-mix(in srgb, var(--warning) 15%, transparent);
+  max-width: 140px;
+}
+
+:root.dark .sidebar-channel-pill {
+  background: color-mix(in srgb, var(--warning) 10%, transparent);
+  border-color: color-mix(in srgb, var(--warning) 20%, transparent);
+}
+
+/* ── Sidebar Schedule Pills (below agent card in Scheduled section) ── */
+.sidebar-schedule-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 6px;
+  border-radius: 9999px;
+  font-size: 10px;
+  font-weight: 500;
+  background: color-mix(in srgb, var(--info) 8%, transparent);
+  color: var(--info);
+  border: 1px solid color-mix(in srgb, var(--info) 15%, transparent);
+}
+
+:root.dark .sidebar-schedule-pill {
+  background: color-mix(in srgb, var(--info) 10%, transparent);
+  border-color: color-mix(in srgb, var(--info) 20%, transparent);
+}
+
+/* Material You overrides for hierarchy */
+.material .sidebar-nested-tasks::before {
+  opacity: 0.3;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+}
+
+.material .sidebar-tree-connector {
+  opacity: 0.3;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+}
+
+.material .agent-card--compact {
+  border-radius: 12px;
+}
+
+.material .sidebar-indicator-badge {
+  border-radius: 9999px;
+}
+
+.material .sidebar-channel-pill {
+  border-radius: 9999px;
+}
+
+.material .sidebar-schedule-pill {
+  border-radius: 9999px;
 }
 
 /* ===== Mobile-specific scrolling fixes ===== */

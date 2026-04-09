@@ -49,6 +49,7 @@ func (h *Handlers) ListAgents(w http.ResponseWriter, r *http.Request) {
 		Image     string `json:"image"`
 		Phase     string `json:"phase"`
 		Ready     int32  `json:"readyReplicas"`
+		Schedule  string `json:"schedule,omitempty"`
 	}
 
 	resp := make([]agentResponse, 0, len(agents.Items))
@@ -61,6 +62,7 @@ func (h *Handlers) ListAgents(w http.ResponseWriter, r *http.Request) {
 			Image:     a.Spec.Image,
 			Phase:     string(a.Status.Phase),
 			Ready:     a.Status.ReadyReplicas,
+			Schedule:  a.Spec.Schedule,
 		})
 	}
 

@@ -1,7 +1,28 @@
-// View store — tracks layout state for both sidebars.
+// View store — tracks layout state for both sidebars and center panel routing.
 import { createSignal } from 'solid-js';
 
 export type PanelState = 'collapsed' | 'expanded';
+
+// ── Center panel view mode ──
+// 'default' = normal routing (agent-based: ChatView/AgentInspector/EmptyState)
+// 'run-detail' = show a specific AgentRun in the center stage
+export type CenterView = 'default' | 'run-detail';
+
+const [centerView, setCenterViewRaw] = createSignal<CenterView>('default');
+
+export { centerView };
+
+export function setCenterView(view: CenterView) {
+  setCenterViewRaw(view);
+}
+
+export function showRunDetail() {
+  setCenterViewRaw('run-detail');
+}
+
+export function clearCenterOverlay() {
+  setCenterViewRaw('default');
+}
 
 // ── Left panel (agents) ──
 

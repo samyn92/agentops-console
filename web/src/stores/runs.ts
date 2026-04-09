@@ -1,4 +1,4 @@
-// Runs store — reactive AgentRun state with context-aware filtering and auto-refresh via SSE.
+// Runs store — reactive AgentRun state with global sorting, delegation map, and per-agent context.
 import { createSignal, createResource, createMemo } from 'solid-js';
 import { agentRuns } from '../lib/api';
 import { selectedAgent } from './agents';
@@ -56,9 +56,8 @@ export function stopRunPolling() {
 
 // ── Derived state ──
 
-/** Runs filtered by the currently selected agent (or all runs if no agent selected).
- *  For daemon agents: shows runs targeting the agent OR triggered by it.
- *  For task agents: shows runs targeting the agent (the task itself).
+/** Runs for the currently selected agent (agentRef OR sourceRef matches).
+ *  Used for the center stage TaskAgentView / context display.
  */
 const contextualRuns = createMemo<AgentRunResponse[]>(() => {
   const runs = allRuns() ?? [];
@@ -70,9 +69,9 @@ const contextualRuns = createMemo<AgentRunResponse[]>(() => {
   );
 });
 
-/** Runs filtered by both context and phase filter. */
+/** Runs filtered by phase filter, sorted newest-first globally. */
 const filteredRuns = createMemo<AgentRunResponse[]>(() => {
-  const runs = contextualRuns();
+  const runs = sortNewestFirst(allRuns() ?? []);
   const filter = runFilter();
 
   switch (filter) {
@@ -110,7 +109,45 @@ const concurrencyInfo = createMemo(() => {
   return { running, queued };
 });
 
+// ── Delegation Map ──
+// Maps daemon agent names to the task agent names they have delegated to.
+// Built from run history: if a run has source="agent" and sourceRef="daemon-x"
+// and agentRef="task-y", then daemon-x delegates to task-y.
+
+const delegationMap = createMemo<Record<string, string[]>>(() => {
+  const runs = allRuns() ?? [];
+  const map: Record<string, Set<string>> = {};
+
+  for (const run of runs) {
+    if (run.spec.source === 'agent' && run.spec.sourceRef) {
+      const daemon = run.spec.sourceRef;
+      const task = run.spec.agentRef;
+      if (!map[daemon]) map[daemon] = new Set();
+      map[daemon].add(task);
+    }
+  }
+
+  // Convert Sets to Arrays
+  const result: Record<string, string[]> = {};
+  for (const [daemon, tasks] of Object.entries(map)) {
+    result[daemon] = Array.from(tasks);
+  }
+  return result;
+});
+
+export function getDelegationMap(): Record<string, string[]> {
+  return delegationMap();
+}
+
 // ── Helpers ──
+
+function sortNewestFirst(runs: AgentRunResponse[]): AgentRunResponse[] {
+  return [...runs].sort((a, b) => {
+    const ta = new Date(a.metadata.creationTimestamp).getTime();
+    const tb = new Date(b.metadata.creationTimestamp).getTime();
+    return tb - ta;
+  });
+}
 
 function isActivePhase(phase?: string): boolean {
   return phase === 'Pending' || phase === 'Queued' || phase === 'Running';
@@ -126,9 +163,9 @@ export function getRunSource(run: AgentRunResponse): RunSource {
 
 export function getRunSourceIcon(source: RunSource): string {
   switch (source) {
-    case 'channel': return 'bolt';     // lightning bolt
-    case 'agent': return 'brain';      // agent-to-agent
-    case 'schedule': return 'clock';   // cron
+    case 'channel': return 'bolt';
+    case 'agent': return 'brain';
+    case 'schedule': return 'clock';
     default: return 'circle';
   }
 }

@@ -3,6 +3,7 @@
 import { createSignal, createResource, createEffect, onCleanup } from 'solid-js';
 import { agents as agentsAPI } from '../lib/api';
 import { onResourceChanged } from './events';
+import { clearCenterOverlay } from './view';
 import type { AgentResponse, RuntimeStatus } from '../types';
 
 export type AgentSelection = {
@@ -165,7 +166,8 @@ export function getAgentRuntimeStatus(ns: string, name: string): RuntimeStatus |
   return agentHealth()[key]?.status ?? null;
 }
 
-/** Select an agent by namespace/name. */
+/** Select an agent by namespace/name. Clears any center-panel overlay (e.g. RunDetailView). */
 export function selectAgent(ns: string, name: string) {
+  clearCenterOverlay();
   setSelectedAgent({ namespace: ns, name });
 }
