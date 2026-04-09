@@ -102,6 +102,7 @@ export default function RunsPanelContent() {
                 const key = () => `${run.metadata.namespace}/${run.metadata.name}`;
                 const isSelected = () => selectedRunKey() === key();
                 const source = () => getRunSource(run);
+                const hasGit = () => !!run.status?.branch || !!run.spec.git;
 
                 return (
                   <button
@@ -128,6 +129,39 @@ export default function RunsPanelContent() {
                         {run.status?.phase || '?'}
                       </Badge>
                     </div>
+
+                    {/* Git badges row */}
+                    <Show when={hasGit()}>
+                      <div class="flex items-center gap-1.5 mb-0.5 ml-5">
+                        <Show when={run.status?.branch}>
+                          <span class="git-branch-badge git-branch-badge--sm">
+                            <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 3v12m0 0a3 3 0 103 3H15a3 3 0 100-3H9m-3 0a3 3 0 01-3-3V6a3 3 0 013-3h0" />
+                            </svg>
+                            <span class="truncate max-w-[100px]">{run.status!.branch}</span>
+                          </span>
+                        </Show>
+                        <Show when={run.status?.pullRequestURL}>
+                          <a
+                            href={run.status!.pullRequestURL}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            class="git-pr-badge git-pr-badge--sm"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                            </svg>
+                            <span>MR</span>
+                          </a>
+                        </Show>
+                        <Show when={run.status?.commits}>
+                          <span class="git-commits-badge git-commits-badge--sm">
+                            {run.status!.commits}c
+                          </span>
+                        </Show>
+                      </div>
+                    </Show>
 
                     {/* Row 2: Agent ref + time */}
                     <div class="flex items-center gap-2 text-[11px] leading-[16px] tracking-[0.5px] text-text-muted">
@@ -166,6 +200,42 @@ export default function RunsPanelContent() {
                         <Show when={run.status?.completionTime}>
                           <DetailRow label="Completed" value={formatDateTime(run.status!.completionTime!)} />
                         </Show>
+
+                        {/* Git workspace details in expanded view */}
+                        <Show when={hasGit()}>
+                          <div class="mt-1.5 pt-1.5 border-t border-border-subtle">
+                            <div class="flex items-center gap-1.5 mb-1">
+                              <svg class="w-3 h-3 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 3v12m0 0a3 3 0 103 3H15a3 3 0 100-3H9m-3 0a3 3 0 01-3-3V6a3 3 0 013-3h0" />
+                              </svg>
+                              <span class="text-[10px] font-medium text-accent">Git</span>
+                            </div>
+                            <Show when={run.status?.branch}>
+                              <DetailRow label="Branch" value={run.status!.branch!} />
+                            </Show>
+                            <Show when={run.spec.git?.baseBranch}>
+                              <DetailRow label="Base" value={run.spec.git!.baseBranch!} />
+                            </Show>
+                            <Show when={run.status?.commits !== undefined && run.status?.commits !== 0}>
+                              <DetailRow label="Commits" value={String(run.status!.commits)} />
+                            </Show>
+                            <Show when={run.status?.pullRequestURL}>
+                              <div class="flex items-center gap-2 text-[11px]">
+                                <span class="text-text-muted w-16 flex-shrink-0">MR</span>
+                                <a
+                                  href={run.status!.pullRequestURL}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  class="text-accent hover:underline font-mono truncate text-[11px]"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  {run.status!.pullRequestURL!.replace(/^https?:\/\//, '')}
+                                </a>
+                              </div>
+                            </Show>
+                          </div>
+                        </Show>
+
                         <Show when={run.status?.output}>
                           <div class="mt-1">
                             <span class="text-[10px] text-text-muted">Output</span>

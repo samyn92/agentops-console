@@ -90,6 +90,11 @@ export interface AgentRunResponse {
     prompt: string
     source?: string
     sourceRef?: string
+    git?: {
+      resourceRef: string
+      branch: string
+      baseBranch?: string
+    }
   }
   status?: {
     phase: string
@@ -101,6 +106,10 @@ export interface AgentRunResponse {
     startTime?: string
     completionTime?: string
     error?: string
+    // Git workspace fields (populated when spec.git is set)
+    pullRequestURL?: string
+    commits?: number
+    branch?: string
   }
 }
 

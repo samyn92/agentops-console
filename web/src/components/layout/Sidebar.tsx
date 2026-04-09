@@ -71,7 +71,7 @@ export default function Sidebar(props: SidebarProps) {
           <div class="flex items-center gap-2.5 min-w-0 flex-1">
             <img src="/logo.png" alt="AgentOps" class="w-6 h-6 rounded-lg flex-shrink-0" />
             <span class="text-[15px] font-semibold text-text truncate tracking-wide leading-tight">
-              Agent<span class="text-text-secondary">Ops</span>
+              Agent<span class="text-text-secondary">Ops</span> <span class="text-text-secondary">Console</span>
             </span>
           </div>
           <button
