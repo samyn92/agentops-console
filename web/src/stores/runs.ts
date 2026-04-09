@@ -1,4 +1,4 @@
-// Runs store — reactive AgentRun state with context-aware filtering and auto-refresh via SSE.
+// Runs store — reactive AgentRun state with global view, pinned agent runs, and delegation map.
 import { createSignal, createResource, createMemo } from 'solid-js';
 import { agentRuns } from '../lib/api';
 import { selectedAgent } from './agents';
@@ -56,9 +56,8 @@ export function stopRunPolling() {
 
 // ── Derived state ──
 
-/** Runs filtered by the currently selected agent (or all runs if no agent selected).
- *  For daemon agents: shows runs targeting the agent OR triggered by it.
- *  For task agents: shows runs targeting the agent (the task itself).
+/** Runs for the currently selected agent (agentRef OR sourceRef matches).
+ *  Used for the center stage TaskAgentView / context display.
  */
 const contextualRuns = createMemo<AgentRunResponse[]>(() => {
   const runs = allRuns() ?? [];
@@ -70,9 +69,50 @@ const contextualRuns = createMemo<AgentRunResponse[]>(() => {
   );
 });
 
-/** Runs filtered by both context and phase filter. */
+/** Global runs sorted with pinned (selected agent) runs at the top.
+ *  The right panel always shows all runs, but selected agent's runs are promoted.
+ */
+const globalRunsSorted = createMemo<AgentRunResponse[]>(() => {
+  const runs = allRuns() ?? [];
+  const agent = selectedAgent();
+
+  if (!agent) return runs;
+
+  // Partition: pinned (related to selected agent) vs rest
+  const pinned: AgentRunResponse[] = [];
+  const rest: AgentRunResponse[] = [];
+
+  for (const r of runs) {
+    if (r.spec.agentRef === agent.name || r.spec.sourceRef === agent.name) {
+      pinned.push(r);
+    } else {
+      rest.push(r);
+    }
+  }
+
+  return [...pinned, ...rest];
+});
+
+/** Is a run pinned (belongs to the selected agent)? */
+export function isRunPinned(run: AgentRunResponse): boolean {
+  const agent = selectedAgent();
+  if (!agent) return false;
+  return run.spec.agentRef === agent.name || run.spec.sourceRef === agent.name;
+}
+
+/** Count of pinned runs for the selected agent. */
+const pinnedRunCount = createMemo(() => {
+  const agent = selectedAgent();
+  if (!agent) return 0;
+  const runs = allRuns() ?? [];
+  return runs.filter(
+    (r) => r.spec.agentRef === agent.name || r.spec.sourceRef === agent.name,
+  ).length;
+});
+
+/** Runs filtered by phase filter, applied on top of the global sorted list. */
 const filteredRuns = createMemo<AgentRunResponse[]>(() => {
-  const runs = contextualRuns();
+  const runs = globalRunsSorted();
   const filter = runFilter();
 
   switch (filter) {
@@ -110,6 +150,36 @@ const concurrencyInfo = createMemo(() => {
   return { running, queued };
 });
 
+// ── Delegation Map ──
+// Maps daemon agent names to the task agent names they have delegated to.
+// Built from run history: if a run has source="agent" and sourceRef="daemon-x"
+// and agentRef="task-y", then daemon-x delegates to task-y.
+
+const delegationMap = createMemo<Record<string, string[]>>(() => {
+  const runs = allRuns() ?? [];
+  const map: Record<string, Set<string>> = {};
+
+  for (const run of runs) {
+    if (run.spec.source === 'agent' && run.spec.sourceRef) {
+      const daemon = run.spec.sourceRef;
+      const task = run.spec.agentRef;
+      if (!map[daemon]) map[daemon] = new Set();
+      map[daemon].add(task);
+    }
+  }
+
+  // Convert Sets to Arrays
+  const result: Record<string, string[]> = {};
+  for (const [daemon, tasks] of Object.entries(map)) {
+    result[daemon] = Array.from(tasks);
+  }
+  return result;
+});
+
+export function getDelegationMap(): Record<string, string[]> {
+  return delegationMap();
+}
+
 // ── Helpers ──
 
 function isActivePhase(phase?: string): boolean {
@@ -126,9 +196,9 @@ export function getRunSource(run: AgentRunResponse): RunSource {
 
 export function getRunSourceIcon(source: RunSource): string {
   switch (source) {
-    case 'channel': return 'bolt';     // lightning bolt
-    case 'agent': return 'brain';      // agent-to-agent
-    case 'schedule': return 'clock';   // cron
+    case 'channel': return 'bolt';
+    case 'agent': return 'brain';
+    case 'schedule': return 'clock';
     default: return 'circle';
   }
 }
@@ -147,6 +217,7 @@ export function getAgentConcurrency(agentName: string): { running: number; queue
 export {
   allRuns,
   contextualRuns,
+  globalRunsSorted,
   filteredRuns,
   runFilter,
   setRunFilter,
@@ -154,6 +225,7 @@ export {
   setSelectedRunKey,
   activeRunCount,
   contextActiveRunCount,
+  pinnedRunCount,
   concurrencyInfo,
   refetchRuns,
 };

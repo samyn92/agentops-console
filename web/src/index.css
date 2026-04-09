@@ -1517,6 +1517,86 @@
   border-radius: 12px;
 }
 
+/* ===== Sidebar Agent Hierarchy ===== */
+/* Tree structure: daemons as groups with nested task agents.
+   Uses a visual tree connector (vertical line + horizontal branch)
+   to show the delegation relationship. */
+
+.sidebar-agent-group {
+  margin-bottom: 2px;
+}
+
+.sidebar-nested-tasks {
+  margin-left: 12px;
+  padding-left: 0;
+  position: relative;
+}
+
+/* Tree connector — vertical line from daemon to last child */
+.sidebar-nested-tasks::before {
+  content: '';
+  position: absolute;
+  left: 10px;
+  top: 0;
+  bottom: 16px;
+  width: 1px;
+  background: var(--border-main);
+  opacity: 0.5;
+}
+
+.sidebar-nested-task {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+}
+
+/* Horizontal branch from vertical line to child card */
+.sidebar-tree-connector {
+  position: absolute;
+  left: 10px;
+  top: 18px;
+  width: 10px;
+  height: 1px;
+  background: var(--border-main);
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+
+/* Nudge the nested card to make room for the connector */
+.sidebar-nested-task > .agent-card {
+  margin-left: 20px;
+  flex: 1;
+}
+
+/* Compact agent card variant — smaller padding for nested tasks */
+.agent-card--compact {
+  padding: 6px 10px;
+  border-radius: 8px;
+}
+
+.agent-card--compact:hover {
+  background: var(--bg-hover);
+}
+
+/* Material You overrides for hierarchy */
+.material .sidebar-nested-tasks::before {
+  opacity: 0.3;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+}
+
+.material .sidebar-tree-connector {
+  opacity: 0.3;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+}
+
+.material .agent-card--compact {
+  border-radius: 12px;
+}
+
 /* ===== Mobile-specific scrolling fixes ===== */
 @media (max-width: 767px) {
   /* Prevent overscroll bounce on iOS */

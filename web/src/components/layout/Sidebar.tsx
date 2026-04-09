@@ -1,13 +1,16 @@
 // Sidebar — agents navigation (left panel)
-// M3 redesign: Agent cards with metadata + concurrency.
-// Agents take natural height in a scrollable list.
-import { For, Show, createSignal } from 'solid-js';
+// Hierarchical layout: Orchestrators (daemon agents with nested task agents)
+// and Standalone Tasks (tasks not delegated by any daemon).
+// Delegation relationships are inferred from AgentRun sourceRef data.
+import { For, Show, createSignal, createMemo } from 'solid-js';
 import { A } from '@solidjs/router';
 import { agentList, selectedAgent, selectAgent } from '../../stores/agents';
 import { leftPanelState, toggleLeftPanel } from '../../stores/view';
+import { getDelegationMap } from '../../stores/runs';
 import { streamingAgentKeys } from '../../stores/chat';
 import Spinner from '../shared/Spinner';
 import AgentCard from './AgentCard';
+import type { AgentResponse } from '../../types';
 
 interface SidebarProps {
   class?: string;
@@ -18,6 +21,36 @@ export default function Sidebar(props: SidebarProps) {
   const [isResizing, setIsResizing] = createSignal(false);
 
   const isExpanded = () => leftPanelState() === 'expanded';
+
+  // ── Build hierarchical agent tree ──
+  // Daemon agents are "orchestrators". Task agents that have been delegated
+  // to by a daemon (via sourceRef in runs) are nested under that daemon.
+  // Task agents with no daemon parent are "standalone".
+  const agentTree = createMemo(() => {
+    const agents = agentList() ?? [];
+    const delegationMap = getDelegationMap();
+
+    const daemons = agents.filter((a) => a.mode === 'daemon');
+    const tasks = agents.filter((a) => a.mode === 'task');
+
+    // For each daemon, find which tasks it delegates to
+    const daemonWithTasks: Array<{ daemon: AgentResponse; tasks: AgentResponse[] }> = [];
+    const claimedTasks = new Set<string>();
+
+    for (const daemon of daemons) {
+      const delegatedNames = delegationMap[daemon.name] ?? [];
+      const childTasks = tasks.filter((t) => delegatedNames.includes(t.name));
+      daemonWithTasks.push({ daemon, tasks: childTasks });
+      for (const t of childTasks) {
+        claimedTasks.add(t.name);
+      }
+    }
+
+    // Standalone: tasks not claimed by any daemon
+    const standalone = tasks.filter((t) => !claimedTasks.has(t.name));
+
+    return { daemonWithTasks, standalone };
+  });
 
   // ── Sidebar width resize handler ──
   function onResizeStart(e: MouseEvent) {
@@ -85,16 +118,8 @@ export default function Sidebar(props: SidebarProps) {
           </button>
         </div>
 
-        {/* ── Content area (agents list) ── */}
+        {/* ── Content area (hierarchical agents list) ── */}
         <div class="flex-1 flex flex-col overflow-hidden min-h-0">
-
-          {/* ── Agents section ── */}
-          <div class="flex items-center justify-between px-3 py-2 flex-shrink-0">
-            <span class="section-label">Agents</span>
-            <span class="text-[10px] text-text-muted font-mono">
-              {agentList()?.length ?? 0}
-            </span>
-          </div>
 
           <Show
             when={!agentList.loading}
@@ -104,25 +129,94 @@ export default function Sidebar(props: SidebarProps) {
               </div>
             }
           >
-            <div class="flex flex-col gap-1.5 px-2 overflow-y-auto flex-1 min-h-0 pb-1">
-              <For each={agentList()}>
-                {(agent) => {
-                  const ns = agent.namespace;
-                  const name = agent.name;
-                  const isSelected = () => {
-                    const sel = selectedAgent();
-                    return sel?.namespace === ns && sel?.name === name;
-                  };
+            <div class="flex-1 overflow-y-auto min-h-0 pb-1">
 
-                  return (
-                    <AgentCard
-                      agent={agent}
-                      selected={isSelected()}
-                      onSelect={() => selectAgent(ns, name)}
-                    />
-                  );
-                }}
-              </For>
+              {/* ── Orchestrators (daemons with their nested tasks) ── */}
+              <Show when={agentTree().daemonWithTasks.length > 0}>
+                <div class="px-3 py-2 flex-shrink-0">
+                  <span class="section-label">Orchestrators</span>
+                </div>
+                <div class="flex flex-col gap-0.5 px-2">
+                  <For each={agentTree().daemonWithTasks}>
+                    {(group) => {
+                      const daemon = group.daemon;
+                      const isSelected = () => {
+                        const sel = selectedAgent();
+                        return sel?.namespace === daemon.namespace && sel?.name === daemon.name;
+                      };
+
+                      return (
+                        <div class="sidebar-agent-group">
+                          {/* Daemon card */}
+                          <AgentCard
+                            agent={daemon}
+                            selected={isSelected()}
+                            onSelect={() => selectAgent(daemon.namespace, daemon.name)}
+                          />
+
+                          {/* Nested task agents */}
+                          <Show when={group.tasks.length > 0}>
+                            <div class="sidebar-nested-tasks">
+                              <For each={group.tasks}>
+                                {(task) => {
+                                  const isTaskSelected = () => {
+                                    const sel = selectedAgent();
+                                    return sel?.namespace === task.namespace && sel?.name === task.name;
+                                  };
+
+                                  return (
+                                    <div class="sidebar-nested-task">
+                                      <div class="sidebar-tree-connector" />
+                                      <AgentCard
+                                        agent={task}
+                                        selected={isTaskSelected()}
+                                        onSelect={() => selectAgent(task.namespace, task.name)}
+                                        compact
+                                      />
+                                    </div>
+                                  );
+                                }}
+                              </For>
+                            </div>
+                          </Show>
+                        </div>
+                      );
+                    }}
+                  </For>
+                </div>
+              </Show>
+
+              {/* ── Standalone Tasks ── */}
+              <Show when={agentTree().standalone.length > 0}>
+                <div class="px-3 py-2 flex-shrink-0">
+                  <span class="section-label">Standalone Tasks</span>
+                </div>
+                <div class="flex flex-col gap-1 px-2">
+                  <For each={agentTree().standalone}>
+                    {(agent) => {
+                      const isSelected = () => {
+                        const sel = selectedAgent();
+                        return sel?.namespace === agent.namespace && sel?.name === agent.name;
+                      };
+
+                      return (
+                        <AgentCard
+                          agent={agent}
+                          selected={isSelected()}
+                          onSelect={() => selectAgent(agent.namespace, agent.name)}
+                        />
+                      );
+                    }}
+                  </For>
+                </div>
+              </Show>
+
+              {/* Fallback when no agents exist at all */}
+              <Show when={(agentList()?.length ?? 0) === 0}>
+                <div class="flex flex-col items-center justify-center py-8 px-4 text-center">
+                  <p class="text-xs text-text-muted">No agents found.</p>
+                </div>
+              </Show>
             </div>
           </Show>
         </div>

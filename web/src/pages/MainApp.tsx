@@ -3,14 +3,14 @@
 // Center content switches based on agent selection and mode:
 // - No agent -> EmptyState
 // - Daemon agent -> ChatView (conversation stream)
-// - Task agent -> TaskAgentView (run timeline with git workspace details)
+// - Task agent -> AgentInspector (config, tools, resources — runs live in right panel)
 import { onMount, onCleanup, Show, createMemo } from 'solid-js';
 import { startEventStream, stopEventStream } from '../stores/events';
 import { selectedAgent, agentList } from '../stores/agents';
 import Sidebar from '../components/layout/Sidebar';
 import RightPanel from '../components/layout/RightPanel';
 import ChatView from '../components/chat/ChatView';
-import TaskAgentView from '../components/agents/TaskAgentView';
+import AgentInspector from '../components/agents/AgentInspector';
 import EmptyState from '../components/shared/EmptyState';
 
 export default function MainApp() {
@@ -26,7 +26,7 @@ export default function MainApp() {
   // Content routing:
   // - No agent selected -> EmptyState
   // - Daemon agent selected -> ChatView (one conversation per agent)
-  // - Task agent selected -> TaskAgentView (run timeline)
+  // - Task agent selected -> AgentInspector (config + summary, runs in right panel)
   const hasAgent = () => selectedAgent() !== null;
 
   const isTaskAgent = createMemo(() => {
@@ -39,7 +39,7 @@ export default function MainApp() {
 
   return (
     <div class="flex h-screen bg-background text-text overflow-hidden">
-      {/* ── Left Sidebar (agents) ── */}
+      {/* ── Left Sidebar (agents — hierarchical) ── */}
       <Sidebar />
 
       {/* ── Center Stage ── */}
@@ -55,12 +55,12 @@ export default function MainApp() {
 
         <Show when={hasAgent()}>
           <Show when={isTaskAgent()} fallback={<ChatView class="flex-1 min-h-0" />}>
-            <TaskAgentView class="flex-1 min-h-0" />
+            <AgentInspector class="flex-1 min-h-0" />
           </Show>
         </Show>
       </div>
 
-      {/* ── Right Panel (memory / runs) ── */}
+      {/* ── Right Panel (global runs + memory) ── */}
       <RightPanel />
     </div>
   );
