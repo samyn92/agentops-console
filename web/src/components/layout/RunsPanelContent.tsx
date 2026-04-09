@@ -45,7 +45,7 @@ export default function RunsPanelContent() {
       {/* Concurrency gauge (when agent selected and has runs) */}
       <Show when={agent() && concurrencyInfo()}>
         {(info) => (
-          <div class="px-3 py-2 border-b border-border-subtle bg-surface-2/50">
+          <div class="px-3 py-2 border-b border-border bg-surface-2/50">
             <div class="flex items-center gap-2 text-xs">
               <span class="text-text-muted">Slots:</span>
               <div class="flex gap-0.5 flex-1">
@@ -75,7 +75,7 @@ export default function RunsPanelContent() {
       </Show>
 
       {/* Filter tabs */}
-      <div class="flex gap-0.5 px-2 py-1.5 border-b border-border-subtle">
+      <div class="flex gap-0.5 px-2 py-1.5 border-b border-border bg-surface-2/30">
         <FilterTab value="all" current={runFilter()} label="All" count={(allRuns() ?? []).length} />
         <FilterTab value="active" current={runFilter()} label="Active" count={(allRuns() ?? []).filter(r => r.status?.phase === 'Running' || r.status?.phase === 'Pending' || r.status?.phase === 'Queued').length} />
         <FilterTab value="completed" current={runFilter()} label="Done" count={(allRuns() ?? []).filter(r => r.status?.phase === 'Succeeded').length} />
@@ -103,8 +103,8 @@ export default function RunsPanelContent() {
           <div class="flex flex-col">
             {/* Pinned section header */}
             <Show when={agent() && pinCount() > 0}>
-              <div class="px-3 py-1.5 bg-accent-muted/30 border-b border-border-subtle">
-                <span class="text-[10px] font-semibold text-accent uppercase tracking-wider">
+              <div class="section-header--panel section-header--pinned">
+                <span class="section-label">
                   {agent()!.name} — {pinCount()} runs
                 </span>
               </div>
@@ -127,8 +127,8 @@ export default function RunsPanelContent() {
                 return (
                   <>
                     <Show when={showSeparator()}>
-                      <div class="px-3 py-1.5 bg-surface-2/50 border-y border-border-subtle">
-                        <span class="text-[10px] font-semibold text-text-muted uppercase tracking-wider">
+                      <div class="section-header--panel">
+                        <span class="section-label">
                           Other Agents
                         </span>
                       </div>

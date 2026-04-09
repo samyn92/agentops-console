@@ -90,7 +90,7 @@ export default function MemoryPanel() {
   return (
     <div class="flex flex-col h-full">
       {/* Navigation tabs */}
-      <div class="flex gap-0.5 px-2 py-1.5 border-b border-border-subtle">
+      <div class="flex gap-0.5 px-2 py-1.5 border-b border-border bg-surface-2/30">
         <ViewTab value="observations" current={memoryView()} label="Memories" />
         <ViewTab value="search" current={memoryView()} label="Search" />
         <ViewTab value="sessions" current={memoryView()} label="Sessions" />
@@ -99,7 +99,7 @@ export default function MemoryPanel() {
       {/* Stats bar */}
       <Show when={memoryStats()}>
         {(stats) => (
-          <div class="flex items-center gap-3 px-3 py-1.5 border-b border-border-subtle bg-surface-2/50 text-[10px] text-text-muted">
+          <div class="flex items-center gap-3 px-3 py-1.5 border-b border-border bg-surface-2/50 text-[10px] text-text-muted">
             <span>{stats().total_observations} memories</span>
             <span>{stats().total_sessions} sessions</span>
             <Show when={stats().active_sessions}>

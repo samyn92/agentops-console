@@ -150,7 +150,7 @@ export default function Sidebar(props: SidebarProps) {
 
               {/* ── 1. Orchestrators (daemons with their nested tasks) ── */}
               <Show when={agentTree().daemonWithTasks.length > 0}>
-                <div class="px-3 py-2 flex-shrink-0">
+                <div class="section-header section-header--first">
                   <span class="section-label">Orchestrators</span>
                 </div>
                 <div class="flex flex-col gap-0.5 px-2">
@@ -205,7 +205,7 @@ export default function Sidebar(props: SidebarProps) {
 
               {/* ── 2. Channels (task agents triggered by channels, no daemon parent) ── */}
               <Show when={agentTree().channelTasks.length > 0}>
-                <div class="px-3 py-2 flex-shrink-0">
+                <div class="section-header">
                   <span class="section-label">Channels</span>
                 </div>
                 <div class="flex flex-col gap-1 px-2">
@@ -246,7 +246,7 @@ export default function Sidebar(props: SidebarProps) {
 
               {/* ── 3. Scheduled (task agents with cron, no daemon/channel) ── */}
               <Show when={agentTree().scheduledTasks.length > 0}>
-                <div class="px-3 py-2 flex-shrink-0">
+                <div class="section-header">
                   <span class="section-label">Scheduled</span>
                 </div>
                 <div class="flex flex-col gap-1 px-2">
@@ -284,7 +284,7 @@ export default function Sidebar(props: SidebarProps) {
 
               {/* ── 4. Standalone Tasks ── */}
               <Show when={agentTree().standalone.length > 0}>
-                <div class="px-3 py-2 flex-shrink-0">
+                <div class="section-header">
                   <span class="section-label">Standalone</span>
                 </div>
                 <div class="flex flex-col gap-1 px-2">

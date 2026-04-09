@@ -167,15 +167,21 @@ export default function RightPanel(props: RightPanelProps) {
               <RunsPanelContent />
             </div>
 
-            {/* Draggable horizontal divider */}
+            {/* Draggable horizontal divider between runs and memory */}
             <div
-              class={`flex-shrink-0 cursor-row-resize group relative py-1 ${
+              class={`flex-shrink-0 cursor-row-resize group relative ${
                 isResizingSplit() ? '' : ''
               }`}
               onMouseDown={onSplitResizeStart}
             >
               <div class={`h-px w-full transition-colors ${
-                isResizingSplit() ? 'bg-accent/50' : 'bg-border-subtle group-hover:bg-border-hover'
+                isResizingSplit() ? 'bg-accent' : 'bg-border group-hover:bg-border-hover'
+              }`} />
+              {/* Drag affordance — a small centered pill that appears on hover */}
+              <div class={`absolute left-1/2 -translate-x-1/2 -translate-y-1/2 top-1/2 rounded-full transition-all ${
+                isResizingSplit()
+                  ? 'w-10 h-1 bg-accent'
+                  : 'w-6 h-0.5 bg-border-hover opacity-0 group-hover:opacity-100'
               }`} />
             </div>
 
