@@ -17,6 +17,7 @@ import WebFetchCard from '../tools/WebFetchCard';
 import AgentRunCard from '../tools/AgentRunCard';
 import KubernetesCard from '../tools/KubernetesCard';
 import HelmCard from '../tools/HelmCard';
+import JsonTreeViewer from '../tools/JsonTreeViewer';
 import {
   detectToolCategory,
   toolThemes,
@@ -65,6 +66,16 @@ function formatDuration(ms: number | undefined): string {
   if (ms < 1000) return `${ms}ms`;
   if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
   return `${Math.floor(ms / 60000)}m ${Math.round((ms % 60000) / 1000)}s`;
+}
+
+/** Strip leading "$ command" line from tool output if present (already shown in input summary) */
+function stripCommandPrefix(output: string | undefined): string {
+  if (!output) return '';
+  const firstNewline = output.indexOf('\n');
+  if (firstNewline > 0 && output.startsWith('$ ')) {
+    return output.slice(firstNewline + 1);
+  }
+  return output;
 }
 
 /** Get a category-appropriate tool icon as inline SVG */
@@ -198,20 +209,17 @@ function ToolActivityLine(props: { part: ToolPart }) {
   );
 }
 
-/** Collapsible input arguments section — shows the JSON args passed to the tool */
-function ToolInputSection(props: { input: string }) {
-  const [showInput, setShowInput] = createSignal(false);
-
-  const formattedInput = createMemo(() => {
-    try {
-      const parsed = JSON.parse(props.input);
-      return JSON.stringify(parsed, null, 2);
-    } catch {
-      return props.input;
-    }
-  });
-
+/** Static input summary — shows key=value pairs as a subtle inline preview (no collapse) */
+function ToolInputSection(props: { input: string; output?: string }) {
   const inputSummary = createMemo(() => {
+    // If tool output starts with "$ ", use that command line instead of input params
+    if (props.output) {
+      const firstLine = props.output.split('\n')[0];
+      if (firstLine.startsWith('$ ')) {
+        return firstLine;
+      }
+    }
+
     try {
       const parsed = JSON.parse(props.input);
       const keys = Object.keys(parsed);
@@ -230,29 +238,11 @@ function ToolInputSection(props: { input: string }) {
   });
 
   return (
-    <div>
-      <button
-        onClick={(e) => { e.stopPropagation(); setShowInput((v) => !v); }}
-        class="flex items-center gap-1.5 w-full px-3 py-1.5 text-left hover:bg-surface-hover/30 transition-colors"
-      >
-        <span class={`shrink-0 transition-transform duration-150 ${showInput() ? 'rotate-90' : ''} text-text-muted`}>
-          <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-          </svg>
-        </span>
-        <span class="text-[11px] font-medium text-text-muted">Input</span>
-        <Show when={!showInput() && inputSummary()}>
-          <span class="text-[11px] text-text-muted/60 font-mono truncate">{inputSummary()}</span>
-        </Show>
-      </button>
-      <Show when={showInput()}>
-        <div class="px-3 pb-2">
-          <pre class="text-xs text-text-secondary font-mono whitespace-pre-wrap break-all bg-surface/50 rounded p-2 max-h-[200px] overflow-y-auto">
-            {formattedInput()}
-          </pre>
-        </div>
-      </Show>
-    </div>
+    <Show when={inputSummary()}>
+      <div class="px-3 py-1 border-b border-border-subtle/30">
+        <span class="text-xs text-text-secondary font-mono truncate block">{inputSummary()}</span>
+      </div>
+    </Show>
   );
 }
 
@@ -381,11 +371,11 @@ export default function ToolCallCard(props: ToolCallCardProps) {
         isThemed() ? `${theme().border} ${theme().bg}` : part().isError ? 'border-error/30 bg-error/5' : 'border-border bg-surface-2/30'
       } ${props.class || ''}`}
     >
-      {/* Watermark - large faded icon for themed capability cards */}
+      {/* Watermark - prominent branded icon spanning the card */}
       <Show when={WatermarkIcon()}>
         {(Icon) => (
-          <div class="absolute top-1 right-1 pointer-events-none">
-            <Dynamic component={Icon()} class={`w-16 h-16 max-md:w-10 max-md:h-10 ${theme().watermark}`} />
+          <div class="absolute -right-4 -bottom-4 pointer-events-none">
+            <Dynamic component={Icon()} class={`w-32 h-32 max-md:w-20 max-md:h-20 ${theme().watermark}`} />
           </div>
         )}
       </Show>
@@ -451,18 +441,13 @@ export default function ToolCallCard(props: ToolCallCardProps) {
           </span>
         </Show>
 
-        {/* Push duration + status to the right */}
+        {/* Push status badge to the right — shows duration (green) or Error (red) */}
         <span class="flex items-center gap-2 ml-auto shrink-0">
-          <Show when={part().duration || part().metadata?.duration}>
-            <span class="flex items-center gap-1 text-xs text-text-muted">
-              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              {formatDuration(part().duration || (part().metadata?.duration as number | undefined))}
-            </span>
-          </Show>
           <Badge variant={statusConfig().variant}>
-            {statusConfig().label}
+            {part().isError
+              ? 'Error'
+              : formatDuration(part().duration || (part().metadata?.duration as number | undefined)) || 'Done'
+            }
           </Badge>
         </span>
       </div>
@@ -470,16 +455,16 @@ export default function ToolCallCard(props: ToolCallCardProps) {
       {/* Tool-specific content — collapsed for successful tools */}
       <Show when={expanded()}>
         <div class="relative">
-          {/* Input arguments — collapsible subsection */}
+          {/* Input arguments — static summary line */}
           <Show when={hasInputArgs()}>
-            <ToolInputSection input={part().input} />
+            <ToolInputSection input={part().input} output={part().output} />
           </Show>
 
           <Dynamic
             component={Renderer()}
             toolName={part().toolName}
             input={part().input}
-            output={part().output}
+            output={stripCommandPrefix(part().output)}
             isError={part().isError}
             metadata={part().metadata}
             headerless
