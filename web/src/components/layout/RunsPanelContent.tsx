@@ -20,9 +20,10 @@ import {
   type RunSource,
 } from '../../stores/runs';
 import { selectedAgent } from '../../stores/agents';
+import { showRunDetail } from '../../stores/view';
 import Badge from '../shared/Badge';
 import NeuralTrace from '../shared/NeuralTrace';
-import { relativeTime, phaseVariant, formatTokens, formatCost, formatDateTime } from '../../lib/format';
+import { relativeTime, phaseVariant } from '../../lib/format';
 import type { AgentRunResponse } from '../../types';
 
 export default function RunsPanelContent() {
@@ -100,7 +101,7 @@ export default function RunsPanelContent() {
             </div>
           }
         >
-          <div class="flex flex-col">
+          <div class="flex flex-col gap-1 p-1.5">
             {/* Pinned section header */}
             <Show when={agent() && pinCount() > 0}>
               <div class="section-header section-header--first">
@@ -117,11 +118,22 @@ export default function RunsPanelContent() {
                 const pinned = () => isRunPinned(run);
                 const source = () => getRunSource(run);
                 const hasGit = () => !!run.status?.branch || !!run.spec.git;
+                const isRunning = () => run.status?.phase === 'Running';
+                const isFailed = () => run.status?.phase === 'Failed';
 
                 // Show separator between pinned and unpinned runs
                 const showSeparator = () => {
                   if (!agent()) return false;
                   return index() === pinnedBoundaryIndex() && index() > 0;
+                };
+
+                const cardClass = () => {
+                  const classes = ['run-card'];
+                  if (isSelected()) classes.push('run-card--selected');
+                  else if (pinned()) classes.push('run-card--pinned');
+                  if (isRunning()) classes.push('run-card--running');
+                  if (isFailed()) classes.push('run-card--failed');
+                  return classes.join(' ');
                 };
 
                 return (
@@ -134,18 +146,13 @@ export default function RunsPanelContent() {
                       </div>
                     </Show>
                     <button
-                      class={`w-full text-left px-3 py-2.5 transition-colors border-b border-border-subtle ${
-                        isSelected()
-                          ? 'bg-accent-muted border-l-2 border-l-accent'
-                          : pinned()
-                            ? 'bg-accent-muted/20 hover:bg-accent-muted/30 border-l-2 border-l-accent/40'
-                            : 'hover:bg-surface-hover border-l-2 border-l-transparent'
-                      }`}
+                      class={`w-full text-left ${cardClass()}`}
                       onClick={() => {
                         if (isSelected()) {
                           clearRunSelection();
                         } else {
                           selectRun(run.metadata.namespace, run.metadata.name);
+                          showRunDetail();
                         }
                       }}
                     >
@@ -207,74 +214,6 @@ export default function RunsPanelContent() {
                         <p class="text-[11px] text-text-secondary/70 mt-1 truncate">
                           {run.spec.prompt}
                         </p>
-                      </Show>
-
-                      {/* Inline detail when selected */}
-                      <Show when={isSelected()}>
-                        <div class="mt-2 pt-2 border-t border-border-subtle space-y-1.5">
-                          <Show when={run.status?.tokensUsed}>
-                            <DetailRow label="Tokens" value={formatTokens(run.status!.tokensUsed!)} />
-                          </Show>
-                          <Show when={run.status?.toolCalls}>
-                            <DetailRow label="Tools" value={String(run.status!.toolCalls)} />
-                          </Show>
-                          <Show when={run.status?.cost}>
-                            <DetailRow label="Cost" value={formatCost(run.status!.cost!)} />
-                          </Show>
-                          <Show when={run.spec.source}>
-                            <DetailRow label="Source" value={`${run.spec.source}${run.spec.sourceRef ? ' / ' + run.spec.sourceRef : ''}`} />
-                          </Show>
-                          <Show when={run.status?.startTime}>
-                            <DetailRow label="Started" value={formatDateTime(run.status!.startTime!)} />
-                          </Show>
-                          <Show when={run.status?.completionTime}>
-                            <DetailRow label="Completed" value={formatDateTime(run.status!.completionTime!)} />
-                          </Show>
-
-                          {/* Git workspace details in expanded view */}
-                          <Show when={hasGit()}>
-                            <div class="mt-1.5 pt-1.5 border-t border-border-subtle">
-                              <div class="flex items-center gap-1.5 mb-1">
-                                <svg class="w-3 h-3 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 3v12m0 0a3 3 0 103 3H15a3 3 0 100-3H9m-3 0a3 3 0 01-3-3V6a3 3 0 013-3h0" />
-                                </svg>
-                                <span class="text-[10px] font-medium text-accent">Git</span>
-                              </div>
-                              <Show when={run.status?.branch}>
-                                <DetailRow label="Branch" value={run.status!.branch!} />
-                              </Show>
-                              <Show when={run.spec.git?.baseBranch}>
-                                <DetailRow label="Base" value={run.spec.git!.baseBranch!} />
-                              </Show>
-                              <Show when={run.status?.commits !== undefined && run.status?.commits !== 0}>
-                                <DetailRow label="Commits" value={String(run.status!.commits)} />
-                              </Show>
-                              <Show when={run.status?.pullRequestURL}>
-                                <div class="flex items-center gap-2 text-[11px]">
-                                  <span class="text-text-muted w-16 flex-shrink-0">MR</span>
-                                  <a
-                                    href={run.status!.pullRequestURL}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    class="text-accent hover:underline font-mono truncate text-[11px]"
-                                    onClick={(e) => e.stopPropagation()}
-                                  >
-                                    {run.status!.pullRequestURL!.replace(/^https?:\/\//, '')}
-                                  </a>
-                                </div>
-                              </Show>
-                            </div>
-                          </Show>
-
-                          <Show when={run.status?.output}>
-                            <div class="mt-1">
-                              <span class="text-[10px] text-text-muted">Output</span>
-                              <pre class="text-[11px] text-text-secondary font-mono whitespace-pre-wrap bg-surface-2 rounded-lg p-1.5 mt-0.5 max-h-32 overflow-y-auto border border-border-subtle">
-                                {run.status!.output}
-                              </pre>
-                            </div>
-                          </Show>
-                        </div>
                       </Show>
                     </button>
                   </>
@@ -341,14 +280,5 @@ function SourceIcon(props: { source: RunSource }) {
         </svg>
       </Show>
     </span>
-  );
-}
-
-function DetailRow(props: { label: string; value: string }) {
-  return (
-    <div class="flex items-center gap-2 text-[11px]">
-      <span class="text-text-muted w-16 flex-shrink-0">{props.label}</span>
-      <span class="text-text-secondary font-mono truncate">{props.value}</span>
-    </div>
   );
 }

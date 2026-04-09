@@ -1507,24 +1507,53 @@
   border-color: color-mix(in srgb, var(--success) 20%, transparent);
 }
 
-/* ===== Run Card — Task Agent View ===== */
-/* Card component for the central task agent timeline.
-   Slightly elevated on hover, accent border when active. */
+/* ===== Run Card — Right-Panel Execution Cards ===== */
+/* Mirrors .agent-card shape: rounded, transparent bg, accent border selection.
+   Clicking a run card opens the RunDetailView in the center stage. */
 
 .run-card {
+  position: relative;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
   transition:
+    background-color 200ms ease,
     border-color 200ms ease,
-    box-shadow 200ms ease,
-    background-color 200ms ease;
+    box-shadow 200ms ease;
 }
 
 .run-card:hover {
-  border-color: var(--border-hover);
+  background: var(--bg-hover);
 }
 
-.run-card--active {
-  border-color: color-mix(in srgb, var(--accent) 30%, var(--border-main));
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 8%, transparent);
+.run-card--selected {
+  background: var(--accent-muted);
+  border-color: color-mix(in srgb, var(--accent) 25%, transparent);
+  box-shadow: var(--shadow-sm);
+}
+
+.run-card--selected:hover {
+  background: var(--accent-muted);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.run-card--pinned {
+  background: color-mix(in srgb, var(--accent) 4%, transparent);
+}
+
+.run-card--pinned:hover {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+/* Active phase pulse indicator on run cards */
+.run-card--running {
+  border-color: color-mix(in srgb, var(--success) 20%, transparent);
+}
+
+.run-card--failed {
+  border-color: color-mix(in srgb, var(--error) 15%, transparent);
 }
 
 /* Git workspace detail block inside expanded run */
@@ -1543,6 +1572,10 @@
 /* Material You overrides for run cards and git badges */
 .material .run-card {
   border-radius: 16px;
+}
+
+.material .run-card--selected {
+  box-shadow: var(--shadow-md);
 }
 
 .material .git-workspace-detail {
