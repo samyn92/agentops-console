@@ -541,11 +541,24 @@ func (h *Handlers) CreateMemoryObservation(w http.ResponseWriter, r *http.Reques
 	}
 	obs["project"] = project
 
-	// session_id is optional — Engram needs it for observations, but the agent runtime
-	// manages sessions. For user-created observations ("Remember this"), we can use
-	// a synthetic session ID or let Engram handle it.
+	// Engram enforces a FK from observations → sessions, so the session must exist.
+	// For user-created observations from the console ("Remember this", "Extract from
+	// conversation"), we use a synthetic console session and ensure it exists.
 	if _, ok := obs["session_id"]; !ok {
-		obs["session_id"] = fmt.Sprintf("console-%s-%s", ns, name)
+		sessionID := fmt.Sprintf("console-%s-%s", ns, name)
+		obs["session_id"] = sessionID
+
+		// Ensure the console session exists (idempotent — ignore errors if it already exists)
+		sessionBody, _ := json.Marshal(map[string]string{
+			"id":      sessionID,
+			"project": project,
+		})
+		resp, err := proxyToEngram(r.Context(), h.k8s, agent, "POST", "/sessions", strings.NewReader(string(sessionBody)), nil)
+		if err != nil {
+			slog.Debug("failed to ensure console session", "error", err)
+		} else {
+			resp.Body.Close()
+		}
 	}
 
 	encoded, _ := json.Marshal(obs)
