@@ -106,7 +106,7 @@ export function detectToolCategory(
 /** Try to detect a domain category from a capability/tool name via substring matching. */
 function detectDomainFromName(name: string): ToolCategory | null {
   const lower = name.toLowerCase();
-  if (lower.includes("kubectl") || lower.includes("kubernetes") || lower.includes("k8s")) return "kubernetes";
+  if (lower.includes("kubectl") || lower.includes("kubernetes") || lower.includes("k8s") || lower.includes("kube")) return "kubernetes";
   if (lower.includes("helm")) return "helm";
   if (lower.includes("github") || lower.includes("gh-")) return "github";
   if (lower.includes("gitlab") || lower.includes("glab")) return "gitlab";
