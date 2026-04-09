@@ -57,11 +57,13 @@ const TYPE_META: Record<string, { label: string; color: string }> = {
   preference:   { label: 'Preference',   color: 'text-text-secondary' },
 };
 
-function typeLabel(type: string): string {
+function typeLabel(type: string | undefined): string {
+  if (!type) return 'Unknown';
   return TYPE_META[type]?.label || type.charAt(0).toUpperCase() + type.slice(1);
 }
 
-function typeColor(type: string): string {
+function typeColor(type: string | undefined): string {
+  if (!type) return 'text-text-muted';
   return TYPE_META[type]?.color || 'text-text-muted';
 }
 
