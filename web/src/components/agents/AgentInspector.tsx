@@ -91,37 +91,8 @@ export default function AgentInspector(props: AgentInspectorProps) {
 
   return (
     <div class={`flex flex-col h-full ${props.class || ''}`}>
-      {/* Header */}
-      <div class="flex-shrink-0 border-b border-border bg-surface">
-        <div class="px-6 py-4">
-          <div class="flex items-center gap-3 mb-2">
-            <div class="w-9 h-9 rounded-xl bg-accent/12 flex items-center justify-center flex-shrink-0">
-              <svg class="w-4.5 h-4.5 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714a2.25 2.25 0 00.659 1.591L19 14.5" />
-              </svg>
-            </div>
-            <div class="flex-1 min-w-0">
-              <h1 class="text-lg font-semibold text-text truncate tracking-tight">
-                {agent()?.name}
-              </h1>
-              <div class="flex items-center gap-2 mt-0.5">
-                <Show when={agentInfo()?.model}>
-                  <span class="text-xs text-text-muted font-mono">{agentInfo()!.model}</span>
-                </Show>
-                <span class="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-accent/12 text-accent">
-                  task
-                </span>
-                <Show when={agentInfo()?.phase}>
-                  <Badge variant={phaseVariant(agentInfo()!.phase)} dot>
-                    {agentInfo()!.phase}
-                  </Badge>
-                </Show>
-              </div>
-            </div>
-          </div>
-        </div>
-        <NeuralTrace active={activeCount() > 0} size="sm" />
-      </div>
+      {/* Neural trace (activity indicator) */}
+      <NeuralTrace active={activeCount() > 0} size="sm" />
 
       {/* Content — scrollable inspector */}
       <div class="flex-1 overflow-y-auto">

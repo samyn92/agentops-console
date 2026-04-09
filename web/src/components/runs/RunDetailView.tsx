@@ -1,20 +1,15 @@
-// RunDetailView — full center-panel view for a selected AgentRun.
-// Displayed when the user clicks a run card in the right panel.
-// Shows header, prompt, output, git workspace, tool calls, tokens/cost,
-// source info, and error details in a spacious, scrollable layout.
+// RunDetailView — full center-panel body for a selected AgentRun.
+// Header is rendered by MainApp. This component shows the scrollable content:
+// stats, source, timestamps, git workspace, prompt, output, error.
 import { createResource, Show, createMemo } from 'solid-js';
 import { agentRuns } from '../../lib/api';
 import { selectedRunKey, getRunSource, type RunSource } from '../../stores/runs';
-import Badge from '../shared/Badge';
 import Spinner from '../shared/Spinner';
 import {
   formatTokens,
   formatDateTime,
   formatCost,
-  relativeTime,
-  phaseVariant,
 } from '../../lib/format';
-import type { AgentRunResponse } from '../../types';
 
 interface RunDetailViewProps {
   class?: string;
@@ -84,23 +79,6 @@ export default function RunDetailView(props: RunDetailViewProps) {
 
           return (
             <>
-              {/* ── Sticky Header ── */}
-              <div class="flex items-center gap-3 px-4 h-12 border-b border-border flex-shrink-0">
-                <div class="flex-1 min-w-0">
-                  <h2 class="text-sm font-semibold text-text font-mono truncate">{meta().name}</h2>
-                  <div class="flex items-center gap-2 text-xs text-text-muted mt-0.5">
-                    <span>{meta().namespace}</span>
-                    <span class="text-border">|</span>
-                    <span>{spec().agentRef}</span>
-                    <span class="text-border">|</span>
-                    <span>{relativeTime(meta().creationTimestamp)}</span>
-                  </div>
-                </div>
-                <Badge variant={phaseVariant(status()?.phase)} dot>
-                  {status()?.phase || 'Unknown'}
-                </Badge>
-              </div>
-
               {/* ── Scrollable Body ── */}
               <div class="flex-1 overflow-y-auto">
                 <div class="max-w-3xl mx-auto px-6 py-6 space-y-6">
