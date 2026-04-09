@@ -9,6 +9,7 @@ import type {
   AgentToolResponse,
   AgentResourceBinding,
   ResourceContext,
+  RuntimeMessage,
   GitFile,
   GitCommit,
   GitBranch,
@@ -115,6 +116,10 @@ export const conversation = {
   /** Clear working memory (drops all messages, resets turn counter) */
   clearWorkingMemory: (ns: string, name: string) =>
     del<{ ok: boolean; window_size: number; messages: number }>(`/agents/${ns}/${name}/working-memory`),
+
+  /** Get working memory messages (the current sliding window contents) */
+  getWorkingMemory: (ns: string, name: string) =>
+    get<RuntimeMessage[]>(`/agents/${ns}/${name}/working-memory`),
 };
 
 // ── Streaming prompt (returns ReadableStream for SSE) ──

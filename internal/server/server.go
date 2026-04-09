@@ -79,6 +79,7 @@ func New(cfg Config, k8sClient *k8s.Client, mux *multiplexer.Multiplexer) *Serve
 			// Agent live config (proxied to agent runtime)
 			r.Patch("/agents/{ns}/{name}/config/window-size", h.AgentSetWindowSize)
 			r.Delete("/agents/{ns}/{name}/working-memory", h.AgentClearWorkingMemory)
+			r.Get("/agents/{ns}/{name}/working-memory", h.AgentGetWorkingMemory)
 			r.Post("/agents/{ns}/{name}/memory/extract", h.AgentMemoryExtract)
 
 			// Interactive control (proxied to agent runtime)

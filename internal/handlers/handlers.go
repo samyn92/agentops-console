@@ -151,6 +151,11 @@ func (h *Handlers) AgentClearWorkingMemory(w http.ResponseWriter, r *http.Reques
 	h.proxyToAgent(w, r, "DELETE", "/working-memory", nil)
 }
 
+// AgentGetWorkingMemory returns the current messages in the agent's sliding window.
+func (h *Handlers) AgentGetWorkingMemory(w http.ResponseWriter, r *http.Request) {
+	h.proxyToAgent(w, r, "GET", "/working-memory", nil)
+}
+
 // AgentMemoryExtract proxies AI-assisted memory extraction to the agent runtime.
 // The runtime reads its working memory, calls its model, and returns a structured observation.
 func (h *Handlers) AgentMemoryExtract(w http.ResponseWriter, r *http.Request) {

@@ -10,6 +10,8 @@ import type {
   Usage,
   ToolMetadata,
   RuntimeStatus,
+  RuntimeMessage,
+  RuntimeMessagePart,
 } from '../types';
 import type {
   ChatMessage,
@@ -162,6 +164,9 @@ createEffect(() => {
 
   // Fetch immediately on agent change
   fetchRuntimeStatus();
+
+  // Hydrate chat from working memory (if local chat is empty)
+  hydrateFromWorkingMemory(agent.namespace, agent.name);
 
   // Poll every 5 seconds
   statusPollTimer = setInterval(fetchRuntimeStatus, 5000);
@@ -558,5 +563,127 @@ function finalizeActiveReasoning(state: AgentChatState) {
     });
   } else {
     state.activeReasoning[1](null);
+  }
+}
+
+// ── Working memory hydration ──
+
+/**
+ * Convert RuntimeMessage[] (from the runtime's GET /working-memory) into
+ * ChatMessage[] for the frontend. Groups assistant + tool messages together,
+ * merges tool results back into their tool call parts.
+ */
+function runtimeToChat(runtimeMessages: RuntimeMessage[]): ChatMessage[] {
+  const result: ChatMessage[] = [];
+  let currentAssistant: ChatMessage | null = null;
+
+  for (const msg of runtimeMessages) {
+    if (msg.role === 'user') {
+      // Flush any pending assistant
+      if (currentAssistant) {
+        result.push(currentAssistant);
+        currentAssistant = null;
+      }
+      // Extract text from content parts
+      const text = msg.content
+        ?.filter((p) => p.type === 'text')
+        .map((p) => p.text || '')
+        .join('\n') || '';
+      result.push({ role: 'user', content: text, timestamp: Date.now() });
+
+    } else if (msg.role === 'assistant') {
+      // Flush any pending assistant (new step = new bubble)
+      if (currentAssistant) {
+        result.push(currentAssistant);
+      }
+      currentAssistant = { role: 'assistant', parts: [], timestamp: Date.now() };
+
+      for (const part of msg.content || []) {
+        if (part.type === 'text' && part.text) {
+          currentAssistant.parts!.push({
+            type: 'text',
+            id: crypto.randomUUID(),
+            content: part.text,
+          } as TextPart);
+        } else if (part.type === 'reasoning' && part.text) {
+          currentAssistant.parts!.push({
+            type: 'reasoning',
+            id: crypto.randomUUID(),
+            content: part.text,
+          } as ReasoningPart);
+        } else if (part.type === 'tool-call') {
+          currentAssistant.parts!.push({
+            type: 'tool',
+            id: part.tool_call_id || crypto.randomUUID(),
+            toolName: part.tool_name || '',
+            input: part.input || '',
+            output: '',
+            isError: false,
+            status: 'completed', // historical — already finished
+          } as ToolPart);
+        }
+      }
+
+    } else if (msg.role === 'tool') {
+      // Tool result — find the matching tool-call in currentAssistant
+      if (!currentAssistant) continue;
+
+      for (const part of msg.content || []) {
+        if (part.type === 'tool-result' && part.tool_call_id) {
+          const toolPart = currentAssistant.parts?.find(
+            (p) => p.type === 'tool' && (p as ToolPart).id === part.tool_call_id,
+          ) as ToolPart | undefined;
+          if (toolPart) {
+            const output = part.output;
+            if (output) {
+              toolPart.output = output.text || output.error || '';
+              toolPart.isError = output.type === 'error';
+              if (output.type === 'media') {
+                toolPart.mediaType = output.media_type;
+                toolPart.data = output.data;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Flush last assistant
+  if (currentAssistant) {
+    result.push(currentAssistant);
+  }
+
+  return result;
+}
+
+/**
+ * Hydrate the chat for the selected agent from the runtime's working memory.
+ * Called on agent change / page load. Only populates if the local chat is empty
+ * (doesn't overwrite an in-progress conversation).
+ */
+async function hydrateFromWorkingMemory(ns: string, name: string) {
+  const key = agentKey(ns, name);
+  const state = agentStates.get(key);
+
+  // Don't hydrate if already streaming or if we already have messages
+  if (state?.streaming[0]()) return;
+  if (state && state.messages[0]().length > 0) return;
+
+  try {
+    const runtimeMsgs = await conversationAPI.getWorkingMemory(ns, name);
+    if (!runtimeMsgs || runtimeMsgs.length === 0) return;
+
+    const chatMsgs = runtimeToChat(runtimeMsgs);
+    if (chatMsgs.length === 0) return;
+
+    // Re-check: might have started streaming while we waited
+    const freshState = getOrCreateState(key);
+    if (freshState.streaming[0]() || freshState.messages[0]().length > 0) return;
+
+    freshState.messages[1](chatMsgs);
+  } catch (err) {
+    // Silently fail — agent might be unreachable
+    console.debug('Failed to hydrate working memory:', err);
   }
 }

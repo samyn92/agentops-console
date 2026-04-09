@@ -1,14 +1,12 @@
 // MemoryPanel — Engram memory browser for the selected agent.
 // Shows observations, search, sessions, and detail views.
 // Only renders when the agent has memory enabled (spec.memory.serverRef set).
-import { For, Show, createSignal, createMemo, createEffect } from 'solid-js';
+import { For, Show, createSignal, createEffect } from 'solid-js';
 import {
   memoryEnabled,
   memoryProject,
   observations,
   observationsLoading,
-  observationFilter,
-  setObservationFilter,
   fetchObservations,
   selectedObservation,
   setSelectedObservation,
@@ -25,7 +23,6 @@ import {
   fetchMemorySessions,
   memoryView,
   setMemoryView,
-  createObservation,
   updateObservation,
   deleteObservation,
   extracting,
@@ -174,59 +171,8 @@ function ViewTab(props: { value: MemoryView; current: MemoryView; label: string 
 // ── Observations List View ──
 
 function ObservationsView() {
-  const [showCreate, setShowCreate] = createSignal(false);
-
-  // Filter tabs for observation types
-  const FILTERS = ['all', 'decision', 'bugfix', 'discovery', 'pattern', 'architecture', 'config', 'learning'] as const;
-
-  const filteredObs = createMemo(() => {
-    const filter = observationFilter();
-    const obs = observations();
-    if (filter === 'all') return obs;
-    return obs.filter((o) => o.type === filter);
-  });
-
   return (
     <div class="flex flex-col">
-      {/* Type filter row */}
-      <div class="flex flex-wrap gap-0.5 px-2 py-1.5 border-b border-border-subtle">
-        <For each={FILTERS}>
-          {(f) => (
-            <button
-              class={`px-2 py-0.5 text-[10px] rounded-md transition-colors ${
-                observationFilter() === f
-                  ? 'bg-surface-hover text-text font-medium'
-                  : 'text-text-muted hover:text-text-secondary hover:bg-surface-hover/50'
-              }`}
-              onClick={() => {
-                setObservationFilter(f);
-                fetchObservations(f !== 'all' ? f : undefined);
-              }}
-            >
-              {f === 'all' ? 'All' : typeLabel(f)}
-            </button>
-          )}
-        </For>
-      </div>
-
-      {/* Create button */}
-      <div class="px-2 py-1.5 border-b border-border-subtle">
-        <button
-          class="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 text-[11px] text-text-secondary hover:text-text bg-surface-2 hover:bg-surface-hover rounded-lg transition-colors border border-border-subtle"
-          onClick={() => setShowCreate(!showCreate())}
-        >
-          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.5v15m7.5-7.5h-15" />
-          </svg>
-          Remember something
-        </button>
-      </div>
-
-      {/* Create form */}
-      <Show when={showCreate()}>
-        <CreateObservationForm onClose={() => setShowCreate(false)} />
-      </Show>
-
       {/* Loading */}
       <Show when={observationsLoading()}>
         <div class="flex items-center justify-center py-6">
@@ -237,18 +183,16 @@ function ObservationsView() {
       {/* List */}
       <Show when={!observationsLoading()}>
         <Show
-          when={filteredObs().length > 0}
+          when={observations().length > 0}
           fallback={
             <div class="flex flex-col items-center justify-center py-8 px-4 text-center">
               <BrainIcon class="w-8 h-8 text-text-muted mb-2" />
-              <p class="text-xs text-text-muted">
-                No {observationFilter() !== 'all' ? typeLabel(observationFilter()) : ''} memories yet.
-              </p>
+              <p class="text-xs text-text-muted">No memories yet.</p>
             </div>
           }
         >
           <div class="flex flex-col">
-            <For each={filteredObs()}>
+            <For each={observations()}>
               {(obs) => <ObservationItem obs={obs} />}
             </For>
           </div>
@@ -675,98 +619,6 @@ function EditForm(props: {
   );
 }
 
-// ── Create Observation Form ──
-
-function CreateObservationForm(props: { onClose: () => void; initialContent?: string }) {
-  const [type, setType] = createSignal<string>('discovery');
-  const [title, setTitle] = createSignal('');
-  const [content, setContent] = createSignal(props.initialContent || '');
-  const [saving, setSaving] = createSignal(false);
-
-  const TYPES = ['decision', 'discovery', 'bugfix', 'pattern', 'architecture', 'config', 'learning', 'preference'];
-
-  async function handleCreate() {
-    if (!title().trim() || !content().trim()) return;
-    setSaving(true);
-    const success = await createObservation({
-      type: type(),
-      title: title(),
-      content: content(),
-    });
-    setSaving(false);
-    if (success) props.onClose();
-  }
-
-  return (
-    <div class="px-2 py-2 border-b border-border-subtle bg-surface-2/30">
-      <div class="space-y-2">
-        {/* Type selector */}
-        <div>
-          <label class="text-[10px] text-text-muted block mb-1">Type</label>
-          <div class="flex flex-wrap gap-1">
-            <For each={TYPES}>
-              {(t) => (
-                <button
-                  class={`px-2 py-0.5 text-[10px] rounded-md transition-colors ${
-                    type() === t
-                      ? 'bg-surface-hover text-text font-medium border border-border-hover'
-                      : 'text-text-muted hover:text-text-secondary bg-surface-2 border border-border-subtle'
-                  }`}
-                  onClick={() => setType(t)}
-                >
-                  {typeLabel(t)}
-                </button>
-              )}
-            </For>
-          </div>
-        </div>
-
-        {/* Title */}
-        <div>
-          <label class="text-[10px] text-text-muted block mb-1">Title</label>
-          <input
-            type="text"
-            class="w-full px-2.5 py-1.5 text-xs bg-surface-2 text-text rounded-lg border border-border-subtle focus:border-border-hover outline-none transition-colors"
-            placeholder="Brief description..."
-            value={title()}
-            onInput={(e) => setTitle((e.target as HTMLInputElement).value)}
-          />
-        </div>
-
-        {/* Content */}
-        <div>
-          <label class="text-[10px] text-text-muted block mb-1">Content</label>
-          <textarea
-            class="w-full px-2.5 py-1.5 text-xs bg-surface-2 text-text rounded-lg border border-border-subtle focus:border-border-hover outline-none transition-colors font-mono resize-y min-h-[80px]"
-            placeholder="What did you learn? What was decided? What was the fix?"
-            value={content()}
-            onInput={(e) => setContent((e.target as HTMLTextAreaElement).value)}
-          />
-        </div>
-
-        {/* Actions */}
-        <div class="flex gap-2">
-          <button
-            class="flex-1 px-3 py-1.5 text-[11px] font-medium text-text bg-accent/20 hover:bg-accent/30 rounded-lg transition-colors disabled:opacity-40"
-            onClick={handleCreate}
-            disabled={saving() || !title().trim() || !content().trim()}
-          >
-            <Show when={saving()} fallback="Save memory">
-              <Spinner size="sm" />
-            </Show>
-          </button>
-          <button
-            class="px-3 py-1.5 text-[11px] text-text-secondary hover:text-text bg-surface-2 hover:bg-surface-hover rounded-lg transition-colors"
-            onClick={props.onClose}
-          >
-            Cancel
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ── Extract View (AI-assisted memory extraction) ──
 
 function ExtractView() {
@@ -1086,4 +938,4 @@ function BrainIcon(props: { class?: string }) {
 }
 
 // ── Exported for use in "Remember this" feature ──
-export { CreateObservationForm, BrainIcon };
+export { BrainIcon };
