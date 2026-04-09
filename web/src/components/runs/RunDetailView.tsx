@@ -85,7 +85,7 @@ export default function RunDetailView(props: RunDetailViewProps) {
           return (
             <>
               {/* ── Sticky Header ── */}
-              <div class="flex items-center gap-3 px-6 py-4 border-b border-border bg-surface/80 backdrop-blur-sm flex-shrink-0">
+              <div class="flex items-center gap-3 px-4 h-12 border-b border-border flex-shrink-0">
                 <div class="flex-1 min-w-0">
                   <h2 class="text-sm font-semibold text-text font-mono truncate">{meta().name}</h2>
                   <div class="flex items-center gap-2 text-xs text-text-muted mt-0.5">
