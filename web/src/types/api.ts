@@ -61,6 +61,7 @@ export interface AgentResponse {
   image: string
   phase: string
   readyReplicas: number
+  schedule?: string
 }
 
 /** Full CRD shape returned by GET /agents/:ns/:name (raw K8s object). */

@@ -1,9 +1,10 @@
 // AgentCard — M3-styled card for the sidebar agent list.
-// Shows name, model, mode badge, online indicator, and concurrency slots.
-// Supports a `compact` variant for nested task agents in the hierarchy.
+// Shows name, model, mode badge, online indicator, concurrency slots,
+// and channel/schedule indicator badges.
 import { Show, For } from 'solid-js';
 import { getAgentStatus } from '../../stores/agents';
 import { getAgentConcurrency } from '../../stores/runs';
+import { getChannelsForAgent } from '../../stores/channels';
 import type { AgentResponse } from '../../types';
 
 interface AgentCardProps {
@@ -31,6 +32,12 @@ export default function AgentCard(props: AgentCardProps) {
   const concurrency = () => getAgentConcurrency(props.agent.name);
   const hasActivity = () => concurrency().running > 0 || concurrency().queued > 0;
   const isCompact = () => props.compact ?? false;
+
+  // Indicator badges: channels and schedule
+  const channels = () => getChannelsForAgent(props.agent.name);
+  const hasChannelBindings = () => channels().length > 0;
+  const hasSchedule = () => !!props.agent.schedule;
+  const hasIndicators = () => hasChannelBindings() || hasSchedule();
 
   return (
     <button
@@ -64,8 +71,8 @@ export default function AgentCard(props: AgentCardProps) {
         </Show>
       </div>
 
-      {/* Row 2: Model + Mode */}
-      <div class={`flex items-center gap-2 ${isCompact() ? 'text-[10px]' : 'text-[11px]'} leading-[16px] tracking-[0.5px]`}>
+      {/* Row 2: Model + Mode + Indicator badges */}
+      <div class={`flex items-center gap-1.5 flex-wrap ${isCompact() ? 'text-[10px]' : 'text-[11px]'} leading-[16px] tracking-[0.5px]`}>
         <Show when={props.agent.model}>
           <span class="text-text-muted font-mono truncate">
             {shortModel(props.agent.model)}
@@ -80,10 +87,36 @@ export default function AgentCard(props: AgentCardProps) {
             {props.agent.mode}
           </span>
         </Show>
-        {/* Compact mode: show task badge only as a tiny indicator */}
         <Show when={props.agent.mode === 'task' && isCompact()}>
           <span class="inline-flex items-center px-1 py-0.5 rounded-full text-[9px] font-medium bg-accent/12 text-accent">
             task
+          </span>
+        </Show>
+
+        {/* Channel indicator */}
+        <Show when={hasChannelBindings()}>
+          <span
+            class="sidebar-indicator-badge sidebar-indicator-badge--channel"
+            title={`${channels().length} channel${channels().length > 1 ? 's' : ''}: ${channels().map(c => c.metadata.name).join(', ')}`}
+          >
+            <svg class="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M13 3L4 14h7l-2 7 9-11h-7l2-7z" />
+            </svg>
+            <Show when={!isCompact()}>
+              <span>{channels().length}</span>
+            </Show>
+          </span>
+        </Show>
+
+        {/* Schedule indicator */}
+        <Show when={hasSchedule()}>
+          <span
+            class="sidebar-indicator-badge sidebar-indicator-badge--schedule"
+            title={`Schedule: ${props.agent.schedule}`}
+          >
+            <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
           </span>
         </Show>
       </div>

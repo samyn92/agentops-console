@@ -1578,6 +1578,80 @@
   background: var(--bg-hover);
 }
 
+/* ── Sidebar Indicator Badges (channel/schedule on agent cards) ── */
+.sidebar-indicator-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 4px;
+  border-radius: 9999px;
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.sidebar-indicator-badge--channel {
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
+  color: var(--warning);
+  border: 1px solid color-mix(in srgb, var(--warning) 20%, transparent);
+}
+
+.sidebar-indicator-badge--schedule {
+  background: color-mix(in srgb, var(--info) 12%, transparent);
+  color: var(--info);
+  border: 1px solid color-mix(in srgb, var(--info) 20%, transparent);
+}
+
+:root.dark .sidebar-indicator-badge--channel {
+  background: color-mix(in srgb, var(--warning) 15%, transparent);
+  border-color: color-mix(in srgb, var(--warning) 25%, transparent);
+}
+
+:root.dark .sidebar-indicator-badge--schedule {
+  background: color-mix(in srgb, var(--info) 15%, transparent);
+  border-color: color-mix(in srgb, var(--info) 25%, transparent);
+}
+
+/* ── Sidebar Channel Pills (below agent card in Channels section) ── */
+.sidebar-channel-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 6px;
+  border-radius: 9999px;
+  font-size: 10px;
+  font-weight: 500;
+  background: color-mix(in srgb, var(--warning) 8%, transparent);
+  color: var(--warning);
+  border: 1px solid color-mix(in srgb, var(--warning) 15%, transparent);
+  max-width: 140px;
+}
+
+:root.dark .sidebar-channel-pill {
+  background: color-mix(in srgb, var(--warning) 10%, transparent);
+  border-color: color-mix(in srgb, var(--warning) 20%, transparent);
+}
+
+/* ── Sidebar Schedule Pills (below agent card in Scheduled section) ── */
+.sidebar-schedule-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 6px;
+  border-radius: 9999px;
+  font-size: 10px;
+  font-weight: 500;
+  background: color-mix(in srgb, var(--info) 8%, transparent);
+  color: var(--info);
+  border: 1px solid color-mix(in srgb, var(--info) 15%, transparent);
+}
+
+:root.dark .sidebar-schedule-pill {
+  background: color-mix(in srgb, var(--info) 10%, transparent);
+  border-color: color-mix(in srgb, var(--info) 20%, transparent);
+}
+
 /* Material You overrides for hierarchy */
 .material .sidebar-nested-tasks::before {
   opacity: 0.3;
@@ -1595,6 +1669,18 @@
 
 .material .agent-card--compact {
   border-radius: 12px;
+}
+
+.material .sidebar-indicator-badge {
+  border-radius: 9999px;
+}
+
+.material .sidebar-channel-pill {
+  border-radius: 9999px;
+}
+
+.material .sidebar-schedule-pill {
+  border-radius: 9999px;
 }
 
 /* ===== Mobile-specific scrolling fixes ===== */
