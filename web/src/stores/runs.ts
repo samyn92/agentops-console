@@ -1,4 +1,4 @@
-// Runs store — reactive AgentRun state with global view, pinned agent runs, and delegation map.
+// Runs store — reactive AgentRun state with global sorting, delegation map, and per-agent context.
 import { createSignal, createResource, createMemo } from 'solid-js';
 import { agentRuns } from '../lib/api';
 import { selectedAgent } from './agents';
@@ -69,51 +69,9 @@ const contextualRuns = createMemo<AgentRunResponse[]>(() => {
   );
 });
 
-/** Global runs sorted with pinned (selected agent) runs at the top.
- *  The right panel always shows all runs, but selected agent's runs are promoted.
- *  Both sections are sorted newest-first by creationTimestamp.
- */
-const globalRunsSorted = createMemo<AgentRunResponse[]>(() => {
-  const runs = allRuns() ?? [];
-  const agent = selectedAgent();
-
-  if (!agent) return sortNewestFirst(runs);
-
-  // Partition: pinned (related to selected agent) vs rest
-  const pinned: AgentRunResponse[] = [];
-  const rest: AgentRunResponse[] = [];
-
-  for (const r of runs) {
-    if (r.spec.agentRef === agent.name || r.spec.sourceRef === agent.name) {
-      pinned.push(r);
-    } else {
-      rest.push(r);
-    }
-  }
-
-  return [...sortNewestFirst(pinned), ...sortNewestFirst(rest)];
-});
-
-/** Is a run pinned (belongs to the selected agent)? */
-export function isRunPinned(run: AgentRunResponse): boolean {
-  const agent = selectedAgent();
-  if (!agent) return false;
-  return run.spec.agentRef === agent.name || run.spec.sourceRef === agent.name;
-}
-
-/** Count of pinned runs for the selected agent. */
-const pinnedRunCount = createMemo(() => {
-  const agent = selectedAgent();
-  if (!agent) return 0;
-  const runs = allRuns() ?? [];
-  return runs.filter(
-    (r) => r.spec.agentRef === agent.name || r.spec.sourceRef === agent.name,
-  ).length;
-});
-
-/** Runs filtered by phase filter, applied on top of the global sorted list. */
+/** Runs filtered by phase filter, sorted newest-first globally. */
 const filteredRuns = createMemo<AgentRunResponse[]>(() => {
-  const runs = globalRunsSorted();
+  const runs = sortNewestFirst(allRuns() ?? []);
   const filter = runFilter();
 
   switch (filter) {
@@ -226,7 +184,6 @@ export function getAgentConcurrency(agentName: string): { running: number; queue
 export {
   allRuns,
   contextualRuns,
-  globalRunsSorted,
   filteredRuns,
   runFilter,
   setRunFilter,
@@ -234,7 +191,6 @@ export {
   setSelectedRunKey,
   activeRunCount,
   contextActiveRunCount,
-  pinnedRunCount,
   concurrencyInfo,
   refetchRuns,
 };

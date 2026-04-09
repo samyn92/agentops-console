@@ -1,8 +1,8 @@
 // RunsPanelContent — global runs activity feed.
-// Always shows ALL runs across all agents. When an agent is selected,
-// that agent's runs are pinned to the top and visually highlighted.
-// This is the single source of truth for execution monitoring.
-import { For, Show, createMemo } from 'solid-js';
+// Always shows ALL runs across all agents, sorted newest-first.
+// Purely global — no agent-specific pinning or reordering.
+// Selected run gets accent-border highlight; clicking opens RunDetailView in center.
+import { For, Show } from 'solid-js';
 import {
   filteredRuns,
   allRuns,
@@ -12,69 +12,21 @@ import {
   selectRun,
   clearRunSelection,
   activeRunCount,
-  pinnedRunCount,
-  isRunPinned,
-  concurrencyInfo,
   getRunSource,
   type RunFilter as RunFilterType,
   type RunSource,
 } from '../../stores/runs';
-import { selectedAgent, selectAgent } from '../../stores/agents';
+import { selectAgent } from '../../stores/agents';
 import { showRunDetail, clearCenterOverlay } from '../../stores/view';
 import Badge from '../shared/Badge';
 import NeuralTrace from '../shared/NeuralTrace';
 import { relativeTime, phaseVariant } from '../../lib/format';
-import type { AgentRunResponse } from '../../types';
 
 export default function RunsPanelContent() {
   const globalActive = () => activeRunCount();
-  const agent = () => selectedAgent();
-  const pinCount = () => pinnedRunCount();
-
-  // Detect the boundary between pinned and unpinned runs
-  const pinnedBoundaryIndex = createMemo(() => {
-    if (!agent()) return -1;
-    const runs = filteredRuns();
-    for (let i = 0; i < runs.length; i++) {
-      if (!isRunPinned(runs[i])) return i;
-    }
-    return runs.length; // All are pinned
-  });
 
   return (
     <div class="flex flex-col h-full">
-      {/* Concurrency gauge (when agent selected and has runs) */}
-      <Show when={agent() && concurrencyInfo()}>
-        {(info) => (
-          <div class="px-3 py-2 border-b border-border bg-surface-2/50">
-            <div class="flex items-center gap-2 text-xs">
-              <span class="text-text-muted">Slots:</span>
-              <div class="flex gap-0.5 flex-1">
-                <For each={Array.from({ length: Math.max(info().running + info().queued, info().running + 1) })}>
-                  {(_, i) => (
-                    <div
-                      class={`h-1.5 flex-1 rounded-full ${
-                        i() < info().running
-                          ? 'bg-success'
-                          : i() < info().running + info().queued
-                            ? 'bg-warning'
-                            : 'bg-border'
-                      }`}
-                    />
-                  )}
-                </For>
-              </div>
-              <span class="text-text-secondary font-mono">
-                {info().running}r
-                <Show when={info().queued > 0}>
-                  <span class="text-warning"> +{info().queued}q</span>
-                </Show>
-              </span>
-            </div>
-          </div>
-        )}
-      </Show>
-
       {/* Filter tabs */}
       <div class="flex gap-0.5 px-2 py-1.5 border-b border-border bg-surface-2/30">
         <FilterTab value="all" current={runFilter()} label="All" count={(allRuns() ?? []).length} />
@@ -102,124 +54,97 @@ export default function RunsPanelContent() {
           }
         >
           <div class="flex flex-col gap-1 p-1.5">
-            {/* Pinned section header */}
-            <Show when={agent() && pinCount() > 0}>
-              <div class="section-header section-header--first">
-                <span class="section-label" style={{ color: 'var(--accent)' }}>
-                  {agent()!.name} — {pinCount()} runs
-                </span>
-              </div>
-            </Show>
-
             <For each={filteredRuns()}>
-              {(run, index) => {
+              {(run) => {
                 const key = () => `${run.metadata.namespace}/${run.metadata.name}`;
                 const isSelected = () => selectedRunKey() === key();
-                const pinned = () => isRunPinned(run);
                 const source = () => getRunSource(run);
                 const hasGit = () => !!run.status?.branch || !!run.spec.git;
                 const isRunning = () => run.status?.phase === 'Running';
                 const isFailed = () => run.status?.phase === 'Failed';
 
-                // Show separator between pinned and unpinned runs
-                const showSeparator = () => {
-                  if (!agent()) return false;
-                  return index() === pinnedBoundaryIndex() && index() > 0;
-                };
-
                 const cardClass = () => {
                   const classes = ['run-card'];
                   if (isSelected()) classes.push('run-card--selected');
-                  else if (pinned()) classes.push('run-card--pinned');
                   if (isRunning()) classes.push('run-card--running');
                   if (isFailed()) classes.push('run-card--failed');
                   return classes.join(' ');
                 };
 
                 return (
-                  <>
-                    <Show when={showSeparator()}>
-                      <div class="section-header">
-                        <span class="section-label">
-                          Other Agents
-                        </span>
+                  <button
+                    class={`w-full text-left ${cardClass()}`}
+                    onClick={() => {
+                      if (isSelected()) {
+                        clearRunSelection();
+                        clearCenterOverlay();
+                      } else {
+                        selectAgent(run.metadata.namespace, run.spec.agentRef);
+                        selectRun(run.metadata.namespace, run.metadata.name);
+                        showRunDetail();
+                      }
+                    }}
+                  >
+                    {/* Row 1: Name + phase badge */}
+                    <div class="flex items-center gap-1.5 mb-0.5">
+                      <SourceIcon source={source()} />
+                      <span class="text-xs font-mono text-text truncate flex-1">
+                        {run.metadata.name}
+                      </span>
+                      <Badge variant={phaseVariant(run.status?.phase)} dot>
+                        {run.status?.phase || '?'}
+                      </Badge>
+                    </div>
+
+                    {/* Git badges row */}
+                    <Show when={hasGit()}>
+                      <div class="flex items-center gap-1.5 mb-0.5 ml-5">
+                        <Show when={run.status?.branch}>
+                          <span class="git-branch-badge git-branch-badge--sm">
+                            <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 3v12m0 0a3 3 0 103 3H15a3 3 0 100-3H9m-3 0a3 3 0 01-3-3V6a3 3 0 013-3h0" />
+                            </svg>
+                            <span class="truncate max-w-[100px]">{run.status!.branch}</span>
+                          </span>
+                        </Show>
+                        <Show when={run.status?.pullRequestURL}>
+                          <a
+                            href={run.status!.pullRequestURL}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            class="git-pr-badge git-pr-badge--sm"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                            </svg>
+                            <span>MR</span>
+                          </a>
+                        </Show>
+                        <Show when={run.status?.commits}>
+                          <span class="git-commits-badge git-commits-badge--sm">
+                            {run.status!.commits}c
+                          </span>
+                        </Show>
                       </div>
                     </Show>
-                    <button
-                      class={`w-full text-left ${cardClass()}`}
-                      onClick={() => {
-                        if (isSelected()) {
-                          clearRunSelection();
-                          clearCenterOverlay();
-                        } else {
-                          // Select the owning agent in the sidebar (uses run's namespace + agentRef)
-                          selectAgent(run.metadata.namespace, run.spec.agentRef);
-                          selectRun(run.metadata.namespace, run.metadata.name);
-                          showRunDetail();
-                        }
-                      }}
-                    >
-                      {/* Row 1: Name + phase badge */}
-                      <div class="flex items-center gap-1.5 mb-0.5">
-                        <SourceIcon source={source()} />
-                        <span class="text-xs font-mono text-text truncate flex-1">
-                          {run.metadata.name}
-                        </span>
-                        <Badge variant={phaseVariant(run.status?.phase)} dot>
-                          {run.status?.phase || '?'}
-                        </Badge>
-                      </div>
 
-                      {/* Git badges row */}
-                      <Show when={hasGit()}>
-                        <div class="flex items-center gap-1.5 mb-0.5 ml-5">
-                          <Show when={run.status?.branch}>
-                            <span class="git-branch-badge git-branch-badge--sm">
-                              <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 3v12m0 0a3 3 0 103 3H15a3 3 0 100-3H9m-3 0a3 3 0 01-3-3V6a3 3 0 013-3h0" />
-                              </svg>
-                              <span class="truncate max-w-[100px]">{run.status!.branch}</span>
-                            </span>
-                          </Show>
-                          <Show when={run.status?.pullRequestURL}>
-                            <a
-                              href={run.status!.pullRequestURL}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              class="git-pr-badge git-pr-badge--sm"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
-                              </svg>
-                              <span>MR</span>
-                            </a>
-                          </Show>
-                          <Show when={run.status?.commits}>
-                            <span class="git-commits-badge git-commits-badge--sm">
-                              {run.status!.commits}c
-                            </span>
-                          </Show>
-                        </div>
+                    {/* Row 2: Agent ref + time */}
+                    <div class="flex items-center gap-2 text-[11px] leading-[16px] tracking-[0.5px] text-text-muted">
+                      <span class="truncate">{run.spec.agentRef}</span>
+                      <Show when={run.status?.model}>
+                        <span class="text-text-muted/60">{run.status!.model}</span>
                       </Show>
+                      <span class="ml-auto flex-shrink-0">{relativeTime(run.metadata.creationTimestamp)}</span>
+                    </div>
 
-                      {/* Row 2: Agent ref + time */}
-                      <div class="flex items-center gap-2 text-[11px] leading-[16px] tracking-[0.5px] text-text-muted">
-                        <span class="truncate">{run.spec.agentRef}</span>
-                        <Show when={run.status?.model}>
-                          <span class="text-text-muted/60">{run.status!.model}</span>
-                        </Show>
-                        <span class="ml-auto flex-shrink-0">{relativeTime(run.metadata.creationTimestamp)}</span>
-                      </div>
-
-                      {/* Row 3: Prompt preview */}
-                      <Show when={run.spec.prompt}>
-                        <p class="text-[11px] text-text-secondary/70 mt-1 truncate">
-                          {run.spec.prompt}
-                        </p>
-                      </Show>
-                    </button>
-                  </>
+                    {/* Row 3: Prompt preview */}
+                    <Show when={run.spec.prompt}>
+                      <p class="text-[11px] text-text-secondary/70 mt-1 truncate">
+                        {run.spec.prompt}
+                      </p>
+                    </Show>
+                  </button>
                 );
               }}
             </For>
