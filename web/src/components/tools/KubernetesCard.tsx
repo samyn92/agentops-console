@@ -1,6 +1,11 @@
-// KubernetesCard — kubectl / K8s resource table (from MCP metadata)
-import { createSignal, For, Show, createMemo } from 'solid-js';
+// KubernetesCard — Kubernetes tool result renderer.
+// Dispatches between:
+//   1. JsonTreeViewer — for structured JSON responses (kube_find, kube_health, etc.)
+//   2. Monospace pre — for plain text output (kube_exec, kube_apply)
+//   3. Legacy kubectl table parser — for old kubernetes MCP tool (kubectl get output)
+import { createSignal, createMemo, Show } from 'solid-js';
 import Badge from '../shared/Badge';
+import JsonTreeViewer from './JsonTreeViewer';
 import type { ToolMetadata } from '../../types';
 
 interface KubernetesCardProps {
@@ -14,118 +19,108 @@ interface KubernetesCardProps {
   headerless?: boolean;
 }
 
-interface K8sResource {
-  name: string;
-  namespace?: string;
-  kind?: string;
-  status?: string;
-  ready?: string;
-  age?: string;
-  [key: string]: unknown;
+/** Detect the output type from the tool result */
+type OutputKind = 'json' | 'text';
+
+function detectOutputKind(output: string): OutputKind {
+  const trimmed = output.trimStart();
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    try {
+      JSON.parse(output);
+      return 'json';
+    } catch {
+      return 'text';
+    }
+  }
+  return 'text';
 }
 
-function statusColor(status: string | undefined): string {
-  switch (status?.toLowerCase()) {
-    case 'running': case 'active': case 'ready': case 'bound': case 'available':
-      return 'text-success';
-    case 'pending': case 'containercreating': case 'terminating':
-      return 'text-warning';
-    case 'failed': case 'error': case 'crashloopbackoff': case 'imagepullbackoff':
-      return 'text-error';
-    default:
-      return 'text-text-secondary';
+/** Extract the MCP tool name from the full tool name (mcp_kube-explore_kube_health -> kube_health) */
+function extractToolIntent(toolName: string, metadata?: ToolMetadata): string {
+  // Prefer metadata.tool if available (set by runtime)
+  if (metadata?.tool) return metadata.tool as string;
+  // Parse from mcp_{server}_{tool} naming
+  const match = toolName.match(/^mcp_[^_]+_(.+)$/);
+  return match ? match[1] : toolName;
+}
+
+/** Human-readable label for the tool intent */
+function intentLabel(intent: string): string {
+  switch (intent) {
+    case 'kube_find':     return 'Find Resources';
+    case 'kube_health':   return 'Cluster Health';
+    case 'kube_inspect':  return 'Inspect';
+    case 'kube_topology': return 'Topology';
+    case 'kube_diff':     return 'Drift Diff';
+    case 'kube_logs':     return 'Logs';
+    case 'kube_exec':     return 'Exec';
+    case 'kube_apply':    return 'Apply';
+    default:              return intent.replace(/_/g, ' ');
   }
 }
 
-function parseKubectlTable(output: string): { headers: string[]; rows: string[][] } {
-  const lines = output.split('\n').filter((l) => l.trim());
-  if (lines.length === 0) return { headers: [], rows: [] };
-
-  // First line is headers in kubectl output
-  const headerLine = lines[0];
-  // Find column positions based on header spacing
-  const headers = headerLine.split(/\s{2,}/).map((h) => h.trim()).filter(Boolean);
-  const rows = lines.slice(1).map((line) =>
-    line.split(/\s{2,}/).map((c) => c.trim()).filter(Boolean)
-  );
-
-  return { headers, rows };
+/** Status color for health overview */
+function overallColor(overall: string | undefined): string {
+  switch (overall?.toUpperCase()) {
+    case 'HEALTHY':   return 'text-success';
+    case 'DEGRADED':  return 'text-warning';
+    case 'CRITICAL':  return 'text-error';
+    default:          return 'text-text-secondary';
+  }
 }
 
 export default function KubernetesCard(props: KubernetesCardProps) {
-  const [showRaw, setShowRaw] = createSignal(false);
+  const outputKind = createMemo(() => detectOutputKind(props.output));
+  const intent = createMemo(() => extractToolIntent(props.toolName, props.metadata));
 
-  const resourceKind = () => (props.metadata?.kind || props.metadata?.resourceKind || '') as string;
-  const namespace = () => (props.metadata?.namespace || '') as string;
-
-  // Try to parse kubectl table output
-  const table = createMemo(() => {
-    if (props.metadata?.resources && Array.isArray(props.metadata.resources)) {
-      // Structured resource list from metadata
-      const resources = props.metadata.resources as K8sResource[];
-      if (resources.length === 0) return { headers: [], rows: [] };
-      const headers = Object.keys(resources[0]).filter((k) => typeof resources[0][k] !== 'object');
-      const rows = resources.map((r) => headers.map((h) => String(r[h] ?? '')));
-      return { headers: headers.map((h) => h.toUpperCase()), rows };
+  // For JSON output, try to extract a top-level summary
+  const jsonSummary = createMemo(() => {
+    if (outputKind() !== 'json') return null;
+    try {
+      const data = JSON.parse(props.output);
+      // kube_health: show overall status
+      if (data.overall) return { label: data.overall as string, color: overallColor(data.overall) };
+      // kube_find: show match count
+      if (data.total_matches !== undefined) return { label: `${data.total_matches} matches`, color: 'text-text-secondary' };
+      // kube_diff: show drift status
+      if (data.drifted !== undefined) return {
+        label: data.drifted ? 'Drifted' : 'In Sync',
+        color: data.drifted ? 'text-warning' : 'text-success',
+      };
+      // kube_logs: show crash status
+      if (data.crash_looping !== undefined) return {
+        label: data.crash_looping ? 'Crash Looping' : `${data.total_lines || 0} lines`,
+        color: data.crash_looping ? 'text-error' : 'text-text-secondary',
+      };
+      // kube_inspect: show phase
+      if (data.status?.phase) return { label: data.status.phase as string, color: 'text-text-secondary' };
+      // kube_topology: show root
+      if (data.root?.kind) return { label: `${data.root.kind}/${data.root.name}`, color: 'text-text-secondary' };
+      return null;
+    } catch {
+      return null;
     }
-    // Fall back to parsing kubectl table output
-    return parseKubectlTable(props.output);
   });
 
   // Content body — shared between headerless and full modes
   const Body = () => (
-    <>
-      {/* Table view */}
-      <Show when={!showRaw() && table().headers.length > 0}>
-        <div class="bg-surface overflow-x-auto max-h-[400px] overflow-y-auto">
-          <table class="w-full text-xs font-mono">
-            <thead>
-              <tr class="border-b border-border-subtle">
-                <For each={table().headers}>
-                  {(header) => (
-                    <th class="text-left px-3 py-1.5 text-text-muted font-medium whitespace-nowrap">
-                      {header}
-                    </th>
-                  )}
-                </For>
-              </tr>
-            </thead>
-            <tbody>
-              <For each={table().rows}>
-                {(row) => (
-                  <tr class="border-b border-border-subtle last:border-b-0 hover:bg-surface-hover transition-colors">
-                    <For each={row}>
-                      {(cell, i) => {
-                        // Apply status coloring to STATUS column
-                        const isStatusCol = () =>
-                          table().headers[i()]?.toUpperCase() === 'STATUS' ||
-                          table().headers[i()]?.toUpperCase() === 'PHASE';
-                        return (
-                          <td class={`px-3 py-1 whitespace-nowrap ${
-                            isStatusCol() ? statusColor(cell) : 'text-text-secondary'
-                          }`}>
-                            {cell}
-                          </td>
-                        );
-                      }}
-                    </For>
-                  </tr>
-                )}
-              </For>
-            </tbody>
-          </table>
-        </div>
-      </Show>
-
-      {/* Raw view / fallback */}
-      <Show when={showRaw() || table().headers.length === 0}>
-        <div class="px-3 py-2 bg-surface max-h-[400px] overflow-y-auto">
+    <Show
+      when={outputKind() === 'json'}
+      fallback={
+        // Plain text output (kube_exec, kube_apply)
+        <div class="px-3 py-2 max-h-[500px] overflow-y-auto">
           <pre class="text-xs text-text-secondary font-mono whitespace-pre-wrap break-all">
             {props.output}
           </pre>
         </div>
-      </Show>
-    </>
+      }
+    >
+      <JsonTreeViewer
+        data={props.output}
+        initialDepth={2}
+        maxHeight={500}
+      />
+    </Show>
   );
 
   if (props.headerless) {
@@ -137,21 +132,17 @@ export default function KubernetesCard(props: KubernetesCardProps) {
       {/* Header */}
       <div class="flex items-center gap-2 px-3 py-1.5 bg-surface-2 border-b border-border-subtle">
         <span class="text-xs font-medium text-[#326CE5]">Kubernetes</span>
-        <Show when={resourceKind()}>
-          <span class="text-xs text-text-secondary">{resourceKind()}</span>
+        <span class="text-xs text-text-secondary">{intentLabel(intent())}</span>
+
+        <Show when={jsonSummary()}>
+          <span class={`text-xs font-medium ${jsonSummary()!.color}`}>
+            {jsonSummary()!.label}
+          </span>
         </Show>
-        <Show when={namespace()}>
-          <span class="text-xs text-text-muted">in {namespace()}</span>
-        </Show>
+
         <div class="flex items-center gap-1.5 ml-auto">
-          <button
-            class="text-xs text-text-muted hover:text-accent transition-colors"
-            onClick={() => setShowRaw(!showRaw())}
-          >
-            {showRaw() ? 'Table' : 'Raw'}
-          </button>
           <Badge variant={props.isError ? 'error' : 'success'}>
-            {props.isError ? 'error' : `${table().rows.length} items`}
+            {props.isError ? 'error' : 'done'}
           </Badge>
         </div>
       </div>

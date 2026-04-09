@@ -34,8 +34,7 @@ import {
   discardExtraction,
   type MemoryView,
 } from '../../stores/memory';
-import { selectedAgent } from '../../stores/agents';
-import { runtimeStatus } from '../../stores/chat';
+import { selectedAgent, getAgentRuntimeStatus } from '../../stores/agents';
 import Badge from '../shared/Badge';
 import Spinner from '../shared/Spinner';
 import { relativeTime } from '../../lib/format';
@@ -130,7 +129,12 @@ export default function MemoryPanel() {
       </div>
 
       {/* Extract from conversation — fixed bottom action */}
-      <Show when={memoryView() !== 'extract' && memoryView() !== 'detail' && (runtimeStatus()?.messages ?? 0) > 0}>
+      <Show when={memoryView() !== 'extract' && memoryView() !== 'detail' && (() => {
+        const a = selectedAgent();
+        if (!a) return false;
+        const rs = getAgentRuntimeStatus(a.namespace, a.name);
+        return (rs?.messages ?? 0) > 0;
+      })()}>
         <div class="border-t border-border-subtle px-2 py-1.5">
           <button
             class="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 text-[11px] text-accent hover:text-accent/80 bg-accent/5 hover:bg-accent/10 rounded-lg transition-colors border border-accent/20"
@@ -634,7 +638,11 @@ function ExtractView() {
   const TYPES = ['decision', 'discovery', 'bugfix', 'pattern', 'architecture', 'config', 'learning', 'preference'];
 
   const hasResult = () => extractionResult() !== null;
-  const status = () => runtimeStatus();
+  const status = () => {
+    const a = selectedAgent();
+    if (!a) return null;
+    return getAgentRuntimeStatus(a.namespace, a.name);
+  };
   const msgCount = () => status()?.messages ?? 0;
 
   // Sync extraction result into editable fields when it arrives

@@ -2,14 +2,13 @@
 // Each agent maintains independent messages, streaming state, and interactive
 // requests. One conversation per agent — no sessions.
 import { createSignal, batch, createEffect, onCleanup } from 'solid-js';
-import { streamPrompt, conversation as conversationAPI, agents as agentsAPI } from '../lib/api';
-import { selectedAgent } from './agents';
+import { streamPrompt, conversation as conversationAPI } from '../lib/api';
+import { selectedAgent, refreshAgentHealth } from './agents';
 import { getSelectedContext, clearContextItems } from './resources';
 import type {
   FEPEvent,
   Usage,
   ToolMetadata,
-  RuntimeStatus,
   RuntimeMessage,
   RuntimeMessagePart,
 } from '../types';
@@ -124,58 +123,15 @@ export function setPendingQuestion(val: PendingQuestionState | null) {
   if (state) state.pendingQuestion[1](val);
 }
 
-// ── Runtime status polling (sliding window gauge) ──
+// ── Agent change: hydrate chat from working memory ──
 
-const [runtimeStatus, setRuntimeStatus] = createSignal<RuntimeStatus | null>(null);
-export { runtimeStatus };
-
-let statusPollTimer: ReturnType<typeof setInterval> | null = null;
-
-async function fetchRuntimeStatus() {
-  const agent = selectedAgent();
-  if (!agent) {
-    setRuntimeStatus(null);
-    return;
-  }
-  try {
-    const status = await agentsAPI.status(agent.namespace, agent.name) as RuntimeStatus;
-    setRuntimeStatus(status);
-  } catch {
-    // Agent unreachable — clear status
-    setRuntimeStatus(null);
-  }
-}
-
-// Poll runtime status when agent changes or after streaming finishes.
-// Uses a reactive effect to start/stop polling based on selected agent.
 createEffect(() => {
   const agent = selectedAgent();
-
-  // Clean up previous timer
-  if (statusPollTimer) {
-    clearInterval(statusPollTimer);
-    statusPollTimer = null;
-  }
-
-  if (!agent) {
-    setRuntimeStatus(null);
-    return;
-  }
-
-  // Fetch immediately on agent change
-  fetchRuntimeStatus();
+  if (!agent) return;
 
   // Hydrate chat from working memory (if local chat is empty)
   hydrateFromWorkingMemory(agent.namespace, agent.name);
-
-  // Poll every 5 seconds
-  statusPollTimer = setInterval(fetchRuntimeStatus, 5000);
 });
-
-/** Trigger an immediate status refresh (e.g. after stream finishes). */
-export function refreshRuntimeStatus() {
-  fetchRuntimeStatus();
-}
 
 /** Update the sliding window size on the runtime (live, no pod restart). */
 export async function setWindowSize(size: number) {
@@ -183,8 +139,8 @@ export async function setWindowSize(size: number) {
   if (!agent) return;
   try {
     await conversationAPI.setWindowSize(agent.namespace, agent.name, size);
-    // Refresh status to pick up the new window_size
-    await fetchRuntimeStatus();
+    // Refresh health to pick up the new window_size
+    refreshAgentHealth();
   } catch (err) {
     console.error('Failed to set window size:', err);
   }
@@ -202,7 +158,7 @@ export async function clearWorkingMemory() {
     if (state) {
       state.messages[1]([]);
     }
-    await fetchRuntimeStatus();
+    refreshAgentHealth();
   } catch (err) {
     console.error('Failed to clear working memory:', err);
   }
@@ -291,8 +247,8 @@ export async function sendMessage(prompt: string) {
     });
     capturedState.abortController = null;
     markStreaming(capturedKey, false);
-    // Refresh runtime status after stream completes (updates sliding window gauge)
-    fetchRuntimeStatus();
+    // Refresh agent health after stream completes (updates sliding window gauge)
+    refreshAgentHealth();
   }
 }
 
@@ -682,8 +638,7 @@ async function hydrateFromWorkingMemory(ns: string, name: string) {
     if (freshState.streaming[0]() || freshState.messages[0]().length > 0) return;
 
     freshState.messages[1](chatMsgs);
-  } catch (err) {
-    // Silently fail — agent might be unreachable
-    console.debug('Failed to hydrate working memory:', err);
+  } catch {
+    // Silently fail — agent might be unreachable or BFF not ready
   }
 }

@@ -8,7 +8,7 @@ metadata:
 rules:
   # -- AgentOps CRDs (agents, agentruns, channels, agenttools, agentresources)
   - apiGroups:
-      - "agentops.ai"
+      - "agents.agentops.io"
     resources:
       - agents
       - agentruns
@@ -19,6 +19,7 @@ rules:
       - get
       - list
       - watch
+      - patch
   # -- Native Kubernetes resources the console browses
   - apiGroups:
       - ""

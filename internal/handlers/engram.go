@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	agentsv1alpha1 "github.com/samyn92/agenticops-core/api/v1alpha1"
+	agentsv1alpha1 "github.com/samyn92/agentops-core/api/v1alpha1"
 
 	"github.com/samyn92/agentops-console/internal/k8s"
 )

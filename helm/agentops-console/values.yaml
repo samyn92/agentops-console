@@ -25,7 +25,7 @@ console:
   # -- Restrict the console to a single namespace (empty = all namespaces)
   namespace: ""
   # -- Path to the built frontend static assets inside the container
-  webDir: ""
+  webDir: "/app/web/dist"
   # -- Enable development mode (relaxed CORS, debug logging)
   dev: false
 

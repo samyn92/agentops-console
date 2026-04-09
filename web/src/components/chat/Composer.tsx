@@ -1,8 +1,8 @@
 // Composer — input area with send/stop/steer functionality
 import { createSignal, Show, createMemo, createEffect, For, onCleanup } from 'solid-js';
-import { streaming, runtimeStatus } from '../../stores/chat';
+import { streaming } from '../../stores/chat';
 import { sendMessage, abortStream, steerAgent, setWindowSize, clearWorkingMemory } from '../../stores/chat';
-import { selectedAgent } from '../../stores/agents';
+import { selectedAgent, getAgentStatus, getAgentRuntimeStatus } from '../../stores/agents';
 import { selectedContextItems, removeContextItem, selectedContextCount, clearContextItems } from '../../stores/resources';
 import { resourceContextKey } from '../../types/api';
 import type { ResourceContext } from '../../types';
@@ -324,12 +324,18 @@ export default function Composer(props: ComposerProps) {
     textareaRef?.focus();
   }
 
-  const isDisabled = () => !selectedAgent();
+  const agentOnline = () => {
+    const agent = selectedAgent();
+    if (!agent) return false;
+    return getAgentStatus(agent.namespace, agent.name).isOnline;
+  };
+  const isDisabled = () => !selectedAgent() || (!agentOnline() && !streaming());
   const isProcessing = () => streaming();
   const ctxCount = () => selectedContextCount();
 
   const placeholder = () => {
-    if (isDisabled()) return 'Select an agent to start...';
+    if (!selectedAgent()) return 'Select an agent to start...';
+    if (!agentOnline() && !streaming()) return 'Agent unreachable — waiting for pod...';
     if (mode() === 'steer') return 'Steer the agent (guide its next action)...';
     if (isProcessing()) return 'Agent is working... Press Esc to abort';
     return 'Message the agent...';
@@ -480,11 +486,19 @@ export default function Composer(props: ComposerProps) {
               <span class="text-accent">Steer mode</span>
               {' — guide the agent\'s next action'}
             </Show>
-            <Show when={!streaming() && runtimeStatus()?.window_size != null}>
-              <SlidingWindowIndicator
-                messages={runtimeStatus()?.messages ?? 0}
-                windowSize={runtimeStatus()!.window_size!}
-              />
+            <Show when={!streaming() && selectedAgent()}>
+              {(() => {
+                const a = selectedAgent()!;
+                const rs = getAgentRuntimeStatus(a.namespace, a.name);
+                return (
+                  <Show when={rs?.window_size != null}>
+                    <SlidingWindowIndicator
+                      messages={rs?.messages ?? 0}
+                      windowSize={rs!.window_size!}
+                    />
+                  </Show>
+                );
+              })()}
             </Show>
           </span>
           <span class="text-[11px] text-text-muted">

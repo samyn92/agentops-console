@@ -5,26 +5,22 @@ import { connectGlobalSSE } from '../lib/api';
 import type { FEPEvent, AgentEventEnvelope } from '../types';
 
 export type AgentKey = { namespace: string; name: string };
-export type AgentStatus = 'online' | 'offline' | 'unknown';
 
 // Subscriber callback type
 type FEPSubscriber = (agentKey: AgentKey, event: FEPEvent) => void;
-type StatusSubscriber = (agentKey: AgentKey, status: AgentStatus) => void;
 type ResourceSubscriber = () => void;
 
 // ── Singleton state ──
 
 let eventSource: EventSource | null = null;
 const fepSubscribers = new Set<FEPSubscriber>();
-const statusSubscribers = new Set<StatusSubscriber>();
 const resourceSubscribers = new Set<ResourceSubscriber>();
 
 const [connected, setConnected] = createSignal(false);
-const [agentStatuses, setAgentStatuses] = createSignal<Record<string, AgentStatus>>({});
 
 // ── Public API ──
 
-export { connected, agentStatuses };
+export { connected };
 
 /** Start the global SSE connection. Call once at app mount. */
 export function startEventStream() {
@@ -44,25 +40,6 @@ export function startEventStream() {
             name: envelope.agent.name,
           };
           fepSubscribers.forEach((fn) => fn(key, envelope.event));
-          break;
-        }
-
-        case 'agent.online':
-        case 'agent.offline': {
-          const d = data as { namespace?: string; name?: string };
-          if (d.namespace && d.name) {
-            const status: AgentStatus = eventType === 'agent.online' ? 'online' : 'offline';
-            updateAgentStatus(d.namespace, d.name, status);
-            statusSubscribers.forEach((fn) =>
-              fn({ namespace: d.namespace!, name: d.name! }, status),
-            );
-          }
-          break;
-        }
-
-        case 'agent.status': {
-          const d = data as { namespace: string; name: string; status: string };
-          updateAgentStatus(d.namespace, d.name, d.status as AgentStatus);
           break;
         }
 
@@ -112,12 +89,3 @@ export function onResourceChanged(callback: ResourceSubscriber): () => void {
   resourceSubscribers.add(callback);
   return () => resourceSubscribers.delete(callback);
 }
-
-// ── Internal ──
-
-function updateAgentStatus(namespace: string, name: string, status: AgentStatus) {
-  const key = `${namespace}/${name}`;
-  setAgentStatuses((prev) => ({ ...prev, [key]: status }));
-}
-
-// ── Internal ──

@@ -5,14 +5,12 @@ go 1.26.0
 require (
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/go-chi/cors v1.2.2
-	github.com/samyn92/agenticops-core v0.1.0
+	github.com/samyn92/agentops-core v0.5.1
 	k8s.io/api v0.35.0
 	k8s.io/apimachinery v0.35.0
 	k8s.io/client-go v0.35.0
 	sigs.k8s.io/controller-runtime v0.21.0
 )
-
-replace github.com/samyn92/agenticops-core => ../agentops-core
 
 require (
 	github.com/beorn7/perks v1.0.1 // indirect

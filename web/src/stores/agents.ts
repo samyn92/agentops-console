@@ -1,8 +1,9 @@
-// Agent list store — tracks agents from the K8s API with live status from SSE.
-import { createSignal, createResource, createEffect } from 'solid-js';
+// Agent list store — tracks agents from the K8s API with health polling.
+// Polls /status for every agent every 5s to determine reachability.
+import { createSignal, createResource, createEffect, onCleanup } from 'solid-js';
 import { agents as agentsAPI } from '../lib/api';
-import { agentStatuses, onResourceChanged } from './events';
-import type { AgentResponse } from '../types';
+import { onResourceChanged } from './events';
+import type { AgentResponse, RuntimeStatus } from '../types';
 
 export type AgentSelection = {
   namespace: string;
@@ -58,27 +59,109 @@ onResourceChanged(() => {
   setRefetchTrigger((n) => n + 1);
 });
 
+// ── Health polling ──
+// Polls /status for every agent in the list every 5s.
+// Stores reachability (boolean) and full RuntimeStatus per agent.
+
+interface AgentHealth {
+  reachable: boolean;
+  status: RuntimeStatus | null;
+}
+
+const HEALTH_POLL_INTERVAL = 5000;
+
+const [agentHealth, setAgentHealth] = createSignal<Record<string, AgentHealth>>({});
+let healthPollTimer: ReturnType<typeof setInterval> | null = null;
+
+async function pollAgentHealth(agent: AgentResponse): Promise<AgentHealth> {
+  try {
+    const status = await agentsAPI.status(agent.namespace, agent.name) as unknown as RuntimeStatus;
+    return { reachable: true, status };
+  } catch {
+    return { reachable: false, status: null };
+  }
+}
+
+async function pollAllAgents() {
+  const agents = agentList();
+  if (!agents || agents.length === 0) return;
+
+  // Poll all agents in parallel
+  const results = await Promise.all(
+    agents.map(async (agent) => {
+      const health = await pollAgentHealth(agent);
+      return { key: `${agent.namespace}/${agent.name}`, health };
+    }),
+  );
+
+  // Batch-update the health map
+  const newHealth: Record<string, AgentHealth> = {};
+  for (const { key, health } of results) {
+    newHealth[key] = health;
+  }
+  setAgentHealth(newHealth);
+}
+
+// Start polling when agent list is available
+createEffect(() => {
+  const agents = agentList();
+
+  if (healthPollTimer) {
+    clearInterval(healthPollTimer);
+    healthPollTimer = null;
+  }
+
+  if (!agents || agents.length === 0) return;
+
+  // Poll immediately
+  pollAllAgents();
+
+  // Then every 5s
+  healthPollTimer = setInterval(pollAllAgents, HEALTH_POLL_INTERVAL);
+});
+
+onCleanup(() => {
+  if (healthPollTimer) {
+    clearInterval(healthPollTimer);
+    healthPollTimer = null;
+  }
+});
+
+/** Trigger an immediate health poll (e.g. after a stream finishes). */
+export function refreshAgentHealth() {
+  pollAllAgents();
+}
+
 // ── Public API ──
 
-export { agentList, selectedAgent, setSelectedAgent, refetchAgents };
+export { agentList, selectedAgent, setSelectedAgent, refetchAgents, agentHealth };
 
-/** Get the combined status for an agent (phase from CRD + online from SSE). */
+/**
+ * Get the status for an agent.
+ * `isOnline` is driven by direct /status polling — true when the pod responds.
+ * `phase` comes from the CR for the badge label (Pending, Running, Failed).
+ */
 export function getAgentStatus(ns: string, name: string) {
   const key = `${ns}/${name}`;
-  const sseStatus = agentStatuses()[key];
+  const health = agentHealth()[key];
   const agent = agentList()?.find((a) => a.namespace === ns && a.name === name);
   const phase = agent?.phase || 'Unknown';
 
-  // Online if SSE reports online, OR if the CRD phase indicates the agent is running
-  const isOnline = sseStatus === 'online' || phase === 'Running';
-
   return {
     phase,
-    sseStatus: sseStatus || 'unknown',
-    isOnline,
+    isOnline: health?.reachable ?? false,
     image: agent?.image || '',
     model: agent?.model || '',
   };
+}
+
+/**
+ * Get the RuntimeStatus for a specific agent (from the last health poll).
+ * Used by the Composer for the sliding window gauge.
+ */
+export function getAgentRuntimeStatus(ns: string, name: string): RuntimeStatus | null {
+  const key = `${ns}/${name}`;
+  return agentHealth()[key]?.status ?? null;
 }
 
 /** Select an agent by namespace/name. */

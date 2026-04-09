@@ -138,7 +138,7 @@ export const toolThemes: Record<ToolCategory, ToolTheme> = {
     headerBg: "bg-gradient-to-r from-blue-500/10 to-transparent",
     iconColor: "text-blue-400",
     badge: "bg-blue-500/15 text-blue-400",
-    watermark: "text-blue-400/[0.04]",
+    watermark: "text-blue-400/[0.08]",
   },
   helm: {
     border: "border-cyan-500/30",

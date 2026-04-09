@@ -56,13 +56,18 @@ export function stopRunPolling() {
 
 // ── Derived state ──
 
-/** Runs filtered by the currently selected agent (or all runs if no agent selected). */
+/** Runs filtered by the currently selected agent (or all runs if no agent selected).
+ *  For daemon agents: shows runs targeting the agent OR triggered by it.
+ *  For task agents: shows runs targeting the agent (the task itself).
+ */
 const contextualRuns = createMemo<AgentRunResponse[]>(() => {
   const runs = allRuns() ?? [];
   const agent = selectedAgent();
 
   if (!agent) return runs;
-  return runs.filter((r) => r.spec.agentRef === agent.name);
+  return runs.filter(
+    (r) => r.spec.agentRef === agent.name || r.spec.sourceRef === agent.name,
+  );
 });
 
 /** Runs filtered by both context and phase filter. */

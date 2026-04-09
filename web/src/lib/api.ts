@@ -392,9 +392,6 @@ export function connectGlobalSSE(
   for (const type of [
     'connected',
     'agent.event',
-    'agent.online',
-    'agent.offline',
-    'agent.status',
     'resource.changed',
     'heartbeat',
   ]) {

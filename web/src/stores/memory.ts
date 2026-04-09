@@ -221,9 +221,9 @@ export async function updateObservation(id: number, updates: {
   try {
     const updated = await memoryAPI.updateObservation(agent.namespace, agent.name, id, updates);
     // Update local state
-    setObservations((prev) => prev.map((o) => o.id === id ? { ...o, ...updates } : o));
+    setObservations((prev) => prev.map((o) => o.id === id ? { ...o, ...updates } as MemoryObservation : o));
     if (selectedObservation()?.id === id) {
-      setSelectedObservation({ ...selectedObservation()!, ...updates });
+      setSelectedObservation({ ...selectedObservation()!, ...updates } as MemoryObservation);
     }
     return true;
   } catch (err) {
