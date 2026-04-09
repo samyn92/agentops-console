@@ -19,8 +19,8 @@ import {
   type RunFilter as RunFilterType,
   type RunSource,
 } from '../../stores/runs';
-import { selectedAgent } from '../../stores/agents';
-import { showRunDetail } from '../../stores/view';
+import { selectedAgent, selectAgent } from '../../stores/agents';
+import { showRunDetail, clearCenterOverlay } from '../../stores/view';
 import Badge from '../shared/Badge';
 import NeuralTrace from '../shared/NeuralTrace';
 import { relativeTime, phaseVariant } from '../../lib/format';
@@ -150,7 +150,10 @@ export default function RunsPanelContent() {
                       onClick={() => {
                         if (isSelected()) {
                           clearRunSelection();
+                          clearCenterOverlay();
                         } else {
+                          // Select the owning agent in the sidebar (uses run's namespace + agentRef)
+                          selectAgent(run.metadata.namespace, run.spec.agentRef);
                           selectRun(run.metadata.namespace, run.metadata.name);
                           showRunDetail();
                         }

@@ -4,8 +4,7 @@
 // source info, and error details in a spacious, scrollable layout.
 import { createResource, Show, createMemo } from 'solid-js';
 import { agentRuns } from '../../lib/api';
-import { selectedRunKey, clearRunSelection, getRunSource, type RunSource } from '../../stores/runs';
-import { clearCenterOverlay } from '../../stores/view';
+import { selectedRunKey, getRunSource, type RunSource } from '../../stores/runs';
 import Badge from '../shared/Badge';
 import Spinner from '../shared/Spinner';
 import {
@@ -39,11 +38,6 @@ export default function RunDetailView(props: RunDetailViewProps) {
     },
   );
 
-  function handleBack() {
-    clearRunSelection();
-    clearCenterOverlay();
-  }
-
   return (
     <div class={`flex flex-col ${props.class || ''}`}>
       {/* Loading state */}
@@ -55,14 +49,8 @@ export default function RunDetailView(props: RunDetailViewProps) {
 
       {/* Error state */}
       <Show when={run.error}>
-        <div class="flex-1 flex flex-col items-center justify-center gap-3 px-4">
+        <div class="flex-1 flex items-center justify-center px-4">
           <p class="text-sm text-error">Failed to load run details</p>
-          <button
-            class="text-xs text-text-muted hover:text-text transition-colors"
-            onClick={handleBack}
-          >
-            Back
-          </button>
         </div>
       </Show>
 
@@ -98,15 +86,6 @@ export default function RunDetailView(props: RunDetailViewProps) {
             <>
               {/* ── Sticky Header ── */}
               <div class="flex items-center gap-3 px-6 py-4 border-b border-border bg-surface/80 backdrop-blur-sm flex-shrink-0">
-                <button
-                  class="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-surface-hover transition-colors text-text-muted hover:text-text"
-                  onClick={handleBack}
-                  title="Back to agent view"
-                >
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
-                  </svg>
-                </button>
                 <div class="flex-1 min-w-0">
                   <h2 class="text-sm font-semibold text-text font-mono truncate">{meta().name}</h2>
                   <div class="flex items-center gap-2 text-xs text-text-muted mt-0.5">

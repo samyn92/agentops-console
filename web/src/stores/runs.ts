@@ -71,12 +71,13 @@ const contextualRuns = createMemo<AgentRunResponse[]>(() => {
 
 /** Global runs sorted with pinned (selected agent) runs at the top.
  *  The right panel always shows all runs, but selected agent's runs are promoted.
+ *  Both sections are sorted newest-first by creationTimestamp.
  */
 const globalRunsSorted = createMemo<AgentRunResponse[]>(() => {
   const runs = allRuns() ?? [];
   const agent = selectedAgent();
 
-  if (!agent) return runs;
+  if (!agent) return sortNewestFirst(runs);
 
   // Partition: pinned (related to selected agent) vs rest
   const pinned: AgentRunResponse[] = [];
@@ -90,7 +91,7 @@ const globalRunsSorted = createMemo<AgentRunResponse[]>(() => {
     }
   }
 
-  return [...pinned, ...rest];
+  return [...sortNewestFirst(pinned), ...sortNewestFirst(rest)];
 });
 
 /** Is a run pinned (belongs to the selected agent)? */
@@ -181,6 +182,14 @@ export function getDelegationMap(): Record<string, string[]> {
 }
 
 // ── Helpers ──
+
+function sortNewestFirst(runs: AgentRunResponse[]): AgentRunResponse[] {
+  return [...runs].sort((a, b) => {
+    const ta = new Date(a.metadata.creationTimestamp).getTime();
+    const tb = new Date(b.metadata.creationTimestamp).getTime();
+    return tb - ta;
+  });
+}
 
 function isActivePhase(phase?: string): boolean {
   return phase === 'Pending' || phase === 'Queued' || phase === 'Running';
