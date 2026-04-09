@@ -86,9 +86,10 @@ async function pollAllAgents() {
   const agents = agentList();
   if (!agents || agents.length === 0) return;
 
-  // Poll all agents in parallel
+  // Poll only daemon agents — task agents have no long-running pod to query
+  const daemonAgents = agents.filter((a) => a.mode === "daemon");
   const results = await Promise.all(
-    agents.map(async (agent) => {
+    daemonAgents.map(async (agent) => {
       const health = await pollAgentHealth(agent);
       return { key: `${agent.namespace}/${agent.name}`, health };
     }),

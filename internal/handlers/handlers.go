@@ -90,6 +90,15 @@ func (h *Handlers) GetAgentStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Task agents have no long-running pod — return a synthetic status
+	if agent.Spec.Mode == "task" {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"mode":   "task",
+			"status": "ready",
+		})
+		return
+	}
+
 	// Proxy to agent runtime /status
 	url := h.k8s.GetAgentServiceURL(agent)
 	resp, err := proxyGET(r.Context(), url+"/status")
