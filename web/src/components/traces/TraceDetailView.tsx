@@ -17,6 +17,8 @@ interface SpanNode {
   span: TraceSpan;
   children: SpanNode[];
   depth: number;
+  /** Virtual tool call rows synthesized from tool.call events on the root span */
+  isVirtualToolCall?: boolean;
 }
 
 export default function TraceDetailView(props: TraceDetailViewProps) {
@@ -61,7 +63,8 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
     return roots;
   });
 
-  // Flatten tree for rendering
+  // Flatten tree for rendering, then inject virtual tool call rows
+  // from tool.call events on the root span when real tool.execute spans are missing.
   const flatSpans = createMemo((): SpanNode[] => {
     const result: SpanNode[] = [];
     function flatten(node: SpanNode) {
@@ -69,7 +72,66 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
       for (const child of node.children) flatten(child);
     }
     for (const root of spanTree()) flatten(root);
-    return result;
+
+    // Check if we already have real tool.execute spans
+    const hasRealToolSpans = result.some(
+      (n) => n.span.operationName.startsWith('tool.execute'),
+    );
+    if (hasRealToolSpans) return result;
+
+    // No real tool spans — synthesize virtual rows from tool.call events on root span
+    const rootNode = result[0];
+    if (!rootNode?.span?.logs) return result;
+
+    const toolEvents: SpanNode[] = [];
+    for (const log of rootNode.span.logs) {
+      const eventField = log.fields?.find((f) => f.key === 'event');
+      if (eventField?.value !== 'tool.call') continue;
+
+      const toolName = log.fields?.find((f) => f.key === 'tool.name')?.value as string || 'tool';
+      const toolType = log.fields?.find((f) => f.key === 'tool.type')?.value as string || 'builtin';
+      const durationMs = Number(log.fields?.find((f) => f.key === 'tool.duration_ms')?.value ?? 0);
+      const isError = log.fields?.find((f) => f.key === 'tool.error')?.value === true ||
+                      log.fields?.find((f) => f.key === 'tool.error')?.value === 'true';
+
+      // Synthesize a minimal TraceSpan for the virtual row.
+      // Event timestamp is when the tool finished; back-calculate start time.
+      const durationUs = durationMs * 1000; // ms → microseconds
+      const virtualSpan: TraceSpan = {
+        traceID: rootNode.span.traceID,
+        spanID: `virtual-tool-${toolEvents.length}`,
+        parentSpanID: rootNode.span.spanID,
+        operationName: `tool.execute: ${toolName}`,
+        startTime: log.timestamp - durationUs,
+        duration: durationUs,
+        tags: [
+          { key: 'tool.name', type: 'string', value: toolName },
+          { key: 'tool.type', type: 'string', value: toolType },
+          ...(isError ? [{ key: 'tool.error', type: 'string', value: 'true' }] : []),
+        ],
+        status: isError ? { code: 2 } : undefined,
+      };
+
+      toolEvents.push({
+        span: virtualSpan,
+        children: [],
+        depth: rootNode.depth + 1,
+        isVirtualToolCall: true,
+      });
+    }
+
+    if (toolEvents.length === 0) return result;
+
+    // Insert virtual tool rows after the root span
+    const enriched: SpanNode[] = [];
+    for (const node of result) {
+      enriched.push(node);
+      // Insert after root span (first node)
+      if (node === rootNode) {
+        enriched.push(...toolEvents);
+      }
+    }
+    return enriched;
   });
 
   // Time range for waterfall
@@ -108,7 +170,7 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
     const range = timeRange();
     return {
       totalDuration: (range.max - range.min) / 1000, // microseconds to ms
-      spanCount: spans.length,
+      spanCount: spans.filter((n) => !n.isVirtualToolCall).length,
       model: getTag(root, 'gen_ai.request.model') || getTag(root, 'gen_ai.response.model'),
       provider: getTag(root, 'gen_ai.provider.name'),
       inputTokens: getTag(root, 'gen_ai.usage.input_tokens'),
@@ -150,18 +212,34 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
     return null;
   });
 
-  // Collect tool calls from the trace for a quick summary
+  // Collect tool calls from the trace for a quick summary.
+  // Primary source: real tool.execute spans. Fallback: tool.call events on root span.
   const toolSummary = createMemo(() => {
     const spans = flatSpans();
     const tools: Array<{ name: string; duration: number; isError: boolean }> = [];
+
+    // First, try real tool.execute spans
     for (const node of spans) {
       const op = node.span.operationName;
-      if (op.startsWith('tool.execute')) {
+      if (op.startsWith('tool.execute') && !node.isVirtualToolCall) {
         const name = getTag(node.span, 'tool.name') || op.replace('tool.execute: ', '') || 'tool';
         tools.push({
           name,
           duration: node.span.duration / 1000,
           isError: node.span.status?.code === 2 || getTag(node.span, 'tool.error') === 'true',
+        });
+      }
+    }
+    if (tools.length > 0) return tools;
+
+    // Fallback: virtual tool rows (from tool.call events)
+    for (const node of spans) {
+      if (node.isVirtualToolCall) {
+        const name = getTag(node.span, 'tool.name') || 'tool';
+        tools.push({
+          name,
+          duration: node.span.duration / 1000,
+          isError: getTag(node.span, 'tool.error') === 'true',
         });
       }
     }
@@ -254,6 +332,9 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
                   </Show>
                   <Show when={summary().steps}>
                     <StatPill label="Steps" value={String(summary().steps)} />
+                  </Show>
+                  <Show when={toolSummary().length > 0}>
+                    <StatPill label="Tools" value={String(toolSummary().length)} />
                   </Show>
                 </div>
               )}
@@ -370,6 +451,7 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
                       const durationMs = () => node.span.duration / 1000;
                       const isError = () => node.span.status?.code === 2;
                       const isSelected = () => selectedSpanID() === node.span.spanID;
+                      const isVirtual = () => !!node.isVirtualToolCall;
                       const delegationChild = () => spanDelegationChildren().get(node.span.spanID);
                       const barColor = () => {
                         if (isError()) return 'bg-error';
@@ -407,11 +489,14 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
                             {/* Waterfall bar */}
                             <div class="flex-1 h-5 relative min-w-0">
                               <div
-                                class={`absolute top-1 h-3 rounded-[3px] ${barColor()} transition-all opacity-85 hover:opacity-100`}
+                                class={`absolute top-1 h-3 rounded-[3px] ${barColor()} transition-all ${
+                                  isVirtual() ? 'opacity-50' : 'opacity-85 hover:opacity-100'
+                                }`}
                                 style={{
                                   left: `${leftPct()}%`,
                                   width: `${widthPct()}%`,
                                   'min-width': '3px',
+                                  ...(isVirtual() ? { 'background-image': 'repeating-linear-gradient(90deg, transparent, transparent 3px, rgba(0,0,0,0.15) 3px, rgba(0,0,0,0.15) 6px)' } : {}),
                                 }}
                               />
                             </div>
