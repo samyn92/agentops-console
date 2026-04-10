@@ -225,7 +225,6 @@ function TraceListItem(props: {
           class="w-1.5 h-1.5 rounded-full flex-shrink-0"
           classList={{
             'bg-warning': isTask(),
-            'bg-accent': !isTask() && !isDelegated(),
             'bg-accent': !isTask(),
           }}
         />
