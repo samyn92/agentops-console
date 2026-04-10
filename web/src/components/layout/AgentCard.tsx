@@ -1,5 +1,5 @@
 // AgentCard — M3-styled card for the sidebar agent list.
-// Shows name, model, mode badge, online indicator, concurrency slots,
+// Shows name, model, online indicator, concurrency slots,
 // and channel/schedule indicator badges.
 import { Show, For } from 'solid-js';
 import { getAgentStatus } from '../../stores/agents';
@@ -71,27 +71,14 @@ export default function AgentCard(props: AgentCardProps) {
         </Show>
       </div>
 
-      {/* Row 2: Model + Mode + Indicator badges */}
+      {/* Row 2: Model + Indicator badges */}
       <div class={`flex items-center gap-1.5 flex-wrap ${isCompact() ? 'text-[10px]' : 'text-[11px]'} leading-[16px] tracking-[0.5px]`}>
         <Show when={props.agent.model}>
           <span class="text-text-muted font-mono truncate">
             {shortModel(props.agent.model)}
           </span>
         </Show>
-        <Show when={props.agent.mode && !isCompact()}>
-          <span class={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium ${
-            props.agent.mode === 'daemon'
-              ? 'bg-info/12 text-info'
-              : 'bg-accent/12 text-accent'
-          }`}>
-            {props.agent.mode}
-          </span>
-        </Show>
-        <Show when={props.agent.mode === 'task' && isCompact()}>
-          <span class="inline-flex items-center px-1 py-0.5 rounded-full text-[9px] font-medium bg-accent/12 text-accent">
-            task
-          </span>
-        </Show>
+
 
         {/* Channel indicator */}
         <Show when={hasChannelBindings()}>
@@ -108,15 +95,15 @@ export default function AgentCard(props: AgentCardProps) {
           </span>
         </Show>
 
-        {/* Schedule indicator */}
+        {/* Schedule indicator — icon only, hover reveals cron expression */}
         <Show when={hasSchedule()}>
-          <span
-            class="sidebar-indicator-badge sidebar-indicator-badge--schedule"
-            title={`Schedule: ${props.agent.schedule}`}
-          >
-            <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+          <span class="sidebar-schedule-icon group relative">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
+            <span class="sidebar-schedule-tooltip">
+              {props.agent.schedule}
+            </span>
           </span>
         </Show>
       </div>

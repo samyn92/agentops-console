@@ -8,7 +8,7 @@ import type { AgentRunResponse } from '../types';
 // ── Types ──
 
 export type RunFilter = 'all' | 'active' | 'completed' | 'failed';
-export type RunSource = 'channel' | 'agent' | 'schedule' | 'unknown';
+export type RunSource = 'channel' | 'agent' | 'schedule' | 'console' | 'unknown';
 
 // ── State ──
 
@@ -158,6 +158,7 @@ export function getRunSource(run: AgentRunResponse): RunSource {
   if (source === 'channel') return 'channel';
   if (source === 'agent') return 'agent';
   if (source === 'schedule') return 'schedule';
+  if (source === 'console') return 'console';
   return 'unknown';
 }
 
@@ -166,6 +167,7 @@ export function getRunSourceIcon(source: RunSource): string {
     case 'channel': return 'bolt';
     case 'agent': return 'brain';
     case 'schedule': return 'clock';
+    case 'console': return 'terminal';
     default: return 'circle';
   }
 }

@@ -258,24 +258,11 @@ export default function Sidebar(props: SidebarProps) {
                       };
 
                       return (
-                        <div>
-                          <AgentCard
-                            agent={agent}
-                            selected={isSelected()}
-                            onSelect={() => selectAgent(agent.namespace, agent.name)}
-                          />
-                          {/* Schedule cron display */}
-                          <Show when={agent.schedule}>
-                            <div class="flex items-center gap-1.5 px-3 pb-1 -mt-0.5">
-                              <span class="sidebar-schedule-pill">
-                                <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                </svg>
-                                <span class="font-mono">{agent.schedule}</span>
-                              </span>
-                            </div>
-                          </Show>
-                        </div>
+                        <AgentCard
+                          agent={agent}
+                          selected={isSelected()}
+                          onSelect={() => selectAgent(agent.namespace, agent.name)}
+                        />
                       );
                     }}
                   </For>

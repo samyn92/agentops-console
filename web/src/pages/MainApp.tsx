@@ -82,11 +82,7 @@ export default function MainApp() {
                   {info().name}
                 </span>
                 <span class="text-xs text-text-muted font-mono">{info().model}</span>
-                <span class={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium ${
-                  info().mode === 'daemon' ? 'bg-info/12 text-info' : 'bg-accent/12 text-accent'
-                }`}>
-                  {info().mode}
-                </span>
+
                 <Show when={info().phase}>
                   <div class="ml-auto flex-shrink-0">
                     <Badge variant={phaseVariant(info().phase)} dot>

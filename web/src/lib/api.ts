@@ -186,6 +186,16 @@ export async function streamPrompt(
 export const agentRuns = {
   list: () => get<AgentRunResponse[]>('/agentruns'),
   get: (ns: string, name: string) => get<AgentRunResponse>(`/agentruns/${ns}/${name}`),
+  create: (params: {
+    agentRef: string;
+    prompt: string;
+    sourceRef?: string;
+    git?: {
+      resourceRef: string;
+      branch: string;
+      baseBranch?: string;
+    };
+  }) => post<AgentRunResponse>('/agentruns', params),
 };
 
 // ── Channels ──

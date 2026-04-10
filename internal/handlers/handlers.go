@@ -16,6 +16,8 @@ import (
 
 	"github.com/samyn92/agentops-console/internal/k8s"
 	"github.com/samyn92/agentops-console/internal/multiplexer"
+	agentsv1alpha1 "github.com/samyn92/agentops-core/api/v1alpha1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // Handlers holds all HTTP handler methods.
@@ -300,8 +302,69 @@ func (h *Handlers) GetAgentRun(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) CreateAgentRun(w http.ResponseWriter, r *http.Request) {
-	// Handled by creating an AgentRun CR
-	writeError(w, http.StatusNotImplemented, "not yet implemented")
+	var req struct {
+		AgentRef  string `json:"agentRef"`
+		Prompt    string `json:"prompt"`
+		SourceRef string `json:"sourceRef,omitempty"`
+		Git       *struct {
+			ResourceRef string `json:"resourceRef"`
+			Branch      string `json:"branch"`
+			BaseBranch  string `json:"baseBranch,omitempty"`
+		} `json:"git,omitempty"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body: %s", err)
+		return
+	}
+
+	if req.AgentRef == "" || req.Prompt == "" {
+		writeError(w, http.StatusBadRequest, "agentRef and prompt are required")
+		return
+	}
+
+	// Validate git params: if git is set, resourceRef and branch are required
+	if req.Git != nil {
+		if req.Git.ResourceRef == "" || req.Git.Branch == "" {
+			writeError(w, http.StatusBadRequest, "git.resourceRef and git.branch are required when git is set")
+			return
+		}
+	}
+
+	// Build the AgentRun CR
+	name := fmt.Sprintf("%s-run-%d", req.AgentRef, time.Now().UnixMilli())
+	ns := h.k8s.AgentNamespace()
+
+	run := &agentsv1alpha1.AgentRun{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: ns,
+			Labels: map[string]string{
+				"agents.agentops.io/agent": req.AgentRef,
+			},
+		},
+		Spec: agentsv1alpha1.AgentRunSpec{
+			AgentRef:  req.AgentRef,
+			Prompt:    req.Prompt,
+			Source:    agentsv1alpha1.AgentRunSourceConsole,
+			SourceRef: req.SourceRef,
+		},
+	}
+
+	if req.Git != nil {
+		run.Spec.Git = &agentsv1alpha1.AgentRunGitSpec{
+			ResourceRef: req.Git.ResourceRef,
+			Branch:      req.Git.Branch,
+			BaseBranch:  req.Git.BaseBranch,
+		}
+	}
+
+	if err := h.k8s.CreateAgentRun(r.Context(), run); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to create agent run: %s", err)
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, run)
 }
 
 // ── Channel endpoints ──

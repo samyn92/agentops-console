@@ -9,6 +9,7 @@ import { agents as agentsAPI, agentResources as resourcesAPI } from '../../lib/a
 import Badge from '../shared/Badge';
 import NeuralTrace from '../shared/NeuralTrace';
 import Spinner from '../shared/Spinner';
+import QuickRun from './QuickRun';
 import { phaseVariant, formatDateTime, relativeTime } from '../../lib/format';
 import type { AgentCRD, AgentResourceBinding } from '../../types';
 
@@ -116,6 +117,13 @@ export default function AgentInspector(props: AgentInspectorProps) {
                   <StatCard label="Succeeded" value={String(runStats().succeeded)} success />
                   <StatCard label="Failed" value={String(runStats().failed)} error={runStats().failed > 0} />
                 </div>
+
+                {/* ── Quick Run ── */}
+                <QuickRun
+                  agentName={data().metadata.name}
+                  agentNamespace={data().metadata.namespace}
+                  resources={resources() ?? []}
+                />
 
                 {/* Delegation source — which daemons trigger this task */}
                 <Show when={parentDaemons().length > 0}>
