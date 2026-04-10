@@ -13,6 +13,7 @@ import SourceReference from './SourceReference';
 import ToolInputPreview from './ToolInputPreview';
 import { memoryEnabled } from '../../stores/memory';
 import RememberAction from './RememberAction';
+import { formatTime } from '../../lib/format';
 
 interface MessageBubbleProps {
   message: ChatMessage;
@@ -23,14 +24,6 @@ interface MessageBubbleProps {
   /** Whether the previous message is the same role (for tighter grouping) */
   prevSameRole?: boolean;
   class?: string;
-}
-
-/** Format a timestamp (ms epoch or ISO string) to local time HH:MM */
-function formatTime(ts: number | string): string {
-  if (!ts) return '';
-  const d = typeof ts === 'string' ? new Date(ts) : new Date(ts);
-  if (isNaN(d.getTime())) return '';
-  return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 }
 
 /** Parts that belong inside the text bubble */

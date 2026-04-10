@@ -91,3 +91,27 @@ export function browsableResources(): AgentResourceBinding[] {
 export function allResources(): AgentResourceBinding[] {
   return resources() || [];
 }
+
+/** Resolve the forge type for a resource by name (returns 'github' | 'gitlab' | 'git' | null) */
+export function getResourceForge(resourceRef: string | undefined): 'github' | 'gitlab' | 'git' | null {
+  if (!resourceRef) return null;
+  const res = (resources() || []).find((r) => r.name === resourceRef);
+  if (!res) return null;
+  if (res.kind === 'github-repo' || res.kind === 'github-org') return 'github';
+  if (res.kind === 'gitlab-project' || res.kind === 'gitlab-group') return 'gitlab';
+  if (res.kind === 'git-repo') return 'git';
+  return null;
+}
+
+/** Resolve the repo/project name for a resource by name.
+ *  Returns e.g. "owner/repo" for GitHub, "my-project" for GitLab, or null. */
+export function getResourceRepoName(resourceRef: string | undefined): string | null {
+  if (!resourceRef) return null;
+  const res = (resources() || []).find((r) => r.name === resourceRef);
+  if (!res) return null;
+  if (res.github) return `${res.github.owner}/${res.github.repo}`;
+  if (res.gitlab) return res.gitlab.project;
+  if (res.githubOrg) return res.githubOrg.org;
+  if (res.gitlabGroup) return res.gitlabGroup.group;
+  return null;
+}

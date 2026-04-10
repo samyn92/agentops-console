@@ -44,11 +44,17 @@ export const TerraformIcon: Component<{ class?: string }> = (props) => (
   </svg>
 );
 
+/** AgentOps branded icon — uses the platform logo PNG */
+export const AgentOpsIcon: Component<{ class?: string }> = (props) => (
+  <img src="/logo.png" alt="" class={props.class} draggable={false} />
+);
+
 // =============================================================================
 // TOOL CATEGORY DETECTION
 // =============================================================================
 
 export type ToolCategory =
+  | "agentops"
   | "kubernetes"
   | "helm"
   | "github"
@@ -91,11 +97,14 @@ export function detectToolCategory(
 
   const lower = name.toLowerCase();
 
+  // AgentOps internal tools — first-class branded cards
+  const agentopsTools = ["run_agent", "get_agent_run"];
+  if (agentopsTools.includes(lower)) return "agentops";
+
   // Built-in tools
   const builtins = [
     "bash", "read", "write", "edit", "glob", "grep", "ls",
     "webfetch", "fetch", "task", "todowrite", "todoread", "question", "skill",
-    "run_agent", "get_agent_run",
   ];
   if (builtins.includes(lower)) return "builtin";
 
@@ -132,6 +141,14 @@ export interface ToolTheme {
 }
 
 export const toolThemes: Record<ToolCategory, ToolTheme> = {
+  agentops: {
+    border: "border-indigo-400/30",
+    bg: "bg-gradient-to-br from-indigo-500/8 via-purple-500/5 to-cyan-500/3",
+    headerBg: "bg-gradient-to-r from-indigo-500/12 via-purple-500/8 to-transparent",
+    iconColor: "",
+    badge: "bg-indigo-500/15 text-indigo-300",
+    watermark: "opacity-[0.07]",
+  },
   kubernetes: {
     border: "border-blue-500/30",
     bg: "bg-gradient-to-br from-blue-500/5 to-blue-600/2",
@@ -221,6 +238,7 @@ export const toolThemes: Record<ToolCategory, ToolTheme> = {
 /** Return the branded SVG icon component for a tool category. */
 export function getCategoryIcon(category: ToolCategory): Component<{ class?: string }> {
   switch (category) {
+    case "agentops":   return AgentOpsIcon;
     case "kubernetes": return KubernetesIcon;
     case "helm":       return HelmIcon;
     case "github":     return GitHubIcon;
@@ -236,6 +254,7 @@ export function getCategoryIcon(category: ToolCategory): Component<{ class?: str
 /** Friendly display name for a tool category, or null for builtin/generic. */
 export function getCategoryLabel(category: ToolCategory): string | null {
   switch (category) {
+    case "agentops":   return "AgentOps";
     case "kubernetes": return "Kubernetes";
     case "helm":       return "Helm";
     case "github":     return "GitHub";

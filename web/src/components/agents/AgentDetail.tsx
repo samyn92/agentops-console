@@ -6,6 +6,7 @@ import { selectedAgent, agentList } from '../../stores/agents';
 import { rightPanelState, setRightPanelState } from '../../stores/view';
 import Badge from '../shared/Badge';
 import Spinner from '../shared/Spinner';
+import Markdown from '../shared/Markdown';
 import { formatDateTime } from '../../lib/format';
 
 interface AgentDetailProps {
@@ -173,9 +174,9 @@ export default function AgentDetail(props: AgentDetailProps) {
                 {/* System Prompt */}
                 <Show when={spec().systemPrompt}>
                   <Section title="System Prompt">
-                    <pre class="text-xs text-text-secondary font-mono whitespace-pre-wrap bg-surface-2 rounded-md p-2 max-h-[200px] overflow-y-auto border border-border-subtle">
-                      {spec().systemPrompt}
-                    </pre>
+                    <div class="bg-surface-2 rounded-md p-2 border border-border-subtle">
+                      <Markdown content={spec().systemPrompt!} />
+                    </div>
                   </Section>
                 </Show>
 

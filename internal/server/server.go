@@ -125,6 +125,10 @@ func New(cfg Config, k8sClient *k8s.Client, mux *multiplexer.Multiplexer) *Serve
 			r.Get("/agents/{ns}/{name}/resources/{resName}/mergerequests", h.BrowseResourceMergeRequests)
 			r.Get("/agents/{ns}/{name}/resources/{resName}/issues", h.BrowseResourceIssues)
 
+			// Traces (proxy to Tempo)
+			r.Get("/traces", h.SearchTraces)
+			r.Get("/traces/{traceID}", h.GetTrace)
+
 			// Kubernetes (legacy — kept for backward compatibility)
 			r.Get("/kubernetes/namespaces", h.ListNamespaces)
 			r.Get("/kubernetes/namespaces/{ns}/pods", h.ListPods)

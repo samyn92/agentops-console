@@ -9,6 +9,7 @@ import { agents as agentsAPI, agentResources as resourcesAPI } from '../../lib/a
 import Badge from '../shared/Badge';
 import NeuralTrace from '../shared/NeuralTrace';
 import Spinner from '../shared/Spinner';
+import Markdown from '../shared/Markdown';
 import QuickRun from './QuickRun';
 import { phaseVariant, formatDateTime, relativeTime } from '../../lib/format';
 import type { AgentCRD, AgentResourceBinding } from '../../types';
@@ -301,9 +302,9 @@ export default function AgentInspector(props: AgentInspectorProps) {
                 {/* ── System Prompt (truncated) ── */}
                 <Show when={spec().systemPrompt}>
                   <Section title="System Prompt">
-                    <pre class="text-xs text-text-secondary font-mono whitespace-pre-wrap bg-surface-2 rounded-lg p-3 max-h-48 overflow-y-auto border border-border-subtle">
-                      {spec().systemPrompt}
-                    </pre>
+                    <div class="bg-surface-2 rounded-lg p-3 border border-border-subtle">
+                      <Markdown content={spec().systemPrompt!} />
+                    </div>
                   </Section>
                 </Show>
 

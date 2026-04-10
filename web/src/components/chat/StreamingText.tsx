@@ -2,7 +2,7 @@
 // During streaming, characters are revealed via a rAF-driven buffer that
 // decouples bursty SSE deltas from render cadence. The result is a natural,
 // fluid text flow instead of jarring jumps.
-import { Show, createSignal, createEffect, onCleanup } from 'solid-js';
+import { createSignal, createEffect, onCleanup, createMemo } from 'solid-js';
 import Markdown from '../shared/Markdown';
 
 interface StreamingTextProps {
@@ -16,6 +16,9 @@ interface StreamingTextProps {
 const BASE_CHARS_PER_FRAME = 2;
 const MAX_CHARS_PER_FRAME = 20;
 
+// Cursor HTML injected inline at the end of the last block element
+const CURSOR_HTML = '<span class="streaming-cursor"></span>';
+
 export default function StreamingText(props: StreamingTextProps) {
   // The smoothly revealed substring (only used during streaming)
   const [revealed, setRevealed] = createSignal('');
@@ -28,6 +31,9 @@ export default function StreamingText(props: StreamingTextProps) {
     if (!props.isStreaming) return props.content;
     return revealed();
   };
+
+  // Whether to show the inline cursor
+  const showCursor = createMemo(() => !!props.isStreaming);
 
   // rAF loop: reveal characters toward the target at a smooth pace
   function tick() {
@@ -83,11 +89,11 @@ export default function StreamingText(props: StreamingTextProps) {
   });
 
   return (
-    <div class={`relative ${props.class || ''}`}>
-      <Markdown content={displayContent()} />
-      <Show when={props.isStreaming}>
-        <span class="streaming-cursor" />
-      </Show>
+    <div class={props.class || ''}>
+      <Markdown
+        content={displayContent()}
+        injectHtml={showCursor() ? CURSOR_HTML : undefined}
+      />
     </div>
   );
 }

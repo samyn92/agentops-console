@@ -6,6 +6,8 @@ import hljs from 'highlight.js';
 interface MarkdownProps {
   content: string;
   class?: string;
+  /** Raw HTML to inject inline at the end of the last block element (e.g. a streaming cursor) */
+  injectHtml?: string;
 }
 
 // Configure marked with syntax highlighting
@@ -25,15 +27,34 @@ const marked = new Marked({
   },
 });
 
+/**
+ * Inject HTML right before the last closing block tag so it appears
+ * inline with the final rendered characters.
+ */
+function appendInline(html: string, extra: string): string {
+  // Match the last closing block-level tag (possibly followed by more closing tags and whitespace)
+  const match = html.match(/<\/(p|li|h[1-6]|pre|div|blockquote|td|code)>(\s*(<\/[^>]+>))*\s*$/i);
+  if (match) {
+    const pos = html.lastIndexOf(match[0]);
+    return html.slice(0, pos) + extra + html.slice(pos);
+  }
+  return html + extra;
+}
+
 export default function Markdown(props: MarkdownProps) {
   let ref: HTMLDivElement | undefined;
 
   const html = createMemo(() => {
+    let result: string;
     try {
-      return marked.parse(props.content || '', { async: false }) as string;
+      result = marked.parse(props.content || '', { async: false }) as string;
     } catch {
-      return props.content || '';
+      result = props.content || '';
     }
+    if (props.injectHtml) {
+      result = appendInline(result, props.injectHtml);
+    }
+    return result;
   });
 
   return (

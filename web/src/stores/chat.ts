@@ -36,6 +36,7 @@ interface AgentChatState {
   activeToolInput: ReturnType<typeof createSignal<{ id: string; toolName: string; args: string } | null>>;
   pendingPermission: ReturnType<typeof createSignal<PendingPermissionState | null>>;
   pendingQuestion: ReturnType<typeof createSignal<PendingQuestionState | null>>;
+  lastTraceID: ReturnType<typeof createSignal<string | null>>;
   // Non-reactive
   abortController: AbortController | null;
 }
@@ -82,6 +83,7 @@ function getOrCreateState(key: string): AgentChatState {
       activeToolInput: createSignal<{ id: string; toolName: string; args: string } | null>(null),
       pendingPermission: createSignal<PendingPermissionState | null>(null),
       pendingQuestion: createSignal<PendingQuestionState | null>(null),
+      lastTraceID: createSignal<string | null>(null),
       abortController: null,
     };
     agentStates.set(key, state);
@@ -112,6 +114,7 @@ export const activeReasoning = () => currentState()?.activeReasoning[0]() ?? nul
 export const activeToolInput = () => currentState()?.activeToolInput[0]() ?? null;
 export const pendingPermission = () => currentState()?.pendingPermission[0]() ?? null;
 export const pendingQuestion = () => currentState()?.pendingQuestion[0]() ?? null;
+export const lastTraceID = () => currentState()?.lastTraceID[0]() ?? null;
 
 export function setPendingPermission(val: PendingPermissionState | null) {
   const state = currentState();
@@ -292,9 +295,14 @@ function handleFEPEvent(state: AgentChatState, key: string, event: FEPEvent) {
   const [, setAToolIn] = state.activeToolInput;
   const [, setPerm] = state.pendingPermission;
   const [, setQ] = state.pendingQuestion;
+  const [, setTraceID] = state.lastTraceID;
 
   switch (event.type) {
     case 'agent_start':
+      // Capture trace_id for the Traces panel / Run detail linking
+      if (event.trace_id) {
+        setTraceID(event.trace_id);
+      }
       // Use server timestamp (RFC3339 UTC) for the assistant message if available.
       if (event.timestamp) {
         const serverTs = new Date(event.timestamp).getTime();

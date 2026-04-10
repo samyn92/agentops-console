@@ -11,7 +11,6 @@ import {
   selectRun,
   clearRunSelection,
   activeRunCount,
-  contextActiveRunCount,
   concurrencyInfo,
   getRunSource,
   refreshRuns,
@@ -22,10 +21,10 @@ import {
 } from '../../stores/runs';
 import { selectedAgent } from '../../stores/agents';
 import { rightPanelState, toggleRightPanel } from '../../stores/view';
-import Badge from '../shared/Badge';
+import { getResourceForge, getResourceRepoName } from '../../stores/resources';
 import Spinner from '../shared/Spinner';
-import NeuralTrace from '../shared/NeuralTrace';
-import { relativeTime, phaseVariant, formatTokens, formatCost, formatDateTime } from '../../lib/format';
+import RunPhaseIcon from '../shared/RunPhaseIcon';
+import { relativeTime, formatTokens, formatCost, formatDateTime } from '../../lib/format';
 import type { AgentRunResponse } from '../../types';
 
 interface RunsPanelProps {
@@ -47,7 +46,6 @@ export default function RunsPanel(props: RunsPanelProps) {
 
   const isExpanded = () => rightPanelState() === 'expanded';
   const globalActive = () => activeRunCount();
-  const contextActive = () => contextActiveRunCount();
   const agent = () => selectedAgent();
 
   // Selected run data
@@ -183,9 +181,6 @@ export default function RunsPanel(props: RunsPanelProps) {
           <FilterTab value="failed" current={runFilter()} label="Failed" count={contextualRuns().filter(r => r.status?.phase === 'Failed').length} />
         </div>
 
-        {/* Active runs neural trace */}
-        <NeuralTrace active={contextActive() > 0} size="sm" />
-
         {/* Run list */}
         <div class="flex-1 overflow-y-auto">
           <Show
@@ -209,10 +204,13 @@ export default function RunsPanel(props: RunsPanelProps) {
                   const key = () => `${run.metadata.namespace}/${run.metadata.name}`;
                   const isSelected = () => selectedRunKey() === key();
                   const source = () => getRunSource(run);
+                  const hasGit = () => !!run.status?.branch || !!run.spec.git;
+                  const forge = () => getResourceForge(run.spec.git?.resourceRef);
+                  const repoName = () => getResourceRepoName(run.spec.git?.resourceRef);
 
                   return (
                     <button
-                      class={`w-full text-left px-3 py-2.5 transition-colors border-b border-border-subtle ${
+                      class={`w-full text-left px-3 py-2.5 transition-colors border-b border-border-subtle relative overflow-hidden ${
                         isSelected()
                           ? 'bg-accent-muted border-l-2 border-l-accent'
                           : 'hover:bg-surface-hover border-l-2 border-l-transparent'
@@ -225,31 +223,53 @@ export default function RunsPanel(props: RunsPanelProps) {
                         }
                       }}
                     >
-                      {/* Row 1: Name + phase badge */}
-                      <div class="flex items-center gap-1.5 mb-0.5">
-                        <SourceIcon source={source()} />
-                        <span class="text-xs font-mono text-text truncate flex-1">
-                          {run.metadata.name}
-                        </span>
-                        <Badge variant={phaseVariant(run.status?.phase)} dot>
-                          {run.status?.phase || '?'}
-                        </Badge>
+                      {/* Forge watermark */}
+                      <Show when={forge()}>
+                        <ForgeWatermark forge={forge()!} />
+                      </Show>
+
+                      {/* Row 1: Source/forge icon + Git branch tag (or run name) + commits + phase icon */}
+                      <div class="flex items-center gap-1.5">
+                        <Show
+                          when={hasGit() && forge()}
+                          fallback={<SourceIcon source={source()} />}
+                        >
+                          <ForgeIcon forge={forge()!} />
+                        </Show>
+                        <Show
+                          when={hasGit() && run.status?.branch}
+                          fallback={
+                            <span class="run-card__title truncate flex-1">{run.metadata.name}</span>
+                          }
+                        >
+                          <span class={`run-card__branch-tag ${forge() === 'gitlab' ? 'run-card__branch-tag--gitlab' : forge() === 'github' ? 'run-card__branch-tag--github' : ''}`}>
+                            <svg class="run-card__branch-tag-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 3v12m0 0a3 3 0 103 3H15a3 3 0 100-3H9m-3 0a3 3 0 01-3-3V6a3 3 0 013-3h0" />
+                            </svg>
+                            <span class="run-card__branch-tag-text">
+                              <Show when={repoName()}>
+                                <span class="run-card__branch-tag-repo">{repoName()}</span>
+                              </Show>
+                              <span class="run-card__branch-tag-branch">{run.status!.branch}</span>
+                            </span>
+                          </span>
+                          <span class="flex-1" />
+                        </Show>
+                        <Show when={run.status?.commits}>
+                          <span class="run-card__commits-inline">{run.status!.commits}</span>
+                        </Show>
+                        <RunPhaseIcon phase={run.status?.phase} />
                       </div>
 
-                      {/* Row 2: Agent ref + time */}
-                      <div class="flex items-center gap-2 text-[11px] leading-[16px] tracking-[0.5px] text-text-muted">
-                        <span class="truncate">{run.spec.agentRef}</span>
-                        <Show when={run.status?.model}>
-                          <span class="text-text-muted/60">{run.status!.model}</span>
-                        </Show>
-                        <span class="ml-auto flex-shrink-0">{relativeTime(run.metadata.creationTimestamp)}</span>
+                      {/* Row 2: Run name (subtitle) + time */}
+                      <div class="run-card__meta">
+                        <span class="truncate">{run.metadata.name}</span>
+                        <span class="run-card__time">{relativeTime(run.metadata.creationTimestamp)}</span>
                       </div>
 
                       {/* Row 3: Prompt preview */}
                       <Show when={run.spec.prompt}>
-                        <p class="text-[11px] text-text-secondary/70 mt-1 truncate">
-                          {run.spec.prompt}
-                        </p>
+                        <p class="run-card__prompt">{run.spec.prompt}</p>
                       </Show>
 
                       {/* Inline detail when selected */}
@@ -356,6 +376,52 @@ function DetailRow(props: { label: string; value: string }) {
     <div class="flex items-center gap-2 text-[11px]">
       <span class="text-text-muted w-16 flex-shrink-0">{props.label}</span>
       <span class="text-text-secondary font-mono truncate">{props.value}</span>
+    </div>
+  );
+}
+
+/** Forge icon (GitHub/GitLab) shown left of the branch tag */
+function ForgeIcon(props: { forge: 'github' | 'gitlab' | 'git' }) {
+  return (
+    <span class="flex-shrink-0 w-5 h-5 flex items-center justify-center">
+      <Show when={props.forge === 'github'}>
+        <svg class="w-[18px] h-[18px] text-text-secondary" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/>
+        </svg>
+      </Show>
+      <Show when={props.forge === 'gitlab'}>
+        <svg class="w-[18px] h-[18px] text-[#FC6D26]" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M22.65 14.39L12 22.13 1.35 14.39a.84.84 0 01-.3-.94l1.22-3.78 2.44-7.51A.42.42 0 014.82 2a.43.43 0 01.58 0 .42.42 0 01.11.18l2.44 7.49h8.1l2.44-7.51A.42.42 0 0118.6 2a.43.43 0 01.58 0 .42.42 0 01.11.18l2.44 7.51L23 13.45a.84.84 0 01-.35.94z"/>
+        </svg>
+      </Show>
+      <Show when={props.forge === 'git'}>
+        <svg class="w-[18px] h-[18px] text-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 3v12m0 0a3 3 0 103 3H15a3 3 0 100-3H9m-3 0a3 3 0 01-3-3V6a3 3 0 013-3h0" />
+        </svg>
+      </Show>
+    </span>
+  );
+}
+
+/** Subtle forge logo watermark in the bottom-right corner of run cards */
+function ForgeWatermark(props: { forge: 'github' | 'gitlab' | 'git' }) {
+  return (
+    <div class={`run-card__watermark run-card__watermark--${props.forge}`}>
+      <Show when={props.forge === 'github'}>
+        <svg viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/>
+        </svg>
+      </Show>
+      <Show when={props.forge === 'gitlab'}>
+        <svg viewBox="0 0 24 24" fill="currentColor">
+          <path d="M22.65 14.39L12 22.13 1.35 14.39a.84.84 0 01-.3-.94l1.22-3.78 2.44-7.51A.42.42 0 014.82 2a.43.43 0 01.58 0 .42.42 0 01.11.18l2.44 7.49h8.1l2.44-7.51A.42.42 0 0118.6 2a.43.43 0 01.58 0 .42.42 0 01.11.18l2.44 7.51L23 13.45a.84.84 0 01-.35.94z"/>
+        </svg>
+      </Show>
+      <Show when={props.forge === 'git'}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 3v12m0 0a3 3 0 103 3H15a3 3 0 100-3H9m-3 0a3 3 0 01-3-3V6a3 3 0 013-3h0" />
+        </svg>
+      </Show>
     </div>
   );
 }

@@ -36,6 +36,8 @@ import type {
   MemorySession,
   MemoryContext,
   MemoryStats,
+  TempoTraceResponse,
+  TempoSearchResponse,
 } from '../types';
 
 const BASE = '/api/v1';
@@ -388,6 +390,34 @@ export const memory = {
       `/agents/${ns}/${name}/memory/extract`,
       opts ?? {},
     ),
+};
+
+// ── Traces (Tempo proxy) ──
+
+export const traces = {
+  /** Get a single trace by ID from Tempo */
+  get: (traceID: string) =>
+    get<TempoTraceResponse>(`/traces/${traceID}`),
+
+  /** Search traces with agent-scoped filters.
+   *  Uses Tempo's TraceQL search API.
+   *  @param agentName - filter by agent.name resource attribute
+   *  @param limit - max number of results (default 20)
+   *  @param start - start time as unix seconds
+   *  @param end - end time as unix seconds
+   */
+  search: (opts?: { agentName?: string; limit?: number; start?: number; end?: number }) => {
+    const params = new URLSearchParams();
+    // Build a TraceQL query scoped to the agent
+    if (opts?.agentName) {
+      params.set('q', `{ resource.service.name = "${opts.agentName}" }`);
+    }
+    if (opts?.limit) params.set('limit', String(opts.limit));
+    if (opts?.start) params.set('start', String(opts.start));
+    if (opts?.end) params.set('end', String(opts.end));
+    const qs = params.toString();
+    return get<TempoSearchResponse>(`/traces${qs ? `?${qs}` : ''}`);
+  },
 };
 
 // ── Global SSE connection ──

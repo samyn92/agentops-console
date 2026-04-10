@@ -4,6 +4,7 @@ import { agentRuns } from '../../lib/api';
 import type { AgentRunResponse } from '../../types';
 import Badge from '../shared/Badge';
 import Spinner from '../shared/Spinner';
+import Markdown from '../shared/Markdown';
 import { formatTokens, formatDateTime, formatCost, phaseVariant } from '../../lib/format';
 
 interface RunDetailProps {
@@ -67,6 +68,14 @@ export default function RunDetail(props: RunDetailProps) {
                 <Show when={status()?.cost}>
                   <Property label="Cost" value={formatCost(status()!.cost!)} />
                 </Show>
+                <Show when={status()?.traceID}>
+                  <div class="flex items-center gap-2 text-xs">
+                    <span class="text-text-muted w-20 flex-shrink-0">Trace</span>
+                    <span class="text-text font-mono text-[10px] truncate" title={status()!.traceID!}>
+                      {status()!.traceID!.slice(0, 24)}...
+                    </span>
+                  </div>
+                </Show>
                 <Show when={status()?.startTime}>
                   <Property label="Started" value={formatDateTime(status()!.startTime!)} />
                 </Show>
@@ -77,18 +86,18 @@ export default function RunDetail(props: RunDetailProps) {
                 {/* Prompt */}
                 <div class="space-y-1">
                   <span class="text-xs text-text-muted">Prompt</span>
-                  <pre class="text-xs text-text-secondary font-mono whitespace-pre-wrap bg-surface-2 rounded-md p-2 border border-border-subtle">
-                    {spec().prompt}
-                  </pre>
+                    <div class="text-xs bg-surface-2 rounded-md p-2 border border-border-subtle">
+                      <Markdown content={spec().prompt} />
+                    </div>
                 </div>
 
                 {/* Output */}
                 <Show when={status()?.output}>
                   <div class="space-y-1">
                     <span class="text-xs text-text-muted">Output</span>
-                    <pre class="text-xs text-text-secondary font-mono whitespace-pre-wrap bg-surface-2 rounded-md p-2 border border-border-subtle max-h-[400px] overflow-y-auto">
-                      {status()!.output}
-                    </pre>
+                    <div class="text-xs bg-surface-2 rounded-md p-2 border border-border-subtle max-h-[400px] overflow-y-auto">
+                      <Markdown content={status()!.output!} />
+                    </div>
                   </div>
                 </Show>
 

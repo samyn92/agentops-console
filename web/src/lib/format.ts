@@ -1,28 +1,103 @@
 // Shared formatting utilities — extracted from inline usage across components
 
-// ---- Time ----
+// ---- Locale-aware time formatting (Intl API) ----
 
-/** Format a date string as relative time (e.g. "just now", "5m ago", "2h ago", "3d ago") */
+/**
+ * Resolve the user's preferred locale from the browser.
+ * Uses navigator.languages (full preference list) with navigator.language as fallback.
+ */
+function userLocales(): string[] {
+  if (navigator.languages?.length) return [...navigator.languages];
+  return [navigator.language || 'en-US'];
+}
+
+/**
+ * Detect the system's preferred hour cycle.
+ * When the browser locale (e.g. en-US) would normally use h12 (AM/PM),
+ * but the OS regional settings use 24h, resolvedOptions().hourCycle reflects
+ * the OS preference. We detect this and pass it explicitly to all formatters
+ * so European users with an English browser still see 24h time.
+ */
+function systemHourCycle(): 'h23' | 'h12' | undefined {
+  try {
+    const resolved = new Intl.DateTimeFormat(undefined, { hour: 'numeric' }).resolvedOptions();
+    return resolved.hourCycle as 'h23' | 'h12' | undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+// Cached Intl formatters — created lazily, reused across calls.
+let _cacheKey: string | undefined;
+let _dateTimeFmt: Intl.DateTimeFormat | undefined;
+let _timeFmt: Intl.DateTimeFormat | undefined;
+let _relativeFmt: Intl.RelativeTimeFormat | undefined;
+
+function ensureFormatters(): void {
+  const locales = userLocales();
+  const hc = systemHourCycle();
+  const key = locales.join(',') + '|' + (hc || '');
+  if (key === _cacheKey) return;
+  _cacheKey = key;
+
+  // Build options with the detected hourCycle so the OS preference wins
+  const hourOpts: Intl.DateTimeFormatOptions = hc ? { hourCycle: hc } : {};
+
+  _dateTimeFmt = new Intl.DateTimeFormat(locales, {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    ...hourOpts,
+  });
+  _timeFmt = new Intl.DateTimeFormat(locales, {
+    hour: '2-digit',
+    minute: '2-digit',
+    ...hourOpts,
+  });
+  _relativeFmt = new Intl.RelativeTimeFormat(locales, { numeric: 'auto', style: 'short' });
+}
+
+/** Format a date string as localized relative time using Intl.RelativeTimeFormat.
+ *  Falls back to compact labels for very recent times. */
 export function relativeTime(dateStr: string | undefined): string {
   if (!dateStr) return '';
   const d = new Date(dateStr);
-  const now = Date.now();
-  const diffMs = now - d.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  if (diffMins < 1) return 'just now';
-  if (diffMins < 60) return `${diffMins}m ago`;
+  if (isNaN(d.getTime())) return '';
+  ensureFormatters();
+  const diffMs = Date.now() - d.getTime();
+  const diffSecs = Math.floor(diffMs / 1000);
+  if (diffSecs < 60) return _relativeFmt!.format(-diffSecs, 'second');
+  const diffMins = Math.floor(diffSecs / 60);
+  if (diffMins < 60) return _relativeFmt!.format(-diffMins, 'minute');
   const diffHrs = Math.floor(diffMins / 60);
-  if (diffHrs < 24) return `${diffHrs}h ago`;
+  if (diffHrs < 24) return _relativeFmt!.format(-diffHrs, 'hour');
   const diffDays = Math.floor(diffHrs / 24);
-  if (diffDays < 30) return `${diffDays}d ago`;
+  if (diffDays < 30) return _relativeFmt!.format(-diffDays, 'day');
   const diffMonths = Math.floor(diffDays / 30);
-  return `${diffMonths}mo ago`;
+  if (diffMonths < 12) return _relativeFmt!.format(-diffMonths, 'month');
+  const diffYears = Math.floor(diffMonths / 12);
+  return _relativeFmt!.format(-diffYears, 'year');
 }
 
-/** Format a date string as a localized date+time */
+/** Format a date string as a localized date+time (e.g. "10.04.2026, 14:30:00" in de-DE) */
 export function formatDateTime(dateStr: string | undefined): string {
   if (!dateStr) return '';
-  return new Date(dateStr).toLocaleString();
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return '';
+  ensureFormatters();
+  return _dateTimeFmt!.format(d);
+}
+
+/** Format a timestamp (ms epoch or ISO string) to localized time HH:MM (e.g. "14:30" in 24h locales) */
+export function formatTime(ts: number | string): string {
+  if (!ts) return '';
+  const d = typeof ts === 'string' ? new Date(ts) : new Date(ts);
+  if (isNaN(d.getTime())) return '';
+  ensureFormatters();
+  return _timeFmt!.format(d);
 }
 
 // ---- Tokens ----

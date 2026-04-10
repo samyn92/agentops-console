@@ -80,16 +80,16 @@ export function toggleRightPanel() {
   setRightPanelState(current === 'collapsed' ? 'expanded' : 'collapsed');
 }
 
-// ── Right panel tab (memory vs runs) ──
+// ── Right panel tab (memory vs runs vs traces) ──
 
-export type RightPanelTab = 'memory' | 'runs';
+export type RightPanelTab = 'memory' | 'runs' | 'traces';
 
 const TAB_KEY = 'agentops:rightPanelTab';
 
 function loadTabState(): RightPanelTab {
   try {
     const raw = localStorage.getItem(TAB_KEY);
-    if (raw === 'memory' || raw === 'runs') return raw;
+    if (raw === 'memory' || raw === 'runs' || raw === 'traces') return raw;
   } catch { /* ignore */ }
   return 'memory';
 }

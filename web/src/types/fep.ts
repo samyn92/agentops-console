@@ -65,6 +65,7 @@ export interface AgentStartEvent extends FEPEventBase {
   type: "agent_start"
   session_id: string
   prompt: string
+  trace_id?: string
 }
 
 export interface AgentFinishEvent extends FEPEventBase {

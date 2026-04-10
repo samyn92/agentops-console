@@ -104,6 +104,7 @@ export interface AgentRunResponse {
     tokensUsed?: number
     cost?: string
     model?: string
+    traceID?: string
     startTime?: string
     completionTime?: string
     error?: string
@@ -673,4 +674,64 @@ export interface MemoryStats {
   total_prompts: number
   total_projects: number
   active_sessions?: number
+}
+
+// ---- Tempo Trace Types ----
+
+/** A span from a Tempo trace response. */
+export interface TraceSpan {
+  traceID: string
+  spanID: string
+  parentSpanID?: string
+  operationName: string
+  serviceName?: string
+  startTime: number       // microseconds since epoch
+  duration: number        // microseconds
+  tags?: Array<{ key: string; type: string; value: unknown }>
+  logs?: Array<{ timestamp: number; fields: Array<{ key: string; value: unknown }> }>
+  status?: { code: number; message?: string }
+}
+
+/** A process/service in a Tempo trace. */
+export interface TraceProcess {
+  serviceName: string
+  tags?: Array<{ key: string; type: string; value: unknown }>
+}
+
+/** Full trace response from Tempo (Jaeger format). */
+export interface TempoTraceResponse {
+  batches?: unknown[]   // OTLP format
+  // Jaeger-compatible format (returned by Tempo by default):
+  data?: Array<{
+    traceID: string
+    spans: TraceSpan[]
+    processes: Record<string, TraceProcess>
+  }>
+}
+
+/** A trace summary from Tempo search results. */
+export interface TraceSearchResult {
+  traceID: string
+  rootServiceName?: string
+  rootTraceName?: string
+  startTimeUnixNano?: string
+  durationMs?: number
+  spanSets?: Array<{
+    spans: Array<{
+      spanID: string
+      startTimeUnixNano: string
+      durationNanos: string
+      attributes?: Array<{ key: string; value: { stringValue?: string; intValue?: string } }>
+    }>
+  }>
+}
+
+/** Tempo search response envelope. */
+export interface TempoSearchResponse {
+  traces: TraceSearchResult[]
+  metrics?: {
+    totalBlocks?: number
+    completedJobs?: number
+    totalJobs?: number
+  }
 }

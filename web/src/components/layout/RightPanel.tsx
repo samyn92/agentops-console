@@ -1,8 +1,9 @@
-// RightPanel — collapsible right sidebar with stacked Runs (top) + Memory (bottom).
+// RightPanel — collapsible right sidebar with tabbed content: Runs, Memory, Traces.
 // When memory is enabled: 60/40 split with a draggable horizontal divider.
-// When memory is not enabled: Runs fills the full panel.
-import { Show, createSignal, onMount, onCleanup } from 'solid-js';
-import { rightPanelState, toggleRightPanel } from '../../stores/view';
+// When memory is not enabled: active tab fills the full panel.
+import { Show, createSignal, onMount, onCleanup, Switch, Match } from 'solid-js';
+import { rightPanelState, toggleRightPanel, rightPanelTab, setRightPanelTab } from '../../stores/view';
+import type { RightPanelTab } from '../../stores/view';
 import { memoryEnabled } from '../../stores/memory';
 import { selectedAgent } from '../../stores/agents';
 import {
@@ -13,6 +14,7 @@ import {
 } from '../../stores/runs';
 import RunsPanelContent from './RunsPanelContent';
 import MemoryPanel from './MemoryPanel';
+import TracesPanel from './TracesPanel';
 
 interface RightPanelProps {
   class?: string;
@@ -21,10 +23,6 @@ interface RightPanelProps {
 export default function RightPanel(props: RightPanelProps) {
   const [panelWidth, setPanelWidth] = createSignal(340);
   const [isResizingWidth, setIsResizingWidth] = createSignal(false);
-
-  // Vertical split: percentage of panel height for Memory (top section)
-  const [splitPct, setSplitPct] = createSignal(60);
-  const [isResizingSplit, setIsResizingSplit] = createSignal(false);
 
   let panelRef: HTMLElement | undefined;
 
@@ -56,32 +54,6 @@ export default function RightPanel(props: RightPanelProps) {
 
     function onMouseUp() {
       setIsResizingWidth(false);
-      document.removeEventListener('mousemove', onMouseMove);
-      document.removeEventListener('mouseup', onMouseUp);
-    }
-
-    document.addEventListener('mousemove', onMouseMove);
-    document.addEventListener('mouseup', onMouseUp);
-  }
-
-  // Vertical split resize handler (drag horizontal divider)
-  function onSplitResizeStart(e: MouseEvent) {
-    e.preventDefault();
-    setIsResizingSplit(true);
-
-    function onMouseMove(e: MouseEvent) {
-      if (!panelRef) return;
-      const rect = panelRef.getBoundingClientRect();
-      // Subtract header height (48px = h-12)
-      const headerHeight = 48;
-      const availableHeight = rect.height - headerHeight;
-      const offsetY = e.clientY - rect.top - headerHeight;
-      const pct = Math.max(20, Math.min(80, (offsetY / availableHeight) * 100));
-      setSplitPct(pct);
-    }
-
-    function onMouseUp() {
-      setIsResizingSplit(false);
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
     }
@@ -139,7 +111,14 @@ export default function RightPanel(props: RightPanelProps) {
             </svg>
           </button>
 
-          <div class="flex-1" />
+          {/* Tab switcher */}
+          <div class="flex gap-0.5 flex-1">
+            <TabButton tab="runs" current={rightPanelTab()} label="Runs" />
+            <Show when={hasMemory()}>
+              <TabButton tab="memory" current={rightPanelTab()} label="Memory" />
+            </Show>
+            <TabButton tab="traces" current={rightPanelTab()} label="Traces" />
+          </div>
 
           <button
             class="p-1 rounded-lg hover:bg-surface-hover text-text-muted hover:text-text transition-colors"
@@ -152,44 +131,36 @@ export default function RightPanel(props: RightPanelProps) {
           </button>
         </div>
 
-        {/* Content: stacked when memory enabled, full runs otherwise */}
-        <Show when={hasMemory()} fallback={
-          <div class="flex-1 min-h-0 overflow-hidden">
-            <RunsPanelContent />
-          </div>
-        }>
-          <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
-            {/* Top section: Runs */}
-            <div
-              class="overflow-y-auto overflow-x-hidden flex-shrink-0"
-              style={{ height: `${splitPct()}%` }}
-            >
+        {/* Tab content */}
+        <div class="flex-1 min-h-0 overflow-hidden">
+          <Switch>
+            <Match when={rightPanelTab() === 'runs'}>
               <RunsPanelContent />
-            </div>
-
-            {/* Draggable horizontal divider between runs and memory */}
-            <div
-              class={`flex-shrink-0 cursor-row-resize group relative`}
-              onMouseDown={onSplitResizeStart}
-            >
-              <div class={`h-[3px] w-full transition-colors ${
-                isResizingSplit() ? 'bg-accent' : 'bg-border group-hover:bg-border-hover'
-              }`} />
-              {/* Drag affordance — a small centered pill that appears on hover */}
-              <div class={`absolute left-1/2 -translate-x-1/2 -translate-y-1/2 top-1/2 rounded-full transition-all ${
-                isResizingSplit()
-                  ? 'w-12 h-1.5 bg-accent'
-                  : 'w-8 h-1 bg-border-hover opacity-0 group-hover:opacity-100'
-              }`} />
-            </div>
-
-            {/* Bottom section: Memory */}
-            <div class="overflow-y-auto overflow-x-hidden flex-1 min-h-0">
+            </Match>
+            <Match when={rightPanelTab() === 'memory'}>
               <MemoryPanel />
-            </div>
-          </div>
-        </Show>
+            </Match>
+            <Match when={rightPanelTab() === 'traces'}>
+              <TracesPanel />
+            </Match>
+          </Switch>
+        </div>
       </Show>
     </aside>
+  );
+}
+
+function TabButton(props: { tab: RightPanelTab; current: RightPanelTab; label: string }) {
+  return (
+    <button
+      class={`px-2.5 py-1 text-[11px] rounded-lg transition-colors ${
+        props.current === props.tab
+          ? 'bg-surface-hover text-text font-medium'
+          : 'text-text-muted hover:text-text-secondary hover:bg-surface-hover/50'
+      }`}
+      onClick={() => setRightPanelTab(props.tab)}
+    >
+      {props.label}
+    </button>
   );
 }

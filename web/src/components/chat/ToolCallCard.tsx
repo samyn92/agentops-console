@@ -134,9 +134,7 @@ function ToolIcon(props: { toolName: string; category: ToolCategory; class?: str
         </svg>
       </Match>
       <Match when={props.toolName === 'run_agent' || props.toolName === 'get_agent_run'}>
-        <svg class={`${props.class || 'w-4 h-4'} text-accent`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-        </svg>
+        <img src="/logo.png" alt="" class={props.class || 'w-5 h-5'} draggable={false} />
       </Match>
     </Switch>
   );
@@ -181,6 +179,9 @@ function ToolActivityLine(props: { part: ToolPart }) {
         return url.length > 50 ? url.slice(0, 50) + '...' : url;
       }
       if (name === 'task' && input.description) return input.description as string;
+      if ((name === 'run_agent' || name === 'get_agent_run') && (input.agent || input.name)) {
+        return (input.agent || input.name) as string;
+      }
       // MCP and other tools: show first arg value as preview
       if (name.startsWith('mcp_')) {
         const keys = Object.keys(input);
@@ -313,7 +314,7 @@ export default function ToolCallCard(props: ToolCallCardProps) {
   const hasInputArgs = createMemo(() => {
     if (!part().input || part().input === '{}') return false;
     // Builtins with dedicated renderers already show their input contextually
-    const builtinsWithInlineInput = ['bash', 'read', 'edit', 'write', 'grep', 'glob', 'ls', 'fetch', 'webfetch'];
+    const builtinsWithInlineInput = ['bash', 'read', 'edit', 'write', 'grep', 'glob', 'ls', 'fetch', 'webfetch', 'run_agent', 'get_agent_run'];
     if (builtinsWithInlineInput.includes(part().toolName)) return false;
     return true;
   });

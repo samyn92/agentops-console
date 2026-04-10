@@ -4,7 +4,9 @@
 import { createResource, Show, createMemo } from 'solid-js';
 import { agentRuns } from '../../lib/api';
 import { selectedRunKey, getRunSource, type RunSource } from '../../stores/runs';
+import { getResourceForge, getResourceRepoName } from '../../stores/resources';
 import Spinner from '../shared/Spinner';
+import Markdown from '../shared/Markdown';
 import {
   formatTokens,
   formatDateTime,
@@ -135,47 +137,107 @@ export default function RunDetailView(props: RunDetailViewProps) {
 
                   {/* ── Git Workspace ── */}
                   <Show when={hasGit()}>
-                    <div class="space-y-2">
-                      <div class="section-header">
-                        <span class="section-label">Git Workspace</span>
-                      </div>
-                      <div class="git-workspace-detail">
-                        <div class="flex flex-wrap gap-3">
-                          <Show when={status()?.branch}>
-                            <div class="flex items-center gap-1.5">
-                              <svg class="w-3.5 h-3.5 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 3v12m0 0a3 3 0 103 3H15a3 3 0 100-3H9m-3 0a3 3 0 01-3-3V6a3 3 0 013-3h0" />
-                              </svg>
-                              <span class="git-branch-badge">{status()!.branch}</span>
-                            </div>
-                          </Show>
-                          <Show when={spec().git?.baseBranch}>
-                            <div class="flex items-center gap-1.5 text-xs text-text-muted">
-                              <span>base:</span>
-                              <span class="font-mono text-text-secondary">{spec().git!.baseBranch}</span>
-                            </div>
-                          </Show>
-                          <Show when={status()?.commits !== undefined && status()?.commits !== 0}>
-                            <span class="git-commits-badge">{status()!.commits} commits</span>
-                          </Show>
-                        </div>
-                        <Show when={status()?.pullRequestURL}>
-                          <div class="mt-3 flex items-center gap-2">
-                            <svg class="w-3.5 h-3.5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
-                            </svg>
-                            <a
-                              href={status()!.pullRequestURL}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              class="text-xs text-accent hover:underline font-mono"
-                            >
-                              {status()!.pullRequestURL!.replace(/^https?:\/\//, '')}
-                            </a>
+                    {(() => {
+                      const forge = () => getResourceForge(spec().git?.resourceRef);
+                      const repoName = () => getResourceRepoName(spec().git?.resourceRef);
+                      const forgeClass = () => {
+                        const f = forge();
+                        if (f === 'gitlab') return 'git-workspace-detail--gitlab';
+                        if (f === 'github') return 'git-workspace-detail--github';
+                        return '';
+                      };
+
+                      return (
+                        <div class="space-y-2">
+                          <div class="section-header">
+                            <span class="section-label">Git Workspace</span>
                           </div>
-                        </Show>
-                      </div>
-                    </div>
+                          <div class={`git-workspace-detail ${forgeClass()}`}>
+                            {/* Single row: forge icon + branch tag (optionally clickable) + commits */}
+                            <div class="git-workspace__primary">
+                              {/* Forge icon */}
+                              <Show when={forge()}>
+                                <span class="git-workspace__forge-icon">
+                                  <Show when={forge() === 'github'}>
+                                    <svg viewBox="0 0 24 24" fill="currentColor">
+                                      <path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/>
+                                    </svg>
+                                  </Show>
+                                  <Show when={forge() === 'gitlab'}>
+                                    <svg viewBox="0 0 24 24" fill="currentColor">
+                                      <path d="M22.65 14.39L12 22.13 1.35 14.39a.84.84 0 01-.3-.94l1.22-3.78 2.44-7.51A.42.42 0 014.82 2a.43.43 0 01.58 0 .42.42 0 01.11.18l2.44 7.49h8.1l2.44-7.51A.42.42 0 0118.6 2a.43.43 0 01.58 0 .42.42 0 01.11.18l2.44 7.51L23 13.45a.84.84 0 01-.35.94z"/>
+                                    </svg>
+                                  </Show>
+                                  <Show when={forge() === 'git'}>
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                      <path stroke-linecap="round" stroke-linejoin="round" d="M6 3v12m0 0a3 3 0 103 3H15a3 3 0 100-3H9m-3 0a3 3 0 01-3-3V6a3 3 0 013-3h0" />
+                                    </svg>
+                                  </Show>
+                                </span>
+                              </Show>
+
+                              {/* Branch tag — clickable link when PR/MR exists, plain span otherwise */}
+                              <Show when={status()?.branch}>
+                                <Show
+                                  when={status()?.pullRequestURL}
+                                  fallback={
+                                    <span class={`run-card__branch-tag run-card__branch-tag--lg ${forge() === 'gitlab' ? 'run-card__branch-tag--gitlab' : forge() === 'github' ? 'run-card__branch-tag--github' : ''}`}>
+                                      <svg class="run-card__branch-tag-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 16px; height: 16px;">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 3v12m0 0a3 3 0 103 3H15a3 3 0 100-3H9m-3 0a3 3 0 01-3-3V6a3 3 0 013-3h0" />
+                                      </svg>
+                                      <span class="run-card__branch-tag-text">
+                                        <Show when={repoName()}>
+                                          <span class="run-card__branch-tag-repo" style="font-size: 10px;">{repoName()}</span>
+                                        </Show>
+                                        <span class="run-card__branch-tag-branch" style="font-size: 13px;">{status()!.branch}</span>
+                                      </span>
+                                    </span>
+                                  }
+                                >
+                                  <a
+                                    href={status()!.pullRequestURL}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    class={`run-card__branch-tag run-card__branch-tag--lg run-card__branch-tag--link ${forge() === 'gitlab' ? 'run-card__branch-tag--gitlab' : forge() === 'github' ? 'run-card__branch-tag--github' : ''}`}
+                                  >
+                                    <svg class="run-card__branch-tag-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 16px; height: 16px;">
+                                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                                    </svg>
+                                    <span class="run-card__branch-tag-text">
+                                      <Show when={repoName()}>
+                                        <span class="run-card__branch-tag-repo" style="font-size: 10px;">{repoName()}</span>
+                                      </Show>
+                                      <span class="run-card__branch-tag-branch" style="font-size: 13px;">{status()!.branch}</span>
+                                    </span>
+                                    <svg class="run-card__branch-tag-extlink" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                    </svg>
+                                  </a>
+                                </Show>
+                              </Show>
+
+                              {/* Spacer */}
+                              <span class="flex-1" />
+
+                              {/* Base branch */}
+                              <Show when={spec().git?.baseBranch}>
+                                <div class="git-workspace__base-branch">
+                                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                                  </svg>
+                                  <span class="git-workspace__base-branch-name">{spec().git!.baseBranch}</span>
+                                </div>
+                              </Show>
+
+                              {/* Commits count */}
+                              <Show when={status()?.commits !== undefined && status()?.commits !== 0}>
+                                <span class="git-commits-badge">{status()!.commits} commits</span>
+                              </Show>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </Show>
 
                   {/* ── Prompt ── */}
@@ -183,9 +245,9 @@ export default function RunDetailView(props: RunDetailViewProps) {
                     <div class="section-header">
                       <span class="section-label">Prompt</span>
                     </div>
-                    <pre class="text-sm text-text-secondary font-mono whitespace-pre-wrap bg-surface-2 rounded-xl p-4 border border-border-subtle leading-relaxed">
-                      {spec().prompt}
-                    </pre>
+                    <div class="bg-surface-2 rounded-xl p-4 border border-border-subtle leading-relaxed">
+                      <Markdown content={spec().prompt} />
+                    </div>
                   </div>
 
                   {/* ── Output ── */}
@@ -194,9 +256,9 @@ export default function RunDetailView(props: RunDetailViewProps) {
                       <div class="section-header">
                         <span class="section-label">Output</span>
                       </div>
-                      <pre class="text-sm text-text-secondary font-mono whitespace-pre-wrap bg-surface-2 rounded-xl p-4 border border-border-subtle max-h-[500px] overflow-y-auto leading-relaxed">
-                        {status()!.output}
-                      </pre>
+                      <div class="bg-surface-2 rounded-xl p-4 border border-border-subtle leading-relaxed">
+                        <Markdown content={status()!.output!} />
+                      </div>
                     </div>
                   </Show>
 

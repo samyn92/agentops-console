@@ -2,9 +2,9 @@
 // Hierarchical layout with four groups:
 // 1. Orchestrators — daemon agents with nested task agents (from run_agent delegation)
 //    A task can appear under multiple daemons if both have invoked it.
-// 2. Channels — task agents bound to channels (webhook/gitlab/slack) with no daemon parent
+// 2. Workers — task agents with no daemon, channel, or schedule
 // 3. Scheduled — task agents with spec.schedule and no daemon parent or channel
-// 4. Standalone — task agents with no daemon, channel, or schedule
+// 4. Channels — task agents bound to channels (webhook/gitlab/slack) with no daemon parent
 //
 // Channel/schedule badges appear on cards regardless of group.
 import { For, Show, createSignal, createMemo } from 'solid-js';
@@ -244,13 +244,13 @@ export default function Sidebar(props: SidebarProps) {
                 </div>
               </Show>
 
-              {/* ── 3. Scheduled (task agents with cron, no daemon/channel) ── */}
-              <Show when={agentTree().scheduledTasks.length > 0}>
+              {/* ── 2. Workers (standalone task agents) ── */}
+              <Show when={agentTree().standalone.length > 0}>
                 <div class="section-header">
-                  <span class="section-label">Scheduled</span>
+                  <span class="section-label">Workers</span>
                 </div>
                 <div class="flex flex-col gap-1 px-2">
-                  <For each={agentTree().scheduledTasks}>
+                  <For each={agentTree().standalone}>
                     {(agent) => {
                       const isSelected = () => {
                         const sel = selectedAgent();
@@ -269,13 +269,13 @@ export default function Sidebar(props: SidebarProps) {
                 </div>
               </Show>
 
-              {/* ── 4. Standalone Tasks ── */}
-              <Show when={agentTree().standalone.length > 0}>
+              {/* ── 3. Scheduled (task agents with cron, no daemon/channel) ── */}
+              <Show when={agentTree().scheduledTasks.length > 0}>
                 <div class="section-header">
-                  <span class="section-label">Standalone</span>
+                  <span class="section-label">Scheduled</span>
                 </div>
                 <div class="flex flex-col gap-1 px-2">
-                  <For each={agentTree().standalone}>
+                  <For each={agentTree().scheduledTasks}>
                     {(agent) => {
                       const isSelected = () => {
                         const sel = selectedAgent();
