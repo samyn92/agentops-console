@@ -118,6 +118,56 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
     };
   });
 
+  // Extract user prompt from the root span's gen_ai.content.prompt event
+  const userPrompt = createMemo(() => {
+    const spans = flatSpans();
+    if (spans.length === 0) return null;
+    const root = spans[0]?.span;
+    if (!root?.logs) return null;
+    for (const log of root.logs) {
+      const eventField = log.fields?.find((f) => f.key === 'event');
+      if (eventField?.value === 'gen_ai.content.prompt') {
+        const promptField = log.fields?.find((f) => f.key === 'gen_ai.prompt');
+        if (promptField) return String(promptField.value);
+      }
+    }
+    return null;
+  });
+
+  // Extract assistant response from the root span's gen_ai.content.completion event
+  const assistantResponse = createMemo(() => {
+    const spans = flatSpans();
+    if (spans.length === 0) return null;
+    const root = spans[0]?.span;
+    if (!root?.logs) return null;
+    for (const log of root.logs) {
+      const eventField = log.fields?.find((f) => f.key === 'event');
+      if (eventField?.value === 'gen_ai.content.completion') {
+        const completionField = log.fields?.find((f) => f.key === 'gen_ai.completion');
+        if (completionField) return String(completionField.value);
+      }
+    }
+    return null;
+  });
+
+  // Collect tool calls from the trace for a quick summary
+  const toolSummary = createMemo(() => {
+    const spans = flatSpans();
+    const tools: Array<{ name: string; duration: number; isError: boolean }> = [];
+    for (const node of spans) {
+      const op = node.span.operationName;
+      if (op.startsWith('tool.execute')) {
+        const name = getTag(node.span, 'tool.name') || op.replace('tool.execute: ', '') || 'tool';
+        tools.push({
+          name,
+          duration: node.span.duration / 1000,
+          isError: node.span.status?.code === 2 || getTag(node.span, 'tool.error') === 'true',
+        });
+      }
+    }
+    return tools;
+  });
+
   return (
     <div class={`flex flex-col ${props.class || ''}`}>
       <Show when={trace.loading}>
@@ -161,6 +211,56 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
               )}
             </Show>
 
+            {/* Prompt & Response + Tool Summary */}
+            <Show when={userPrompt() || assistantResponse() || toolSummary().length > 0}>
+              <div class="px-6 py-3 border-b border-border space-y-3">
+                {/* User prompt */}
+                <Show when={userPrompt()}>
+                  <div>
+                    <div class="text-[10px] font-medium text-text-muted uppercase tracking-wider mb-1.5">Prompt</div>
+                    <div class="text-xs text-text font-mono bg-surface-2 rounded-lg px-3 py-2 border border-border-subtle max-h-24 overflow-y-auto whitespace-pre-wrap break-words">
+                      {userPrompt()}
+                    </div>
+                  </div>
+                </Show>
+
+                {/* Tool calls summary */}
+                <Show when={toolSummary().length > 0}>
+                  <div>
+                    <div class="text-[10px] font-medium text-text-muted uppercase tracking-wider mb-1.5">
+                      Tools ({toolSummary().length})
+                    </div>
+                    <div class="flex flex-wrap gap-1.5">
+                      <For each={toolSummary()}>
+                        {(tool) => (
+                          <span
+                            class={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono border ${
+                              tool.isError
+                                ? 'bg-error/5 border-error/20 text-error'
+                                : 'bg-warning/5 border-warning/20 text-warning'
+                            }`}
+                          >
+                            {tool.name.startsWith('mcp_') ? tool.name.slice(4).replace('_', '/') : tool.name}
+                            <span class="text-text-muted">{formatDuration(tool.duration)}</span>
+                          </span>
+                        )}
+                      </For>
+                    </div>
+                  </div>
+                </Show>
+
+                {/* Assistant response */}
+                <Show when={assistantResponse()}>
+                  <div>
+                    <div class="text-[10px] font-medium text-text-muted uppercase tracking-wider mb-1.5">Response</div>
+                    <div class="text-xs text-text-secondary font-mono bg-surface-2 rounded-lg px-3 py-2 border border-border-subtle max-h-24 overflow-y-auto whitespace-pre-wrap break-words">
+                      {assistantResponse()}
+                    </div>
+                  </div>
+                </Show>
+              </div>
+            </Show>
+
             {/* Waterfall */}
             <div class="flex-1 overflow-y-auto">
               <div class="py-2">
@@ -200,7 +300,7 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
                         if (op.startsWith('gen_ai.')) return 'bg-info';
                         if (op.startsWith('tool.') || op.startsWith('mcp.')) return 'bg-warning';
                         if (op.startsWith('engram.')) return 'bg-success/70';
-                        if (op.startsWith('agent.step')) return 'bg-accent/50';
+                        if (op === 'agent.step') return 'bg-accent/50';
                         return 'bg-accent';
                       };
 
@@ -414,15 +514,66 @@ function SpanDetailPanel(props: {
                 {(log) => {
                   const eventName = log.fields?.find((f) => f.key === 'event')?.value as string | undefined;
                   const otherFields = log.fields?.filter((f) => f.key !== 'event') ?? [];
+
+                  // Special rendering for content events (prompt, completion, tool I/O)
+                  const isContentEvent = () =>
+                    eventName === 'gen_ai.content.prompt' ||
+                    eventName === 'gen_ai.content.completion' ||
+                    eventName === 'gen_ai.tool.input' ||
+                    eventName === 'gen_ai.tool.output';
+
+                  const contentLabel = () => {
+                    switch (eventName) {
+                      case 'gen_ai.content.prompt': return 'Prompt';
+                      case 'gen_ai.content.completion': return 'Response';
+                      case 'gen_ai.tool.input': return 'Tool Input';
+                      case 'gen_ai.tool.output': return 'Tool Output';
+                      default: return eventName || 'event';
+                    }
+                  };
+
+                  // Extract the main content field from content events
+                  const contentText = () => {
+                    if (!isContentEvent()) return null;
+                    const contentKeys = ['gen_ai.prompt', 'gen_ai.completion', 'tool.input', 'tool.output'];
+                    for (const key of contentKeys) {
+                      const field = otherFields.find((f) => f.key === key);
+                      if (field) return String(field.value);
+                    }
+                    return null;
+                  };
+
+                  const isErrorOutput = () =>
+                    eventName === 'gen_ai.tool.output' &&
+                    otherFields.some((f) => f.key === 'tool.error' && f.value === true);
+
                   return (
-                    <div class="bg-surface-2 rounded-lg px-3 py-2 border border-border-subtle">
+                    <div class={`rounded-lg px-3 py-2 border ${
+                      isErrorOutput()
+                        ? 'bg-error/5 border-error/20'
+                        : isContentEvent()
+                          ? 'bg-surface-2 border-border'
+                          : 'bg-surface-2 border-border-subtle'
+                    }`}>
                       <div class="flex items-center gap-2">
-                        <span class="text-[10px] font-mono text-warning font-medium">{eventName || 'event'}</span>
-                        <span class="text-[9px] text-text-muted font-mono">
-                          {log.timestamp > 0 ? new Date(log.timestamp / 1000).toISOString().slice(11, 23) : ''}
+                        <span class={`text-[10px] font-mono font-medium ${
+                          isErrorOutput() ? 'text-error' :
+                          isContentEvent() ? 'text-accent' : 'text-warning'
+                        }`}>
+                          {contentLabel()}
                         </span>
+                        <Show when={!isContentEvent()}>
+                          <span class="text-[9px] text-text-muted font-mono">
+                            {log.timestamp > 0 ? new Date(log.timestamp / 1000).toISOString().slice(11, 23) : ''}
+                          </span>
+                        </Show>
                       </div>
-                      <Show when={otherFields.length > 0}>
+                      <Show when={isContentEvent() && contentText()}>
+                        <div class="mt-1.5 text-[11px] font-mono text-text-secondary whitespace-pre-wrap break-words max-h-40 overflow-y-auto">
+                          {contentText()}
+                        </div>
+                      </Show>
+                      <Show when={!isContentEvent() && otherFields.length > 0}>
                         <div class="mt-1.5 space-y-0.5">
                           <For each={otherFields}>
                             {(field) => (
@@ -433,6 +584,28 @@ function SpanDetailPanel(props: {
                             )}
                           </For>
                         </div>
+                      </Show>
+                      {/* Show non-content fields for content events too (e.g. tool.name on tool I/O) */}
+                      <Show when={isContentEvent()}>
+                        {(() => {
+                          const metaFields = otherFields.filter(
+                            (f) => !['gen_ai.prompt', 'gen_ai.completion', 'tool.input', 'tool.output'].includes(f.key)
+                          );
+                          return (
+                            <Show when={metaFields.length > 0}>
+                              <div class="mt-1 space-y-0.5">
+                                <For each={metaFields}>
+                                  {(field) => (
+                                    <div class="flex gap-2 text-[9px]">
+                                      <span class="text-text-muted font-mono flex-shrink-0">{field.key}:</span>
+                                      <span class="text-text-secondary font-mono break-all">{String(field.value)}</span>
+                                    </div>
+                                  )}
+                                </For>
+                              </div>
+                            </Show>
+                          );
+                        })()}
                       </Show>
                     </div>
                   );
@@ -554,20 +727,28 @@ function spanDisplayName(operation: string, toolName?: string, model?: string): 
   // "agent.prompt" → "prompt"
   if (operation === 'agent.prompt') return 'prompt';
   if (operation === 'agent.step') return 'step';
-  // "gen_ai.stream" → "stream claude-sonnet-4-20250514"
+  // "gen_ai.stream" → "stream claude-sonnet-4"
   if (operation.startsWith('gen_ai.')) {
     const shortOp = operation.slice(7);
     if (model) {
-      // Shorten model: "anthropic/claude-sonnet-4-20250514" → "claude-sonnet-4"
       const shortModel = model.split('/').pop()?.replace(/-20\d{6}$/, '') ?? model;
       return `${shortOp} ${shortModel}`;
     }
     return shortOp;
   }
-  // "tool.execute" → the tool name or "tool"
+  // New format: "tool.execute: bash" — tool name is in the span name itself
+  if (operation.startsWith('tool.execute: ')) {
+    const name = operation.slice('tool.execute: '.length);
+    if (name.startsWith('mcp_')) {
+      const parts = name.slice(4).split('_');
+      if (parts.length > 1) return `${parts[0]}/${parts.slice(1).join('_')}`;
+      return name.slice(4);
+    }
+    return name;
+  }
+  // Legacy format: "tool.execute" without name in span — fall back to attributes
   if (operation === 'tool.execute') {
     if (toolName) {
-      // MCP tools: "mcp_kubectl_get_resources" → "kubectl/get_resources"
       if (toolName.startsWith('mcp_')) {
         const parts = toolName.slice(4).split('_');
         if (parts.length > 1) return `${parts[0]}/${parts.slice(1).join('_')}`;
@@ -577,6 +758,11 @@ function spanDisplayName(operation: string, toolName?: string, model?: string): 
     }
     return 'tool';
   }
+  // New format: "mcp.call: server/tool"
+  if (operation.startsWith('mcp.call: ')) {
+    return `mcp:${operation.slice('mcp.call: '.length)}`;
+  }
+  // Legacy format
   if (operation === 'mcp.call') {
     if (toolName) return `mcp:${toolName}`;
     return 'mcp';
