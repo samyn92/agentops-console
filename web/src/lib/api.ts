@@ -408,9 +408,11 @@ export const traces = {
    */
   search: (opts?: { agentName?: string; limit?: number; start?: number; end?: number }) => {
     const params = new URLSearchParams();
-    // Build a TraceQL query scoped to the agent via the agent.name resource attribute
+    // Build a TraceQL query — always select agent.name so the sidebar can display it.
     if (opts?.agentName) {
-      params.set('q', `{ resource.agent.name = "${opts.agentName}" }`);
+      params.set('q', `{ resource.agent.name = "${opts.agentName}" } | select(resource.agent.name)`);
+    } else {
+      params.set('q', `{ resource.agent.name =~ ".+" } | select(resource.agent.name)`);
     }
     if (opts?.limit) params.set('limit', String(opts.limit));
     if (opts?.start) params.set('start', String(opts.start));

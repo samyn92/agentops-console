@@ -95,8 +95,20 @@ function TraceListItem(props: { trace: TraceSearchResult; onClick: () => void })
     return '';
   };
 
-  const rootName = () => props.trace.rootTraceName || 'agent.prompt';
-  const agentName = () => props.trace.rootServiceName || '';
+  // Extract agent.name from spanSets (populated by TraceQL select)
+  const agentName = () => {
+    for (const ss of props.trace.spanSets ?? []) {
+      for (const span of ss.spans ?? []) {
+        for (const attr of span.attributes ?? []) {
+          if (attr.key === 'resource.agent.name' && attr.value?.stringValue) {
+            return attr.value.stringValue;
+          }
+        }
+      }
+    }
+    // Fallback to rootServiceName (unlikely to have agent name but worth trying)
+    return props.trace.rootServiceName || 'unknown';
+  };
 
   return (
     <button
@@ -106,16 +118,12 @@ function TraceListItem(props: { trace: TraceSearchResult; onClick: () => void })
       <div class="flex items-center gap-2">
         {/* Trace icon */}
         <div class="w-1.5 h-1.5 rounded-full bg-accent flex-shrink-0" />
-        <span class="text-xs font-mono text-text truncate flex-1">{rootName()}</span>
+        <span class="text-xs font-mono text-text font-medium truncate flex-1">{agentName()}</span>
         <Show when={duration()}>
           <span class="text-[10px] font-mono text-text-muted">{duration()}</span>
         </Show>
       </div>
       <div class="flex items-center gap-2 mt-0.5 ml-3.5">
-        <Show when={agentName()}>
-          <span class="text-[10px] text-text-secondary truncate">{agentName()}</span>
-          <span class="text-[10px] text-text-muted/40">|</span>
-        </Show>
         <span class="text-[10px] font-mono text-text-muted/60 truncate">{props.trace.traceID.slice(0, 16)}...</span>
         <span class="flex-1" />
         <Show when={startTime()}>
