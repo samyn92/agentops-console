@@ -1,8 +1,7 @@
-// TracesPanel — agent-scoped trace browsing via Tempo.
-// Shows recent traces for the selected agent. Clicking a trace opens the
-// full TraceDetailView in the center stage for maximum viewing space.
+// TracesPanel — global trace browsing via Tempo.
+// Shows recent traces across all agents, sorted newest-first.
+// Clicking a trace opens the full TraceDetailView in the center stage.
 import { createSignal, createResource, Show, For } from 'solid-js';
-import { selectedAgent } from '../../stores/agents';
 import { traces as tracesAPI } from '../../lib/api';
 import { showTraceDetail } from '../../stores/view';
 import type { TraceSearchResult } from '../../types';
@@ -10,13 +9,14 @@ import Spinner from '../shared/Spinner';
 import { relativeTime } from '../../lib/format';
 
 export default function TracesPanel() {
-  // Fetch recent traces for the selected agent
+  const [refetchTrigger, setRefetchTrigger] = createSignal(0);
+
+  // Fetch recent traces globally (no agent filter)
   const [traceResults, { refetch }] = createResource(
-    () => selectedAgent()?.name,
-    async (agentName) => {
-      if (!agentName) return { traces: [] };
+    () => refetchTrigger(),
+    async () => {
       try {
-        return await tracesAPI.search({ agentName, limit: 20 });
+        return await tracesAPI.search({ limit: 30 });
       } catch {
         return { traces: [] };
       }
@@ -25,15 +25,15 @@ export default function TracesPanel() {
 
   return (
     <div class="flex flex-col h-full">
-      {/* Header with title + refresh */}
+      {/* Header with refresh */}
       <div class="flex items-center gap-2 px-3 py-2 border-b border-border flex-shrink-0">
         <svg class="w-3.5 h-3.5 text-text-muted flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5" />
         </svg>
-        <span class="text-xs font-medium text-text-secondary flex-1">Traces</span>
+        <span class="text-xs font-medium text-text-secondary flex-1">All Traces</span>
         <button
           class="p-0.5 rounded hover:bg-surface-hover text-text-muted hover:text-text transition-colors"
-          onClick={() => refetch()}
+          onClick={() => { setRefetchTrigger((n) => n + 1); }}
           title="Refresh traces"
         >
           <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -96,6 +96,7 @@ function TraceListItem(props: { trace: TraceSearchResult; onClick: () => void })
   };
 
   const rootName = () => props.trace.rootTraceName || 'agent.prompt';
+  const agentName = () => props.trace.rootServiceName || '';
 
   return (
     <button
@@ -111,6 +112,10 @@ function TraceListItem(props: { trace: TraceSearchResult; onClick: () => void })
         </Show>
       </div>
       <div class="flex items-center gap-2 mt-0.5 ml-3.5">
+        <Show when={agentName()}>
+          <span class="text-[10px] text-text-secondary truncate">{agentName()}</span>
+          <span class="text-[10px] text-text-muted/40">|</span>
+        </Show>
         <span class="text-[10px] font-mono text-text-muted/60 truncate">{props.trace.traceID.slice(0, 16)}...</span>
         <span class="flex-1" />
         <Show when={startTime()}>

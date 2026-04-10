@@ -1,23 +1,23 @@
-// AgentResourcesPanel — unified "Agent Resources" popover panel.
-// Shows all resource types (Git repos, Kubernetes cluster, Agent Tools) in a
+// AgentResourcesPanel — Agent resources browser.
+// Embedded in the right sidebar "Resources" tab.
+// Shows all resource types (Git repos, Kubernetes cluster) in a
 // single list. Clicking an entry drills into its specific browser view.
+// Agent Tools have moved to the right sidebar Tools tab.
 import { createSignal, Show, For, createMemo, createResource } from 'solid-js';
 import { selectedAgent } from '../../stores/agents';
 import { browsableResources, allResources, selectedContextCount, clearContextItems } from '../../stores/resources';
-import { agentTools, kubernetesBrowse } from '../../lib/api';
+import { kubernetesBrowse } from '../../lib/api';
 import { resourceKindIcon } from '../../types/api';
-import type { AgentResourceBinding, AgentToolResponse } from '../../types';
+import type { AgentResourceBinding } from '../../types';
 import ResourceBrowser from './ResourceBrowser';
 import KubernetesBrowser from './KubernetesBrowser';
-import ToolBrowser from './ToolBrowser';
 
 // ── Types ──
 
 type DrillView =
   | { type: 'list' }
   | { type: 'git'; resource: AgentResourceBinding }
-  | { type: 'kubernetes' }
-  | { type: 'tools' };
+  | { type: 'kubernetes' };
 
 // ── SVG brand icons ──
 
@@ -45,21 +45,13 @@ function KubernetesIcon(props: { class?: string }) {
   );
 }
 
-function ToolIcon(props: { class?: string }) {
-  return (
-    <svg class={props.class || 'w-4 h-4'} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M11.42 15.17l-5.66-5.66a8 8 0 1111.31 0l-5.65 5.66zm0 0l4.24 4.24M4.93 4.93l4.24 4.24" />
-    </svg>
-  );
-}
-
 // ── Resource entry item for the top-level list ──
 
 interface ResourceEntry {
   id: string;
   label: string;
   subtitle?: string;
-  icon: 'github' | 'gitlab' | 'kubernetes' | 'tools';
+  icon: 'github' | 'gitlab' | 'kubernetes';
   color: string;    // tailwind text color or hex
   bgColor: string;  // hover/active bg
   onClick: () => void;
@@ -73,7 +65,6 @@ function ResourceEntryRow(props: { entry: ResourceEntry }) {
       case 'github': return <GitHubIcon class="w-4 h-4" />;
       case 'gitlab': return <GitLabIcon class="w-4 h-4" />;
       case 'kubernetes': return <KubernetesIcon class="w-4 h-4" />;
-      case 'tools': return <ToolIcon class="w-4 h-4" />;
     }
   };
 
@@ -110,38 +101,17 @@ function ResourceEntryRow(props: { entry: ResourceEntry }) {
   );
 }
 
-// ── Main component ──
+// ── Sidebar-embedded resources panel ──
 
-interface AgentResourcesPanelProps {
-  open: boolean;
-  onClose: () => void;
-  class?: string;
-}
-
-export default function AgentResourcesPanel(props: AgentResourcesPanelProps) {
+export default function AgentResourcesPanel() {
   const [view, setView] = createSignal<DrillView>({ type: 'list' });
   const ctxCount = () => selectedContextCount();
 
-  // Fetch AgentTool list to show count/status in the list
-  const [toolList] = createResource(
-    () => props.open,
-    async (isOpen) => {
-      if (!isOpen) return [];
-      const agent = selectedAgent();
-      if (!agent) return [];
-      try {
-        return await agentTools.list();
-      } catch {
-        return [];
-      }
-    }
-  );
-
   // Fetch namespaces to show count in the list
   const [nsList] = createResource(
-    () => props.open,
-    async (isOpen) => {
-      if (!isOpen) return [];
+    () => !!selectedAgent(),
+    async (hasAgent) => {
+      if (!hasAgent) return [];
       try {
         return await kubernetesBrowse.namespaces();
       } catch {
@@ -150,19 +120,8 @@ export default function AgentResourcesPanel(props: AgentResourcesPanelProps) {
     }
   );
 
-  // Reset to list view when the panel is closed/reopened
-  createResource(
-    () => props.open,
-    async (isOpen) => {
-      if (isOpen) {
-        setView({ type: 'list' });
-      }
-    }
-  );
-
   // Build entries list
   const gitResources = createMemo(() => browsableResources());
-  const allRes = createMemo(() => allResources());
 
   const entries = createMemo<ResourceEntry[]>(() => {
     const result: ResourceEntry[] = [];
@@ -197,22 +156,6 @@ export default function AgentResourcesPanel(props: AgentResourcesPanelProps) {
       onClick: () => setView({ type: 'kubernetes' }),
     });
 
-    // Agent Tools
-    const tools = toolList() || [];
-    const readyCount = tools.filter((t: AgentToolResponse) => t.status?.phase === 'Ready').length;
-    if (tools.length > 0) {
-      result.push({
-        id: 'tools',
-        label: 'Agent Tools',
-        subtitle: `${readyCount}/${tools.length} ready`,
-        icon: 'tools',
-        color: 'text-purple-400',
-        bgColor: 'bg-purple-500/10 text-purple-400',
-        badge: `${tools.length}`,
-        onClick: () => setView({ type: 'tools' }),
-      });
-    }
-
     return result;
   });
 
@@ -220,22 +163,16 @@ export default function AgentResourcesPanel(props: AgentResourcesPanelProps) {
   const headerTitle = () => {
     const v = view();
     switch (v.type) {
-      case 'list': return 'Agent Resources';
+      case 'list': return null;
       case 'git': return v.resource.displayName;
       case 'kubernetes': return 'Kubernetes';
-      case 'tools': return 'Agent Tools';
     }
   };
 
   const headerIcon = () => {
     const v = view();
     switch (v.type) {
-      case 'list':
-        return (
-          <svg class="w-3.5 h-3.5 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-          </svg>
-        );
+      case 'list': return null;
       case 'git': {
         const iconType = resourceKindIcon(v.resource.kind);
         return iconType === 'gitlab'
@@ -244,105 +181,72 @@ export default function AgentResourcesPanel(props: AgentResourcesPanelProps) {
       }
       case 'kubernetes':
         return <KubernetesIcon class="w-3.5 h-3.5 text-[#326CE5]" />;
-      case 'tools':
-        return <ToolIcon class="w-3.5 h-3.5 text-purple-400" />;
     }
   };
 
   return (
-    <Show when={props.open}>
-      {/* Backdrop */}
-      <div class="fixed inset-0 z-40" onClick={() => props.onClose()} />
-
-      {/* Panel */}
-      <div
-        class={`absolute z-50 resource-browser-panel bg-surface border border-border rounded-xl shadow-lg overflow-hidden animate-popover-in ${props.class || ''}`}
-        style={{ width: '440px', height: '500px' }}
-      >
-        {/* Header */}
-        <div class="flex items-center justify-between px-3 py-2 border-b border-border bg-surface-2/80">
-          <div class="flex items-center gap-2">
-            <Show when={view().type !== 'list'}>
-              <button
-                class="p-0.5 text-text-muted hover:text-text rounded transition-colors"
-                onClick={() => setView({ type: 'list' })}
-                title="Back to resources"
-              >
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
-                </svg>
-              </button>
-            </Show>
-            {headerIcon()}
-            <span class="text-xs font-semibold text-text uppercase tracking-wide">{headerTitle()}</span>
-            <Show when={ctxCount() > 0}>
-              <span class="text-[10px] font-medium bg-accent text-white px-1.5 py-0.5 rounded-full leading-none">
-                {ctxCount()}
-              </span>
-            </Show>
-          </div>
-          <div class="flex items-center gap-2">
-            <Show when={ctxCount() > 0}>
-              <button
-                class="text-[10px] text-text-muted hover:text-error transition-colors"
-                onClick={() => clearContextItems()}
-                title="Clear all selections"
-              >
-                Clear
-              </button>
-            </Show>
+    <div class="h-full flex flex-col overflow-hidden">
+      {/* Drill-in sub-header (only when not on the list view) */}
+      <Show when={view().type !== 'list'}>
+        <div class="flex items-center gap-2 px-3 py-2 border-b border-border bg-surface-2/80 flex-shrink-0">
+          <button
+            class="p-0.5 text-text-muted hover:text-text rounded transition-colors"
+            onClick={() => setView({ type: 'list' })}
+            title="Back to resources"
+          >
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+          {headerIcon()}
+          <span class="text-xs font-semibold text-text uppercase tracking-wide">{headerTitle()}</span>
+          <Show when={ctxCount() > 0}>
+            <span class="text-[10px] font-medium bg-accent text-white px-1.5 py-0.5 rounded-full leading-none">
+              {ctxCount()}
+            </span>
             <button
-              class="p-1 text-text-muted hover:text-text rounded transition-colors"
-              onClick={() => props.onClose()}
+              class="text-[10px] text-text-muted hover:text-error transition-colors ml-auto"
+              onClick={() => clearContextItems()}
+              title="Clear all selections"
             >
-              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-              </svg>
+              Clear
             </button>
-          </div>
+          </Show>
         </div>
+      </Show>
 
-        {/* Content area */}
-        <div class="overflow-hidden" style={{ height: 'calc(100% - 44px)' }}>
-          {/* List view */}
-          <Show when={view().type === 'list'}>
-            <div class="h-full overflow-y-auto">
-              <div class="px-3 py-2 text-[10px] text-text-muted uppercase tracking-wider font-semibold border-b border-border-subtle bg-surface-2/30">
-                Resources
+      {/* Content area */}
+      <div class="flex-1 min-h-0 overflow-hidden">
+        {/* List view */}
+        <Show when={view().type === 'list'}>
+          <div class="h-full overflow-y-auto">
+            <Show when={entries().length === 0}>
+              <div class="flex flex-col items-center justify-center py-12 px-4">
+                <svg class="w-10 h-10 text-text-muted/30 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                </svg>
+                <p class="text-xs text-text-muted text-center">No resources available for this agent.</p>
               </div>
-              <Show when={entries().length === 0}>
-                <div class="flex flex-col items-center justify-center py-12 px-4">
-                  <svg class="w-10 h-10 text-text-muted/30 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                  </svg>
-                  <p class="text-xs text-text-muted text-center">No resources available for this agent.</p>
-                </div>
-              </Show>
-              <For each={entries()}>
-                {(entry) => <ResourceEntryRow entry={entry} />}
-              </For>
-            </div>
-          </Show>
+            </Show>
+            <For each={entries()}>
+              {(entry) => <ResourceEntryRow entry={entry} />}
+            </For>
+          </div>
+        </Show>
 
-          {/* Git resource drill-in: embed ResourceBrowser in inline mode */}
-          <Show when={view().type === 'git'}>
-            <ResourceBrowserInline
-              resource={(view() as { type: 'git'; resource: AgentResourceBinding }).resource}
-            />
-          </Show>
+        {/* Git resource drill-in: embed ResourceBrowser in inline mode */}
+        <Show when={view().type === 'git'}>
+          <ResourceBrowserInline
+            resource={(view() as { type: 'git'; resource: AgentResourceBinding }).resource}
+          />
+        </Show>
 
-          {/* Kubernetes drill-in: embed KubernetesBrowser in inline mode */}
-          <Show when={view().type === 'kubernetes'}>
-            <KubernetesBrowserInline />
-          </Show>
-
-          {/* Tools drill-in: embed ToolBrowser in inline mode */}
-          <Show when={view().type === 'tools'}>
-            <ToolBrowserInline />
-          </Show>
-        </div>
+        {/* Kubernetes drill-in: embed KubernetesBrowser in inline mode */}
+        <Show when={view().type === 'kubernetes'}>
+          <KubernetesBrowserInline />
+        </Show>
       </div>
-    </Show>
+    </div>
   );
 }
 
@@ -371,19 +275,6 @@ function KubernetesBrowserInline() {
         open={true}
         onClose={() => {}}
         class="!absolute !inset-0 !mb-0 !w-full !h-full !rounded-none !border-0 !shadow-none"
-        embedded={true}
-      />
-    </div>
-  );
-}
-
-function ToolBrowserInline() {
-  return (
-    <div class="h-full relative">
-      <ToolBrowser
-        open={true}
-        onClose={() => {}}
-        class="!absolute !inset-0 !mb-0 !w-full !h-full !rounded-none !border-0 !shadow-none !max-h-none !max-w-none"
         embedded={true}
       />
     </div>

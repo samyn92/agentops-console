@@ -6,7 +6,6 @@ import { selectedAgent, getAgentStatus, getAgentRuntimeStatus } from '../../stor
 import { selectedContextItems, removeContextItem, selectedContextCount, clearContextItems } from '../../stores/resources';
 import { resourceContextKey } from '../../types/api';
 import type { ResourceContext } from '../../types';
-import AgentResourcesPanel from '../resources/AgentResourcesPanel';
 
 // ── Sliding window indicator (clickable — opens config popover) ──
 
@@ -269,7 +268,6 @@ function ContextChip(props: { item: ResourceContext; onRemove: () => void }) {
 export default function Composer(props: ComposerProps) {
   const [input, setInput] = createSignal('');
   const [mode, setMode] = createSignal<'prompt' | 'steer'>('prompt');
-  const [resourcesOpen, setResourcesOpen] = createSignal(false);
   let textareaRef: HTMLTextAreaElement | undefined;
 
   function autoResize() {
@@ -383,38 +381,6 @@ export default function Composer(props: ComposerProps) {
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
             </button>
-          </Show>
-
-          {/* Agent Resources panel toggle */}
-          <Show when={!streaming() && selectedAgent()}>
-            <div class="relative flex-shrink-0 self-center">
-              <button
-                class={`p-1 rounded-lg transition-colors ${
-                  resourcesOpen()
-                    ? 'bg-accent/20 text-accent'
-                    : ctxCount() > 0
-                      ? 'text-accent'
-                      : 'text-text-muted hover:text-text-secondary'
-                }`}
-                onClick={() => setResourcesOpen(!resourcesOpen())}
-                title="Browse agent resources"
-              >
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                </svg>
-                {/* Selection count dot */}
-                <Show when={ctxCount() > 0 && !resourcesOpen()}>
-                  <span class="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 text-[8px] font-bold bg-accent text-white rounded-full flex items-center justify-center leading-none">
-                    {ctxCount()}
-                  </span>
-                </Show>
-              </button>
-              <AgentResourcesPanel
-                open={resourcesOpen()}
-                onClose={() => setResourcesOpen(false)}
-                class="bottom-full left-0 mb-2"
-              />
-            </div>
           </Show>
 
           {/* Textarea */}

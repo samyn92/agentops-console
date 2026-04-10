@@ -1,5 +1,5 @@
 // TraceDetailView — full center-stage trace waterfall with rich span detail.
-// Opens when a trace is clicked from the TracesPanel in the right sidebar.
+// Opens when a trace is clicked from the TracesPanel in the left sidebar.
 // Features: span hierarchy waterfall, click-to-inspect span detail with
 // GenAI semantic convention attributes (model, provider, tokens, tool names).
 import { createSignal, createResource, Show, For, createMemo } from 'solid-js';
@@ -186,7 +186,6 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
   });
 
   // Find spans that delegated TO sub-agents (run_agent tool spans with delegation.child_* attributes)
-  // These attributes are set by the runtime on the tool.execute: run_agent span after creating the AgentRun CR.
   const spanDelegationChildren = createMemo(() => {
     const childMap = new Map<string, { agent: string; runName: string; namespace: string }>();
     for (const node of flatSpans()) {
@@ -235,23 +234,23 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
         <div class="flex-1 flex min-h-0 overflow-hidden">
           {/* Left: Waterfall + Span list */}
           <div class="flex-1 flex flex-col min-w-0 overflow-hidden">
-            {/* Summary stats */}
+            {/* Summary stats bar */}
             <Show when={rootSummary()}>
               {(summary) => (
-                <div class="flex flex-wrap gap-3 px-6 py-3 border-b border-border bg-surface/50">
+                <div class="flex flex-wrap items-center gap-2 px-5 py-2.5 border-b border-border bg-surface/50">
                   <StatPill label="Duration" value={formatDuration(summary().totalDuration)} />
                   <StatPill label="Spans" value={String(summary().spanCount)} />
                   <Show when={summary().model}>
-                    <StatPill label="Model" value={summary().model!} accent />
+                    <StatPill label="Model" value={shortModelName(summary().model!)} accent />
                   </Show>
                   <Show when={summary().provider}>
                     <StatPill label="Provider" value={summary().provider!} />
                   </Show>
                   <Show when={summary().inputTokens}>
-                    <StatPill label="Input" value={`${Number(summary().inputTokens).toLocaleString()} tok`} />
+                    <StatPill label="In" value={`${Number(summary().inputTokens).toLocaleString()} tok`} />
                   </Show>
                   <Show when={summary().outputTokens}>
-                    <StatPill label="Output" value={`${Number(summary().outputTokens).toLocaleString()} tok`} />
+                    <StatPill label="Out" value={`${Number(summary().outputTokens).toLocaleString()} tok`} />
                   </Show>
                   <Show when={summary().steps}>
                     <StatPill label="Steps" value={String(summary().steps)} />
@@ -260,30 +259,30 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
               )}
             </Show>
 
-            {/* Delegation breadcrumb — shows when this trace was spawned by a parent agent */}
+            {/* Delegation banner — from parent */}
             <Show when={delegationInfo()}>
               {(info) => (
                 <button
-                  class="flex items-center gap-2 px-6 py-2 border-b border-border bg-accent/5 hover:bg-accent/10 transition-colors cursor-pointer w-full text-left"
+                  class="flex items-center gap-2.5 px-5 py-2 border-b border-border bg-accent/5 hover:bg-accent/10 transition-colors cursor-pointer w-full text-left group"
                   onClick={() => showTraceDetail(info().parentTraceID)}
                   title={`View parent trace from ${info().parentAgent}`}
                 >
                   <svg class="w-3.5 h-3.5 text-accent flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
                   </svg>
-                  <span class="text-[10px] uppercase tracking-wider text-accent font-medium">Delegated from</span>
+                  <span class="text-[10px] uppercase tracking-wider text-text-muted font-medium">Delegated from</span>
                   <span class="text-xs font-mono text-accent font-semibold">{info().parentAgent}</span>
                   <Show when={info().runName}>
                     <span class="text-[10px] text-text-muted font-mono">({info().runName})</span>
                   </Show>
-                  <svg class="w-3 h-3 text-text-muted ml-auto flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg class="w-3 h-3 text-text-muted ml-auto flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                   </svg>
                 </button>
               )}
             </Show>
 
-            {/* Delegated to — shows when this trace delegated work to sub-agents */}
+            {/* Delegation banner — to children */}
             <Show when={delegationChildren().length > 0}>
               <div class="border-b border-border">
                 <For each={delegationChildren()}>
@@ -292,49 +291,21 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
               </div>
             </Show>
 
-            {/* Prompt & Response + Tool Summary */}
-            <Show when={userPrompt() || assistantResponse() || toolSummary().length > 0}>
-              <div class="px-6 py-3 border-b border-border space-y-3">
-                {/* User prompt */}
+            {/* Prompt & Response */}
+            <Show when={userPrompt() || assistantResponse()}>
+              <div class="px-5 py-3 border-b border-border space-y-2.5">
                 <Show when={userPrompt()}>
                   <div>
-                    <div class="text-[10px] font-medium text-text-muted uppercase tracking-wider mb-1.5">Prompt</div>
-                    <div class="text-xs text-text font-mono bg-surface-2 rounded-lg px-3 py-2 border border-border-subtle max-h-24 overflow-y-auto whitespace-pre-wrap break-words">
+                    <div class="text-[10px] font-medium text-text-muted uppercase tracking-wider mb-1">Prompt</div>
+                    <div class="text-xs text-text font-mono bg-surface-2 rounded-lg px-3 py-2 border border-border-subtle max-h-20 overflow-y-auto whitespace-pre-wrap break-words">
                       {userPrompt()}
                     </div>
                   </div>
                 </Show>
-
-                {/* Tool calls summary */}
-                <Show when={toolSummary().length > 0}>
-                  <div>
-                    <div class="text-[10px] font-medium text-text-muted uppercase tracking-wider mb-1.5">
-                      Tools ({toolSummary().length})
-                    </div>
-                    <div class="flex flex-wrap gap-1.5">
-                      <For each={toolSummary()}>
-                        {(tool) => (
-                          <span
-                            class={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono border ${
-                              tool.isError
-                                ? 'bg-error/5 border-error/20 text-error'
-                                : 'bg-warning/5 border-warning/20 text-warning'
-                            }`}
-                          >
-                            {tool.name.startsWith('mcp_') ? tool.name.slice(4).replace('_', '/') : tool.name}
-                            <span class="text-text-muted">{formatDuration(tool.duration)}</span>
-                          </span>
-                        )}
-                      </For>
-                    </div>
-                  </div>
-                </Show>
-
-                {/* Assistant response */}
                 <Show when={assistantResponse()}>
                   <div>
-                    <div class="text-[10px] font-medium text-text-muted uppercase tracking-wider mb-1.5">Response</div>
-                    <div class="text-xs text-text-secondary font-mono bg-surface-2 rounded-lg px-3 py-2 border border-border-subtle max-h-24 overflow-y-auto whitespace-pre-wrap break-words">
+                    <div class="text-[10px] font-medium text-text-muted uppercase tracking-wider mb-1">Response</div>
+                    <div class="text-xs text-text-secondary font-mono bg-surface-2 rounded-lg px-3 py-2 border border-border-subtle max-h-20 overflow-y-auto whitespace-pre-wrap break-words">
                       {assistantResponse()}
                     </div>
                   </div>
@@ -342,9 +313,33 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
               </div>
             </Show>
 
+            {/* Tool calls summary pills */}
+            <Show when={toolSummary().length > 0}>
+              <div class="px-5 py-2 border-b border-border">
+                <div class="flex flex-wrap gap-1.5">
+                  <span class="text-[10px] font-medium text-text-muted uppercase tracking-wider mr-1 self-center">
+                    Tools ({toolSummary().length})
+                  </span>
+                  <For each={toolSummary()}>
+                    {(tool) => (
+                      <span
+                        class={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono border ${
+                          tool.isError
+                            ? 'bg-error/5 border-error/20 text-error'
+                            : 'bg-warning/5 border-warning/20 text-warning'
+                        }`}
+                      >
+                        {tool.name.startsWith('mcp_') ? tool.name.slice(4).replace('_', '/') : tool.name}
+                      </span>
+                    )}
+                  </For>
+                </div>
+              </div>
+            </Show>
+
             {/* Waterfall */}
             <div class="flex-1 overflow-y-auto">
-              <div class="py-2">
+              <div class="py-1">
                 <Show
                   when={flatSpans().length > 0}
                   fallback={
@@ -354,7 +349,7 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
                   }
                 >
                   {/* Waterfall header */}
-                  <div class="flex items-center gap-2 px-4 pb-1.5 border-b border-border-subtle">
+                  <div class="flex items-center gap-2 px-4 py-1.5 border-b border-border-subtle">
                     <div class="text-[10px] font-medium text-text-muted uppercase tracking-wider" style={{ width: '200px' }}>
                       Operation
                     </div>
@@ -386,7 +381,6 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
                         return 'bg-accent';
                       };
 
-                      // Extract key attributes for inline display
                       const toolName = () => getTag(node.span, 'tool.name') || getTag(node.span, 'gen_ai.tool.name');
                       const model = () => getTag(node.span, 'gen_ai.request.model');
 
@@ -428,51 +422,16 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
                             </span>
                           </button>
 
-                          {/* Sub-agent trace link — shown when this span delegated to another agent */}
+                          {/* Sub-agent delegation link */}
                           <Show when={delegationChild()}>
-                            {(child) => {
-                              const [loading, setLoading] = createSignal(false);
-                              const navigateToChildTrace = async (e: MouseEvent) => {
-                                e.stopPropagation();
-                                setLoading(true);
-                                try {
-                                  const run = await agentRuns.get(child().namespace, child().runName);
-                                  const traceID = run?.status?.traceID;
-                                  if (traceID) {
-                                    showTraceDetail(traceID);
-                                  }
-                                } catch (err) {
-                                  console.warn('Failed to resolve child trace:', err);
-                                } finally {
-                                  setLoading(false);
-                                }
-                              };
-                              return (
-                                <button
-                                  class="flex items-center gap-1.5 ml-4 px-2 py-0.5 text-left hover:bg-accent/8 transition-colors rounded cursor-pointer"
-                                  style={{ 'padding-left': `${(node.depth + 1) * 14 + 16}px` }}
-                                  onClick={navigateToChildTrace}
-                                  title={`View trace for ${child().agent}`}
-                                  disabled={loading()}
-                                >
-                                  <Show when={loading()} fallback={
-                                    <svg class="w-3 h-3 text-accent flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                                    </svg>
-                                  }>
-                                    <Spinner size="sm" class="w-3 h-3" />
-                                  </Show>
-                                  <span class="text-[10px] text-accent font-medium">
-                                    View sub-agent trace
-                                  </span>
-                                  <span class="text-[10px] font-mono text-accent/70">{child().agent}</span>
-                                  <span class="text-[10px] font-mono text-text-muted truncate max-w-[150px]">{child().runName}</span>
-                                  <svg class="w-2.5 h-2.5 text-text-muted flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                                  </svg>
-                                </button>
-                              );
-                            }}
+                            {(child) => (
+                              <DelegationInlineLink
+                                agent={child().agent}
+                                runName={child().runName}
+                                namespace={child().namespace}
+                                depth={node.depth}
+                              />
+                            )}
                           </Show>
                         </div>
                       );
@@ -480,7 +439,7 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
                   </For>
 
                   {/* Legend */}
-                  <div class="flex flex-wrap gap-4 px-4 mt-4 pt-3 border-t border-border-subtle">
+                  <div class="flex flex-wrap gap-4 px-4 mt-3 pt-2.5 border-t border-border-subtle">
                     <LegendDot color="bg-accent" label="agent" />
                     <LegendDot color="bg-info" label="gen_ai" />
                     <LegendDot color="bg-warning" label="tool / mcp" />
@@ -505,6 +464,74 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
         </div>
       </Show>
     </div>
+  );
+}
+
+// ── Delegation inline link (under waterfall span rows) ──
+
+function DelegationInlineLink(props: {
+  agent: string;
+  runName: string;
+  namespace: string;
+  depth: number;
+}) {
+  const [loading, setLoading] = createSignal(false);
+  const [error, setError] = createSignal<string | null>(null);
+
+  const navigate = async (e: MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    try {
+      const run = await agentRuns.get(props.namespace, props.runName);
+      const traceID = run?.status?.traceID;
+      if (traceID) {
+        showTraceDetail(traceID);
+      } else {
+        setError('No trace ID available yet');
+        setTimeout(() => setError(null), 3000);
+      }
+    } catch (err) {
+      console.warn('Failed to resolve child trace:', err);
+      setError('Failed to fetch run');
+      setTimeout(() => setError(null), 3000);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <button
+      class="flex items-center gap-1.5 px-4 py-0.5 text-left hover:bg-accent/8 transition-colors cursor-pointer group"
+      style={{ 'padding-left': `${(props.depth + 1) * 14 + 16}px` }}
+      onClick={navigate}
+      title={`View trace for ${props.agent} (${props.runName})`}
+    >
+      <Show when={loading()}>
+        <Spinner size="sm" class="w-3 h-3" />
+      </Show>
+      <Show when={!loading() && !error()}>
+        <svg class="w-3 h-3 text-accent flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+        </svg>
+      </Show>
+      <Show when={error()}>
+        <svg class="w-3 h-3 text-error flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      </Show>
+      <span class={`text-[10px] font-medium ${error() ? 'text-error' : 'text-accent'}`}>
+        {error() || 'View sub-agent trace'}
+      </span>
+      <Show when={!error()}>
+        <span class="text-[10px] font-mono text-accent/70">{props.agent}</span>
+        <span class="text-[10px] font-mono text-text-muted truncate max-w-[180px]">{props.runName}</span>
+        <svg class="w-2.5 h-2.5 text-text-muted flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+        </svg>
+      </Show>
+    </button>
   );
 }
 
@@ -556,10 +583,44 @@ function SpanDetailPanel(props: {
     return props.processes[pid].tags ?? [];
   });
 
+  // Quick info extracted from tags for the header area
+  const quickInfo = createMemo(() => {
+    const tags = props.span.tags ?? [];
+    const get = (key: string) => tags.find(t => t.key === key)?.value;
+    return {
+      model: get('gen_ai.request.model') || get('gen_ai.response.model'),
+      provider: get('gen_ai.provider.name'),
+      inputTokens: get('gen_ai.usage.input_tokens') as number | undefined,
+      outputTokens: get('gen_ai.usage.output_tokens') as number | undefined,
+      finishReasons: get('gen_ai.response.finish_reasons') as string | undefined,
+      toolName: get('tool.name'),
+      agentName: get('agent.name'),
+      stepNumber: get('step.number') as number | undefined,
+    };
+  });
+
+  // Parse finish_reasons into a readable summary
+  const finishReasonsSummary = createMemo(() => {
+    const raw = quickInfo().finishReasons;
+    if (!raw) return null;
+    const reasons = (raw as string).split(',').map(r => r.trim()).filter(Boolean);
+    if (reasons.length === 0) return null;
+    // Count occurrences
+    const counts = new Map<string, number>();
+    for (const r of reasons) {
+      counts.set(r, (counts.get(r) || 0) + 1);
+    }
+    const parts: string[] = [];
+    for (const [reason, count] of counts) {
+      parts.push(count > 1 ? `${count}x ${reason}` : reason);
+    }
+    return parts.join(', ');
+  });
+
   return (
-    <div class="w-[380px] flex-shrink-0 border-l border-border bg-surface flex flex-col overflow-hidden">
+    <div class="w-[360px] flex-shrink-0 border-l border-border bg-surface flex flex-col overflow-hidden">
       {/* Header */}
-      <div class="flex items-center gap-2 px-4 py-3 border-b border-border flex-shrink-0">
+      <div class="flex items-center gap-2 px-4 py-2.5 border-b border-border flex-shrink-0">
         <div class="flex-1 min-w-0">
           <div class={`text-xs font-mono font-medium truncate ${isError() ? 'text-error' : 'text-text'}`}>
             {props.span.operationName}
@@ -580,8 +641,8 @@ function SpanDetailPanel(props: {
 
       {/* Scrollable content */}
       <div class="flex-1 overflow-y-auto">
-        {/* Quick stats row */}
-        <div class="flex gap-2 px-4 py-3 border-b border-border-subtle">
+        {/* Duration + Status row */}
+        <div class="flex gap-2 px-4 py-2.5 border-b border-border-subtle">
           <MiniStat label="Duration" value={formatDuration(props.span.duration / 1000)} />
           <Show when={isError()}>
             <MiniStat label="Status" value="ERROR" error />
@@ -590,6 +651,26 @@ function SpanDetailPanel(props: {
             <MiniStat label="Status" value="OK" success />
           </Show>
         </div>
+
+        {/* Quick token/model info for gen_ai spans */}
+        <Show when={quickInfo().inputTokens || quickInfo().outputTokens}>
+          <div class="flex flex-wrap gap-2 px-4 py-2 border-b border-border-subtle">
+            <Show when={quickInfo().inputTokens}>
+              <MiniStat label="Input" value={`${Number(quickInfo().inputTokens).toLocaleString()} tok`} />
+            </Show>
+            <Show when={quickInfo().outputTokens}>
+              <MiniStat label="Output" value={`${Number(quickInfo().outputTokens).toLocaleString()} tok`} />
+            </Show>
+          </div>
+        </Show>
+
+        {/* Finish reasons summary (parsed from comma-separated mess into readable form) */}
+        <Show when={finishReasonsSummary()}>
+          <div class="px-4 py-2 border-b border-border-subtle">
+            <div class="text-[10px] font-medium text-text-muted uppercase tracking-wider mb-1">Finish Reasons</div>
+            <div class="text-[11px] font-mono text-text-secondary">{finishReasonsSummary()}</div>
+          </div>
+        </Show>
 
         {/* Status error message */}
         <Show when={isError() && props.span.status?.message}>
@@ -602,14 +683,14 @@ function SpanDetailPanel(props: {
         </Show>
 
         {/* Tag groups */}
-        <div class="px-4 py-3 space-y-4">
+        <div class="px-4 py-3 space-y-3">
           <For each={tagGroups()}>
             {([groupName, tags]) => (
               <div>
-                <div class="text-[10px] font-medium text-text-muted uppercase tracking-wider mb-2">
+                <div class="text-[10px] font-medium text-text-muted uppercase tracking-wider mb-1.5">
                   {groupName}
                 </div>
-                <div class="space-y-1">
+                <div class="space-y-0.5">
                   <For each={tags as Array<{ key: string; value: unknown; type: string }>}>
                     {(tag) => (
                       <TagRow key={tag.key} value={tag.value} type={tag.type} />
@@ -623,10 +704,10 @@ function SpanDetailPanel(props: {
            {/* Resource Attributes (from process) */}
           <Show when={processTags().length > 0}>
             <div>
-              <div class="text-[10px] font-medium text-text-muted uppercase tracking-wider mb-2">
+              <div class="text-[10px] font-medium text-text-muted uppercase tracking-wider mb-1.5">
                 Resource
               </div>
-              <div class="space-y-1">
+              <div class="space-y-0.5">
                 <For each={processTags()}>
                   {(tag: { key: string; value: unknown; type?: string }) => (
                     <TagRow key={tag.key} value={tag.value} type={tag.type || 'string'} />
@@ -637,7 +718,7 @@ function SpanDetailPanel(props: {
           </Show>
         </div>
 
-        {/* Linked Traces — delegation links to sub-agent traces */}
+        {/* Linked Traces — delegation links */}
         <Show when={(props.span.links?.length ?? 0) > 0}>
           <div class="px-4 py-3 border-t border-border-subtle">
             <div class="text-[10px] font-medium text-text-muted uppercase tracking-wider mb-2">
@@ -660,7 +741,7 @@ function SpanDetailPanel(props: {
                       </svg>
                       <div class="flex-1 min-w-0">
                         <Show when={linkType() === 'delegation'}>
-                          <span class="text-[10px] text-accent font-medium">Sub-agent trace</span>
+                          <span class="text-[10px] text-accent font-medium">Parent trace</span>
                         </Show>
                         <Show when={linkType() !== 'delegation'}>
                           <span class="text-[10px] text-text-muted">{linkType() || 'linked'}</span>
@@ -696,7 +777,6 @@ function SpanDetailPanel(props: {
                   const eventName = log.fields?.find((f) => f.key === 'event')?.value as string | undefined;
                   const otherFields = log.fields?.filter((f) => f.key !== 'event') ?? [];
 
-                  // Special rendering for content events (prompt, completion, tool I/O)
                   const isContentEvent = () =>
                     eventName === 'gen_ai.content.prompt' ||
                     eventName === 'gen_ai.content.completion' ||
@@ -713,7 +793,6 @@ function SpanDetailPanel(props: {
                     }
                   };
 
-                  // Extract the main content field from content events
                   const contentText = () => {
                     if (!isContentEvent()) return null;
                     const contentKeys = ['gen_ai.prompt', 'gen_ai.completion', 'tool.input', 'tool.output'];
@@ -750,7 +829,7 @@ function SpanDetailPanel(props: {
                         </Show>
                       </div>
                       <Show when={isContentEvent() && contentText()}>
-                        <div class="mt-1.5 text-[11px] font-mono text-text-secondary whitespace-pre-wrap break-words max-h-40 overflow-y-auto">
+                        <div class="mt-1.5 text-[11px] font-mono text-text-secondary whitespace-pre-wrap break-words max-h-32 overflow-y-auto">
                           {contentText()}
                         </div>
                       </Show>
@@ -766,7 +845,7 @@ function SpanDetailPanel(props: {
                           </For>
                         </div>
                       </Show>
-                      {/* Show non-content fields for content events too (e.g. tool.name on tool I/O) */}
+                      {/* Show non-content fields for content events too */}
                       <Show when={isContentEvent()}>
                         {(() => {
                           const metaFields = otherFields.filter(
@@ -805,17 +884,24 @@ function SpanDetailPanel(props: {
 /** Banner for "Delegated to" — clickable link to navigate to child agent's trace */
 function DelegationChildBanner(props: { agent: string; runName: string; namespace: string }) {
   const [loading, setLoading] = createSignal(false);
+  const [error, setError] = createSignal<string | null>(null);
 
   const navigate = async () => {
     setLoading(true);
+    setError(null);
     try {
       const run = await agentRuns.get(props.namespace, props.runName);
       const traceID = run?.status?.traceID;
       if (traceID) {
         showTraceDetail(traceID);
+      } else {
+        setError('Trace not available yet');
+        setTimeout(() => setError(null), 3000);
       }
     } catch (err) {
       console.warn('Failed to resolve child trace:', err);
+      setError('Failed to fetch run');
+      setTimeout(() => setError(null), 3000);
     } finally {
       setLoading(false);
     }
@@ -823,22 +909,35 @@ function DelegationChildBanner(props: { agent: string; runName: string; namespac
 
   return (
     <button
-      class="flex items-center gap-2 px-6 py-2 bg-surface-2/50 hover:bg-accent/8 transition-colors cursor-pointer w-full text-left"
+      class="flex items-center gap-2.5 px-5 py-2 bg-surface-2/50 hover:bg-accent/8 transition-colors cursor-pointer w-full text-left group"
       onClick={navigate}
       disabled={loading()}
       title={`View sub-agent trace for ${props.agent}`}
     >
-      <Show when={loading()} fallback={
+      <Show when={loading()}>
+        <Spinner size="sm" class="w-3.5 h-3.5" />
+      </Show>
+      <Show when={!loading() && !error()}>
         <svg class="w-3.5 h-3.5 text-accent flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
         </svg>
-      }>
-        <Spinner size="sm" class="w-3.5 h-3.5" />
       </Show>
-      <span class="text-[10px] uppercase tracking-wider text-accent font-medium">Delegated to</span>
-      <span class="text-xs font-mono text-accent font-semibold">{props.agent}</span>
-      <span class="text-[10px] text-text-muted font-mono truncate">({props.runName})</span>
-      <svg class="w-3 h-3 text-text-muted ml-auto flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <Show when={error()}>
+        <svg class="w-3.5 h-3.5 text-error flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      </Show>
+      <span class="text-[10px] uppercase tracking-wider text-text-muted font-medium">
+        {error() ? '' : 'Delegated to'}
+      </span>
+      <Show when={error()}>
+        <span class="text-[10px] text-error">{error()}</span>
+      </Show>
+      <Show when={!error()}>
+        <span class="text-xs font-mono text-accent font-semibold">{props.agent}</span>
+        <span class="text-[10px] text-text-muted font-mono truncate">({props.runName})</span>
+      </Show>
+      <svg class="w-3 h-3 text-text-muted ml-auto flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
       </svg>
     </button>
@@ -847,7 +946,7 @@ function DelegationChildBanner(props: { agent: string; runName: string; namespac
 
 function StatPill(props: { label: string; value: string; accent?: boolean }) {
   return (
-    <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-surface-2 border border-border-subtle">
+    <div class="flex items-center gap-1.5 px-2 py-1 rounded-md bg-surface-2 border border-border-subtle">
       <span class="text-[10px] text-text-muted">{props.label}</span>
       <span class={`text-[11px] font-mono font-medium ${props.accent ? 'text-accent' : 'text-text'}`}>
         {props.value}
@@ -858,7 +957,7 @@ function StatPill(props: { label: string; value: string; accent?: boolean }) {
 
 function MiniStat(props: { label: string; value: string; error?: boolean; success?: boolean }) {
   return (
-    <div class="flex flex-col gap-0.5 px-2.5 py-1.5 rounded-md bg-surface-2 border border-border-subtle min-w-[60px]">
+    <div class="flex flex-col gap-0.5 px-2 py-1 rounded-md bg-surface-2 border border-border-subtle min-w-[50px]">
       <span class="text-[9px] text-text-muted uppercase tracking-wider">{props.label}</span>
       <span
         class={`text-[11px] font-mono font-medium ${
@@ -872,7 +971,6 @@ function MiniStat(props: { label: string; value: string; error?: boolean; succes
 }
 
 function TagRow(props: { key: string; value: unknown; type: string }) {
-  const isGenAI = () => props.key.startsWith('gen_ai.');
   const isTokenCount = () =>
     props.key.includes('.input_tokens') ||
     props.key.includes('.output_tokens') ||
@@ -889,12 +987,24 @@ function TagRow(props: { key: string; value: unknown; type: string }) {
     if (k.startsWith('tool.')) return k.slice(5);
     if (k.startsWith('engram.')) return k.slice(7);
     if (k.startsWith('step.')) return k.slice(5);
+    if (k.startsWith('delegation.')) return k.slice(11);
     return k;
   };
 
-  // Format value
+  // Format value — special handling for finish_reasons
   const displayValue = () => {
     const v = props.value;
+    // Parse repeated finish_reasons into a summary
+    if (props.key === 'gen_ai.response.finish_reasons' && typeof v === 'string') {
+      const reasons = v.split(',').map(r => r.trim()).filter(Boolean);
+      if (reasons.length > 3) {
+        const counts = new Map<string, number>();
+        for (const r of reasons) counts.set(r, (counts.get(r) || 0) + 1);
+        const parts: string[] = [];
+        for (const [reason, count] of counts) parts.push(count > 1 ? `${count}x ${reason}` : reason);
+        return parts.join(', ');
+      }
+    }
     if (typeof v === 'number') {
       if (isTokenCount()) return v.toLocaleString();
       return String(v);
@@ -904,9 +1014,9 @@ function TagRow(props: { key: string; value: unknown; type: string }) {
   };
 
   return (
-    <div class="flex items-start gap-2 py-0.5 group">
+    <div class="flex items-start gap-2 py-0.5">
       <span
-        class="text-[10px] font-mono text-text-muted flex-shrink-0 min-w-[120px] truncate"
+        class="text-[10px] font-mono text-text-muted flex-shrink-0 min-w-[110px] truncate"
         title={props.key}
       >
         {displayKey()}
@@ -946,21 +1056,21 @@ function getTag(span: TraceSpan, key: string): string | undefined {
   return String(tag.value);
 }
 
+/** Shorten a model name for display (e.g. "anthropic/claude-sonnet-4-20250514" -> "claude-sonnet-4") */
+function shortModelName(model: string): string {
+  const name = model.split('/').pop() ?? model;
+  return name.replace(/-20\d{6}$/, '');
+}
+
 /** Build a human-readable span name with context */
 function spanDisplayName(operation: string, toolName?: string, model?: string): string {
-  // "agent.prompt" → "prompt"
   if (operation === 'agent.prompt') return 'prompt';
   if (operation === 'agent.step') return 'step';
-  // "gen_ai.stream" → "stream claude-sonnet-4"
   if (operation.startsWith('gen_ai.')) {
     const shortOp = operation.slice(7);
-    if (model) {
-      const shortModel = model.split('/').pop()?.replace(/-20\d{6}$/, '') ?? model;
-      return `${shortOp} ${shortModel}`;
-    }
+    if (model) return `${shortOp} ${shortModelName(model)}`;
     return shortOp;
   }
-  // New format: "tool.execute: bash" — tool name is in the span name itself
   if (operation.startsWith('tool.execute: ')) {
     const name = operation.slice('tool.execute: '.length);
     if (name.startsWith('mcp_')) {
@@ -970,7 +1080,6 @@ function spanDisplayName(operation: string, toolName?: string, model?: string): 
     }
     return name;
   }
-  // Legacy format: "tool.execute" without name in span — fall back to attributes
   if (operation === 'tool.execute') {
     if (toolName) {
       if (toolName.startsWith('mcp_')) {
@@ -982,11 +1091,7 @@ function spanDisplayName(operation: string, toolName?: string, model?: string): 
     }
     return 'tool';
   }
-  // New format: "mcp.call: server/tool"
-  if (operation.startsWith('mcp.call: ')) {
-    return `mcp:${operation.slice('mcp.call: '.length)}`;
-  }
-  // Legacy format
+  if (operation.startsWith('mcp.call: ')) return `mcp:${operation.slice('mcp.call: '.length)}`;
   if (operation === 'mcp.call') {
     if (toolName) return `mcp:${toolName}`;
     return 'mcp';

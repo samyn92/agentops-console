@@ -91,16 +91,16 @@ export function toggleRightPanel() {
   setRightPanelState(current === 'collapsed' ? 'expanded' : 'collapsed');
 }
 
-// ── Left panel tab (agents vs runs) ──
+// ── Left panel tab (agents, runs, traces) ──
 
-export type LeftPanelTab = 'agents' | 'runs';
+export type LeftPanelTab = 'agents' | 'runs' | 'traces';
 
 const LEFT_TAB_KEY = 'agentops:leftPanelTab';
 
 function loadLeftTabState(): LeftPanelTab {
   try {
     const raw = localStorage.getItem(LEFT_TAB_KEY);
-    if (raw === 'agents' || raw === 'runs') return raw;
+    if (raw === 'agents' || raw === 'runs' || raw === 'traces') return raw;
   } catch { /* ignore */ }
   return 'agents';
 }
@@ -116,29 +116,27 @@ export function setLeftPanelTab(tab: LeftPanelTab) {
   } catch { /* ignore */ }
 }
 
-// ── Right panel tab (memory vs traces) ──
+// ── Right panel tab (agent context: memory, tools, skills) ──
 
-export type RightPanelTab = 'memory' | 'traces';
+export type RightPanelTab = 'memory' | 'tools' | 'resources';
 
 const TAB_KEY = 'agentops:rightPanelTab';
 
-function loadTabState(): RightPanelTab {
+function loadRightTabState(): RightPanelTab {
   try {
     const raw = localStorage.getItem(TAB_KEY);
-    if (raw === 'memory' || raw === 'traces') return raw;
+    if (raw === 'memory' || raw === 'tools' || raw === 'resources') return raw;
   } catch { /* ignore */ }
   return 'memory';
 }
 
-const [rightPanelTab, setRightPanelTabRaw] = createSignal<RightPanelTab>(loadTabState());
+const [rightPanelTab, setRightPanelTabRaw] = createSignal<RightPanelTab>(loadRightTabState());
 
 export { rightPanelTab };
 
 export function setRightPanelTab(tab: RightPanelTab) {
   setRightPanelTabRaw(tab);
-  try {
-    localStorage.setItem(TAB_KEY, tab);
-  } catch { /* ignore */ }
+  try { localStorage.setItem(TAB_KEY, tab); } catch { /* ignore */ }
 }
 
 // Legacy exports — kept so existing imports don't break.

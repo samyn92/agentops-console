@@ -12,12 +12,13 @@ import { A } from '@solidjs/router';
 import { agentList, selectedAgent, selectAgent } from '../../stores/agents';
 import { leftPanelState, toggleLeftPanel, leftPanelTab, setLeftPanelTab } from '../../stores/view';
 import type { LeftPanelTab } from '../../stores/view';
-import { getDelegationMap, activeRunCount } from '../../stores/runs';
+import { activeRunCount } from '../../stores/runs';
 import { getChannelsForAgent, channelBoundAgents } from '../../stores/channels';
 import { streamingAgentKeys } from '../../stores/chat';
 import Spinner from '../shared/Spinner';
 import AgentCard from './AgentCard';
 import RunsPanelContent from './RunsPanelContent';
+import TracesPanel from './TracesPanel';
 import type { AgentResponse } from '../../types';
 
 interface SidebarProps {
@@ -30,45 +31,30 @@ export default function Sidebar(props: SidebarProps) {
 
   const isExpanded = () => leftPanelState() === 'expanded';
 
-  // ── Build hierarchical agent tree ──
+  // ── Build agent groups ──
+  // Orchestrators = daemons, Workers/Channels/Scheduled = task agents by type.
+  // No nesting — delegation relationships are visible in the Runs tab.
   const agentTree = createMemo(() => {
     const agents = agentList() ?? [];
-    const delegationMap = getDelegationMap();
     const chBound = channelBoundAgents();
 
     const daemons = agents.filter((a) => a.mode === 'daemon');
     const tasks = agents.filter((a) => a.mode === 'task');
 
-    // 1. Orchestrators: for each daemon, find tasks it delegates to (allow duplicates)
-    const daemonWithTasks: Array<{ daemon: AgentResponse; tasks: AgentResponse[] }> = [];
-    const daemonClaimed = new Set<string>(); // tasks claimed by ANY daemon
+    // Channels: task agents that have channel bindings
+    const channelTasks = tasks.filter((t) => chBound.has(t.name));
 
-    for (const daemon of daemons) {
-      const delegatedNames = delegationMap[daemon.name] ?? [];
-      const childTasks = tasks.filter((t) => delegatedNames.includes(t.name));
-      daemonWithTasks.push({ daemon, tasks: childTasks });
-      for (const t of childTasks) {
-        daemonClaimed.add(t.name);
-      }
-    }
-
-    // Remaining tasks: not claimed by any daemon
-    const unclaimed = tasks.filter((t) => !daemonClaimed.has(t.name));
-
-    // 2. Channels: unclaimed tasks that have channel bindings
-    const channelTasks = unclaimed.filter((t) => chBound.has(t.name));
-
-    // 3. Scheduled: unclaimed tasks with spec.schedule but no channel
-    const scheduledTasks = unclaimed.filter(
+    // Scheduled: task agents with spec.schedule but no channel
+    const scheduledTasks = tasks.filter(
       (t) => !chBound.has(t.name) && t.schedule,
     );
 
-    // 4. Standalone: everything else
-    const standalone = unclaimed.filter(
+    // Workers: everything else (task agents with no channel or schedule)
+    const workers = tasks.filter(
       (t) => !chBound.has(t.name) && !t.schedule,
     );
 
-    return { daemonWithTasks, channelTasks, scheduledTasks, standalone };
+    return { daemons, workers, channelTasks, scheduledTasks };
   });
 
   // ── Sidebar width resize handler ──
@@ -141,6 +127,7 @@ export default function Sidebar(props: SidebarProps) {
         <div class="flex gap-0.5 px-2 py-1.5 border-b border-border flex-shrink-0">
           <SidebarTabButton tab="agents" current={leftPanelTab()} label="Agents" />
           <SidebarTabButton tab="runs" current={leftPanelTab()} label="Runs" badge={activeRunCount() > 0 ? activeRunCount() : undefined} />
+          <SidebarTabButton tab="traces" current={leftPanelTab()} label="Traces" />
         </div>
 
         {/* ── Content area ── */}
@@ -149,6 +136,11 @@ export default function Sidebar(props: SidebarProps) {
           {/* ── Runs tab ── */}
           <Show when={leftPanelTab() === 'runs'}>
             <RunsPanelContent />
+          </Show>
+
+          {/* ── Traces tab ── */}
+          <Show when={leftPanelTab() === 'traces'}>
+            <TracesPanel />
           </Show>
 
           {/* ── Agents tab (hierarchical agents list) ── */}
@@ -163,55 +155,25 @@ export default function Sidebar(props: SidebarProps) {
           >
             <div class="flex-1 overflow-y-auto min-h-0 pb-1">
 
-              {/* ── 1. Orchestrators (daemons with their nested tasks) ── */}
-              <Show when={agentTree().daemonWithTasks.length > 0}>
+              {/* ── 1. Orchestrators (daemons) ── */}
+              <Show when={agentTree().daemons.length > 0}>
                 <div class="section-header section-header--first">
                   <span class="section-label">Orchestrators</span>
                 </div>
                 <div class="flex flex-col gap-0.5 px-2">
-                  <For each={agentTree().daemonWithTasks}>
-                    {(group) => {
-                      const daemon = group.daemon;
-                      const isDaemonSelected = () => {
+                  <For each={agentTree().daemons}>
+                    {(agent) => {
+                      const isSelected = () => {
                         const sel = selectedAgent();
-                        return sel?.namespace === daemon.namespace && sel?.name === daemon.name;
+                        return sel?.namespace === agent.namespace && sel?.name === agent.name;
                       };
 
                       return (
-                        <div class="sidebar-agent-group">
-                          {/* Daemon card */}
-                          <AgentCard
-                            agent={daemon}
-                            selected={isDaemonSelected()}
-                            onSelect={() => selectAgent(daemon.namespace, daemon.name)}
-                          />
-
-                          {/* Nested task agents */}
-                          <Show when={group.tasks.length > 0}>
-                            <div class="sidebar-nested-tasks">
-                              <For each={group.tasks}>
-                                {(task) => {
-                                  const isTaskSelected = () => {
-                                    const sel = selectedAgent();
-                                    return sel?.namespace === task.namespace && sel?.name === task.name;
-                                  };
-
-                                  return (
-                                    <div class="sidebar-nested-task">
-                                      <div class="sidebar-tree-connector" />
-                                      <AgentCard
-                                        agent={task}
-                                        selected={isTaskSelected()}
-                                        onSelect={() => selectAgent(task.namespace, task.name)}
-                                        compact
-                                      />
-                                    </div>
-                                  );
-                                }}
-                              </For>
-                            </div>
-                          </Show>
-                        </div>
+                        <AgentCard
+                          agent={agent}
+                          selected={isSelected()}
+                          onSelect={() => selectAgent(agent.namespace, agent.name)}
+                        />
                       );
                     }}
                   </For>
@@ -259,13 +221,13 @@ export default function Sidebar(props: SidebarProps) {
                 </div>
               </Show>
 
-              {/* ── 2. Workers (standalone task agents) ── */}
-              <Show when={agentTree().standalone.length > 0}>
+              {/* ── 2. Workers (all task agents with no channel or schedule) ── */}
+              <Show when={agentTree().workers.length > 0}>
                 <div class="section-header">
                   <span class="section-label">Workers</span>
                 </div>
                 <div class="flex flex-col gap-1 px-2">
-                  <For each={agentTree().standalone}>
+                  <For each={agentTree().workers}>
                     {(agent) => {
                       const isSelected = () => {
                         const sel = selectedAgent();
