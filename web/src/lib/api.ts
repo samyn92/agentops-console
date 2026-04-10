@@ -408,9 +408,9 @@ export const traces = {
    */
   search: (opts?: { agentName?: string; limit?: number; start?: number; end?: number }) => {
     const params = new URLSearchParams();
-    // Build a TraceQL query scoped to the agent
+    // Build a TraceQL query scoped to the agent via the agent.name resource attribute
     if (opts?.agentName) {
-      params.set('q', `{ resource.service.name = "${opts.agentName}" }`);
+      params.set('q', `{ resource.agent.name = "${opts.agentName}" }`);
     }
     if (opts?.limit) params.set('limit', String(opts.limit));
     if (opts?.start) params.set('start', String(opts.start));

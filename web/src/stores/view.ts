@@ -6,7 +6,8 @@ export type PanelState = 'collapsed' | 'expanded';
 // ── Center panel view mode ──
 // 'default' = normal routing (agent-based: ChatView/AgentInspector/EmptyState)
 // 'run-detail' = show a specific AgentRun in the center stage
-export type CenterView = 'default' | 'run-detail';
+// 'trace-detail' = show a specific trace waterfall in the center stage
+export type CenterView = 'default' | 'run-detail' | 'trace-detail';
 
 const [centerView, setCenterViewRaw] = createSignal<CenterView>('default');
 
@@ -20,8 +21,18 @@ export function showRunDetail() {
   setCenterViewRaw('run-detail');
 }
 
+// ── Trace detail state ──
+const [selectedTraceForDetail, setSelectedTraceForDetail] = createSignal<string | null>(null);
+export { selectedTraceForDetail };
+
+export function showTraceDetail(traceID: string) {
+  setSelectedTraceForDetail(traceID);
+  setCenterViewRaw('trace-detail');
+}
+
 export function clearCenterOverlay() {
   setCenterViewRaw('default');
+  setSelectedTraceForDetail(null);
 }
 
 // ── Left panel (agents) ──

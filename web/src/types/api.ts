@@ -685,10 +685,11 @@ export interface TraceSpan {
   parentSpanID?: string
   operationName: string
   serviceName?: string
+  processID?: string
   startTime: number       // microseconds since epoch
   duration: number        // microseconds
   tags?: Array<{ key: string; type: string; value: unknown }>
-  logs?: Array<{ timestamp: number; fields: Array<{ key: string; value: unknown }> }>
+  logs?: Array<{ timestamp: number; fields: Array<{ key: string; type?: string; value: unknown }> }>
   status?: { code: number; message?: string }
 }
 
