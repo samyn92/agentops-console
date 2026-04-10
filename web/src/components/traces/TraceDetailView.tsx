@@ -3,9 +3,9 @@
 // Features: span hierarchy waterfall, click-to-inspect span detail with
 // GenAI semantic convention attributes (model, provider, tokens, tool names).
 import { createSignal, createResource, Show, For, createMemo } from 'solid-js';
-import { selectedTraceForDetail, clearCenterOverlay } from '../../stores/view';
+import { selectedTraceForDetail, clearCenterOverlay, showTraceDetail } from '../../stores/view';
 import { traces as tracesAPI } from '../../lib/api';
-import type { TraceSpan, TempoTraceResponse, TraceProcess } from '../../types';
+import type { TraceSpan, TraceSpanLink, TempoTraceResponse, TraceProcess } from '../../types';
 import Spinner from '../shared/Spinner';
 
 interface TraceDetailViewProps {
@@ -168,6 +168,41 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
     return tools;
   });
 
+  // Check if this trace was delegated FROM a parent agent (has delegation attributes on root span)
+  const delegationInfo = createMemo(() => {
+    const spans = flatSpans();
+    if (spans.length === 0) return null;
+    const root = spans[0]?.span;
+    if (!root) return null;
+
+    const parentTraceID = getTag(root, 'delegation.parent_trace_id');
+    const parentSpanID = getTag(root, 'delegation.parent_span_id');
+    const parentAgent = getTag(root, 'delegation.parent_agent');
+    const runName = getTag(root, 'delegation.run_name');
+
+    if (!parentTraceID || !parentAgent) return null;
+
+    return { parentTraceID, parentSpanID, parentAgent, runName };
+  });
+
+  // Find spans that have delegation links TO sub-agent traces (run_agent tool spans with links)
+  const spanDelegationLinks = createMemo(() => {
+    const linkMap = new Map<string, TraceSpanLink>();
+    for (const node of flatSpans()) {
+      const links = node.span.links;
+      if (links && links.length > 0) {
+        // Find delegation links (those with link.type = "delegation")
+        for (const link of links) {
+          const linkType = link.tags?.find(t => t.key === 'link.type')?.value;
+          if (linkType === 'delegation' && link.traceID) {
+            linkMap.set(node.span.spanID, link);
+          }
+        }
+      }
+    }
+    return linkMap;
+  });
+
   return (
     <div class={`flex flex-col ${props.class || ''}`}>
       <Show when={trace.loading}>
@@ -208,6 +243,29 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
                     <StatPill label="Steps" value={String(summary().steps)} />
                   </Show>
                 </div>
+              )}
+            </Show>
+
+            {/* Delegation breadcrumb — shows when this trace was spawned by a parent agent */}
+            <Show when={delegationInfo()}>
+              {(info) => (
+                <button
+                  class="flex items-center gap-2 px-6 py-2 border-b border-border bg-accent/5 hover:bg-accent/10 transition-colors cursor-pointer w-full text-left"
+                  onClick={() => showTraceDetail(info().parentTraceID)}
+                  title={`View parent trace from ${info().parentAgent}`}
+                >
+                  <svg class="w-3.5 h-3.5 text-accent flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                  </svg>
+                  <span class="text-[10px] uppercase tracking-wider text-accent font-medium">Delegated from</span>
+                  <span class="text-xs font-mono text-accent font-semibold">{info().parentAgent}</span>
+                  <Show when={info().runName}>
+                    <span class="text-[10px] text-text-muted font-mono">({info().runName})</span>
+                  </Show>
+                  <svg class="w-3 h-3 text-text-muted ml-auto flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                </button>
               )}
             </Show>
 
@@ -294,6 +352,7 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
                       const durationMs = () => node.span.duration / 1000;
                       const isError = () => node.span.status?.code === 2;
                       const isSelected = () => selectedSpanID() === node.span.spanID;
+                      const delegationLink = () => spanDelegationLinks().get(node.span.spanID);
                       const barColor = () => {
                         if (isError()) return 'bg-error';
                         const op = node.span.operationName;
@@ -309,41 +368,78 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
                       const model = () => getTag(node.span, 'gen_ai.request.model');
 
                       return (
-                        <button
-                          class={`w-full flex items-center gap-2 px-4 py-1 transition-colors cursor-pointer border-l-2 ${
-                            isSelected()
-                              ? 'bg-accent/8 border-l-accent'
-                              : 'border-l-transparent hover:bg-surface-hover/50'
-                          }`}
-                          onClick={() => setSelectedSpanID(isSelected() ? null : node.span.spanID)}
-                        >
-                          {/* Operation name */}
-                          <div
-                            class="flex-shrink-0 text-[11px] font-mono truncate text-left"
-                            style={{ width: '200px', 'padding-left': `${node.depth * 14}px` }}
+                        <div class="flex flex-col">
+                          <button
+                            class={`w-full flex items-center gap-2 px-4 py-1 transition-colors cursor-pointer border-l-2 ${
+                              isSelected()
+                                ? 'bg-accent/8 border-l-accent'
+                                : 'border-l-transparent hover:bg-surface-hover/50'
+                            }`}
+                            onClick={() => setSelectedSpanID(isSelected() ? null : node.span.spanID)}
                           >
-                            <span class={`${isError() ? 'text-error' : 'text-text-secondary'}`}>
-                              {spanDisplayName(node.span.operationName, toolName(), model())}
-                            </span>
-                          </div>
-
-                          {/* Waterfall bar */}
-                          <div class="flex-1 h-5 relative min-w-0">
+                            {/* Operation name */}
                             <div
-                              class={`absolute top-1 h-3 rounded-[3px] ${barColor()} transition-all opacity-85 hover:opacity-100`}
-                              style={{
-                                left: `${leftPct()}%`,
-                                width: `${widthPct()}%`,
-                                'min-width': '3px',
-                              }}
-                            />
-                          </div>
+                              class="flex-shrink-0 text-[11px] font-mono truncate text-left"
+                              style={{ width: '200px', 'padding-left': `${node.depth * 14}px` }}
+                            >
+                              <span class={`${isError() ? 'text-error' : 'text-text-secondary'}`}>
+                                {spanDisplayName(node.span.operationName, toolName(), model())}
+                              </span>
+                            </div>
 
-                          {/* Duration */}
-                          <span class="flex-shrink-0 text-[10px] font-mono text-text-muted w-16 text-right">
-                            {formatDuration(durationMs())}
-                          </span>
-                        </button>
+                            {/* Waterfall bar */}
+                            <div class="flex-1 h-5 relative min-w-0">
+                              <div
+                                class={`absolute top-1 h-3 rounded-[3px] ${barColor()} transition-all opacity-85 hover:opacity-100`}
+                                style={{
+                                  left: `${leftPct()}%`,
+                                  width: `${widthPct()}%`,
+                                  'min-width': '3px',
+                                }}
+                              />
+                            </div>
+
+                            {/* Duration */}
+                            <span class="flex-shrink-0 text-[10px] font-mono text-text-muted w-16 text-right">
+                              {formatDuration(durationMs())}
+                            </span>
+                          </button>
+
+                          {/* Sub-agent trace link — shown when this span delegated to another agent */}
+                          <Show when={delegationLink()}>
+                            {(link) => {
+                              const targetAgent = () => link().tags?.find(t => t.key === 'link.parent_agent')?.value as string | undefined;
+                              const runName = () => link().tags?.find(t => t.key === 'link.run_name')?.value as string | undefined;
+                              return (
+                                <button
+                                  class="flex items-center gap-1.5 ml-4 px-2 py-0.5 text-left hover:bg-accent/8 transition-colors rounded cursor-pointer"
+                                  style={{ 'padding-left': `${(node.depth + 1) * 14 + 16}px` }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    showTraceDetail(link().traceID);
+                                  }}
+                                  title={`View trace for ${targetAgent() || 'sub-agent'}`}
+                                >
+                                  <svg class="w-3 h-3 text-accent flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                                  </svg>
+                                  <span class="text-[10px] text-accent font-medium">
+                                    View sub-agent trace
+                                  </span>
+                                  <Show when={targetAgent()}>
+                                    <span class="text-[10px] font-mono text-accent/70">{targetAgent()}</span>
+                                  </Show>
+                                  <Show when={runName()}>
+                                    <span class="text-[10px] font-mono text-text-muted truncate max-w-[150px]">{runName()}</span>
+                                  </Show>
+                                  <svg class="w-2.5 h-2.5 text-text-muted flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                  </svg>
+                                </button>
+                              );
+                            }}
+                          </Show>
+                        </div>
                       );
                     }}
                   </For>
@@ -392,6 +488,7 @@ function SpanDetailPanel(props: {
     const groups: Record<string, Array<{ key: string; value: unknown; type: string }>> = {
       'GenAI': [],
       'Agent': [],
+      'Delegation': [],
       'Tool': [],
       'Memory': [],
       'Other': [],
@@ -400,6 +497,8 @@ function SpanDetailPanel(props: {
     for (const tag of tags) {
       if (tag.key.startsWith('gen_ai.')) {
         groups['GenAI'].push(tag);
+      } else if (tag.key.startsWith('delegation.')) {
+        groups['Delegation'].push(tag);
       } else if (tag.key.startsWith('agent.') || tag.key.startsWith('step.')) {
         groups['Agent'].push(tag);
       } else if (tag.key.startsWith('tool.') || tag.key.startsWith('mcp.')) {
@@ -486,7 +585,7 @@ function SpanDetailPanel(props: {
             )}
           </For>
 
-          {/* Resource Attributes (from process) */}
+           {/* Resource Attributes (from process) */}
           <Show when={processTags().length > 0}>
             <div>
               <div class="text-[10px] font-medium text-text-muted uppercase tracking-wider mb-2">
@@ -502,6 +601,53 @@ function SpanDetailPanel(props: {
             </div>
           </Show>
         </div>
+
+        {/* Linked Traces — delegation links to sub-agent traces */}
+        <Show when={(props.span.links?.length ?? 0) > 0}>
+          <div class="px-4 py-3 border-t border-border-subtle">
+            <div class="text-[10px] font-medium text-text-muted uppercase tracking-wider mb-2">
+              Linked Traces
+            </div>
+            <div class="space-y-1.5">
+              <For each={props.span.links!}>
+                {(link) => {
+                  const linkType = () => link.tags?.find(t => t.key === 'link.type')?.value as string | undefined;
+                  const agentName = () => link.tags?.find(t => t.key === 'link.parent_agent')?.value as string | undefined;
+                  const runName = () => link.tags?.find(t => t.key === 'link.run_name')?.value as string | undefined;
+                  return (
+                    <button
+                      class="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-accent/5 border border-accent/15 hover:bg-accent/10 hover:border-accent/25 transition-colors cursor-pointer text-left"
+                      onClick={() => link.traceID && showTraceDetail(link.traceID)}
+                      title={`Navigate to linked trace ${link.traceID?.slice(0, 16)}...`}
+                    >
+                      <svg class="w-3.5 h-3.5 text-accent flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                      </svg>
+                      <div class="flex-1 min-w-0">
+                        <Show when={linkType() === 'delegation'}>
+                          <span class="text-[10px] text-accent font-medium">Sub-agent trace</span>
+                        </Show>
+                        <Show when={linkType() !== 'delegation'}>
+                          <span class="text-[10px] text-text-muted">{linkType() || 'linked'}</span>
+                        </Show>
+                        <Show when={agentName()}>
+                          <span class="text-[10px] font-mono text-accent ml-1">{agentName()}</span>
+                        </Show>
+                        <Show when={runName()}>
+                          <div class="text-[9px] font-mono text-text-muted truncate">{runName()}</div>
+                        </Show>
+                        <div class="text-[9px] font-mono text-text-muted/60 truncate">{link.traceID?.slice(0, 24)}...</div>
+                      </div>
+                      <svg class="w-3 h-3 text-text-muted flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                      </svg>
+                    </button>
+                  );
+                }}
+              </For>
+            </div>
+          </div>
+        </Show>
 
         {/* Events / Logs */}
         <Show when={(props.span.logs?.length ?? 0) > 0}>

@@ -155,6 +155,7 @@ type otlpSpan struct {
 	Attributes        []otlpAttribute `json:"attributes"`
 	Status            otlpStatus      `json:"status"`
 	Events            []otlpEvent     `json:"events"`
+	Links             []otlpLink      `json:"links"`
 }
 
 type otlpAttribute struct {
@@ -180,6 +181,12 @@ type otlpEvent struct {
 	Attributes   []otlpAttribute `json:"attributes"`
 }
 
+type otlpLink struct {
+	TraceID    string          `json:"traceId"`
+	SpanID     string          `json:"spanId"`
+	Attributes []otlpAttribute `json:"attributes"`
+}
+
 // Jaeger-like output types (what the frontend expects)
 
 type jaegerResponse struct {
@@ -202,6 +209,7 @@ type jaegerSpan struct {
 	Duration      int64         `json:"duration"`  // microseconds
 	Tags          []jaegerTag   `json:"tags,omitempty"`
 	Logs          []jaegerLog   `json:"logs,omitempty"`
+	Links         []jaegerLink  `json:"links,omitempty"`
 	Status        *jaegerStatus `json:"status,omitempty"`
 	ProcessID     string        `json:"processID"`
 }
@@ -220,6 +228,12 @@ type jaegerLog struct {
 type jaegerStatus struct {
 	Code    int    `json:"code"`
 	Message string `json:"message,omitempty"`
+}
+
+type jaegerLink struct {
+	TraceID string      `json:"traceID"`
+	SpanID  string      `json:"spanID"`
+	Tags    []jaegerTag `json:"tags,omitempty"`
 }
 
 type jaegerProcess struct {
@@ -304,6 +318,18 @@ func transformOTLPToJaeger(traceID string, otlp *otlpTraceResponse) *jaegerRespo
 						log.Fields = append(log.Fields, otlpAttrToTag(attr))
 					}
 					js.Logs = append(js.Logs, log)
+				}
+
+				// Convert span links (used for cross-agent trace delegation)
+				for _, link := range span.Links {
+					jl := jaegerLink{
+						TraceID: base64ToHex(link.TraceID),
+						SpanID:  base64ToHex(link.SpanID),
+					}
+					for _, attr := range link.Attributes {
+						jl.Tags = append(jl.Tags, otlpAttrToTag(attr))
+					}
+					js.Links = append(js.Links, jl)
 				}
 
 				trace.Spans = append(trace.Spans, js)

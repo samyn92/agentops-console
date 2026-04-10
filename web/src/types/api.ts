@@ -691,7 +691,15 @@ export interface TraceSpan {
   duration: number        // microseconds
   tags?: Array<{ key: string; type: string; value: unknown }>
   logs?: Array<{ timestamp: number; fields: Array<{ key: string; type?: string; value: unknown }> }>
+  links?: Array<TraceSpanLink>
   status?: { code: number; message?: string }
+}
+
+/** A span link — used for cross-agent trace delegation. */
+export interface TraceSpanLink {
+  traceID: string
+  spanID: string
+  tags?: Array<{ key: string; type: string; value: unknown }>
 }
 
 /** A process/service in a Tempo trace. */

@@ -6,6 +6,7 @@ import Badge from '../shared/Badge';
 import Spinner from '../shared/Spinner';
 import Markdown from '../shared/Markdown';
 import { formatTokens, formatDateTime, formatCost, phaseVariant } from '../../lib/format';
+import { showTraceDetail } from '../../stores/view';
 
 interface RunDetailProps {
   namespace: string;
@@ -71,9 +72,13 @@ export default function RunDetail(props: RunDetailProps) {
                 <Show when={status()?.traceID}>
                   <div class="flex items-center gap-2 text-xs">
                     <span class="text-text-muted w-20 flex-shrink-0">Trace</span>
-                    <span class="text-text font-mono text-[10px] truncate" title={status()!.traceID!}>
+                    <button
+                      class="text-accent font-mono text-[10px] truncate hover:underline cursor-pointer"
+                      title={`View trace ${status()!.traceID!}`}
+                      onClick={() => showTraceDetail(status()!.traceID!)}
+                    >
                       {status()!.traceID!.slice(0, 24)}...
-                    </span>
+                    </button>
                   </div>
                 </Show>
                 <Show when={status()?.startTime}>

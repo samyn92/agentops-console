@@ -47,7 +47,7 @@ export default function RunsPanelContent() {
             </div>
           }
         >
-          <div class="flex flex-col gap-1 p-1.5">
+          <div class="run-card-list p-2">
             <For each={filteredRuns()}>
               {(run) => {
                 const key = () => `${run.metadata.namespace}/${run.metadata.name}`;
@@ -86,7 +86,7 @@ export default function RunsPanelContent() {
                       <ForgeWatermark forge={forge()!} />
                     </Show>
 
-                    {/* Row 1: Source/forge icon + Git branch tag (or run name) + commits + phase icon */}
+                    {/* Row 1 (Header): Source/forge icon + Git branch tag (or run name) + commits + phase icon */}
                     <div class="flex items-center gap-1.5">
                       <Show
                         when={hasGit() && forge()}
@@ -119,16 +119,16 @@ export default function RunsPanelContent() {
                       <RunPhaseIcon phase={run.status?.phase} />
                     </div>
 
-                    {/* Row 2: Run name (subtitle) + time */}
+                    {/* Row 2 (Description): Prompt preview — main content area */}
+                    <Show when={run.spec.prompt}>
+                      <p class="run-card__prompt">{run.spec.prompt}</p>
+                    </Show>
+
+                    {/* Row 3 (Footer): Run name + timestamp */}
                     <div class="run-card__meta">
                       <span class="truncate">{run.metadata.name}</span>
                       <span class="run-card__time">{relativeTime(run.metadata.creationTimestamp)}</span>
                     </div>
-
-                    {/* Row 3: Prompt preview */}
-                    <Show when={run.spec.prompt}>
-                      <p class="run-card__prompt">{run.spec.prompt}</p>
-                    </Show>
                   </button>
                 );
               }}
