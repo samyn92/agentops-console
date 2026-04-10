@@ -96,11 +96,22 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
         const durationMs = Number(log.fields?.find((f) => f.key === 'tool.duration_ms')?.value ?? 0);
         const isError = log.fields?.find((f) => f.key === 'tool.error')?.value === true ||
                         log.fields?.find((f) => f.key === 'tool.error')?.value === 'true';
+        const toolInput = log.fields?.find((f) => f.key === 'tool.input')?.value as string | undefined;
+        const toolOutput = log.fields?.find((f) => f.key === 'tool.output')?.value as string | undefined;
+        const toolStep = log.fields?.find((f) => f.key === 'tool.step')?.value;
 
         if (!parentNode) parentNode = node;
 
         // Synthesize a minimal TraceSpan for the virtual row.
         const durationUs = durationMs * 1000; // ms → microseconds
+        const tags: Array<{ key: string; type: string; value: unknown }> = [
+          { key: 'tool.name', type: 'string', value: toolName },
+          { key: 'tool.type', type: 'string', value: toolType },
+          ...(isError ? [{ key: 'tool.error', type: 'string', value: 'true' }] : []),
+          ...(toolInput ? [{ key: 'tool.input', type: 'string', value: toolInput }] : []),
+          ...(toolOutput ? [{ key: 'tool.output', type: 'string', value: toolOutput }] : []),
+          ...(toolStep != null ? [{ key: 'tool.step', type: 'int64', value: toolStep }] : []),
+        ];
         const virtualSpan: TraceSpan = {
           traceID: node.span.traceID,
           spanID: `virtual-tool-${toolEvents.length}`,
@@ -108,11 +119,7 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
           operationName: `tool.execute: ${toolName}`,
           startTime: durationUs > 0 ? log.timestamp - durationUs : log.timestamp,
           duration: durationUs || 1000, // 1ms placeholder if no duration
-          tags: [
-            { key: 'tool.name', type: 'string', value: toolName },
-            { key: 'tool.type', type: 'string', value: toolType },
-            ...(isError ? [{ key: 'tool.error', type: 'string', value: 'true' }] : []),
-          ],
+          tags,
           status: isError ? { code: 2 } : undefined,
         };
 
@@ -377,24 +384,14 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
               </div>
             </Show>
 
-            {/* Prompt & Response */}
+            {/* Prompt & Response — expandable sections */}
             <Show when={userPrompt() || assistantResponse()}>
               <div class="px-5 py-3 border-b border-border space-y-2.5">
                 <Show when={userPrompt()}>
-                  <div>
-                    <div class="text-[10px] font-medium text-text-muted uppercase tracking-wider mb-1">Prompt</div>
-                    <div class="text-xs text-text font-mono bg-surface-2 rounded-lg px-3 py-2 border border-border-subtle max-h-20 overflow-y-auto whitespace-pre-wrap break-words">
-                      {userPrompt()}
-                    </div>
-                  </div>
+                  <ExpandableContent label="Prompt" content={userPrompt()!} defaultMaxH="max-h-28" />
                 </Show>
                 <Show when={assistantResponse()}>
-                  <div>
-                    <div class="text-[10px] font-medium text-text-muted uppercase tracking-wider mb-1">Response</div>
-                    <div class="text-xs text-text-secondary font-mono bg-surface-2 rounded-lg px-3 py-2 border border-border-subtle max-h-20 overflow-y-auto whitespace-pre-wrap break-words">
-                      {assistantResponse()}
-                    </div>
-                  </div>
+                  <ExpandableContent label="Response" content={assistantResponse()!} muted defaultMaxH="max-h-28" />
                 </Show>
               </div>
             </Show>
@@ -633,10 +630,82 @@ function SpanDetailPanel(props: {
   onClose: () => void;
 }) {
   const isError = () => props.span.status?.code === 2;
+  const isVirtual = () => props.span.spanID.startsWith('virtual-tool-');
+
+  // Get tool.input and tool.output from tags (virtual rows carry these)
+  const toolInput = createMemo(() => {
+    const v = props.span.tags?.find(t => t.key === 'tool.input')?.value;
+    return v ? String(v) : null;
+  });
+  const toolOutput = createMemo(() => {
+    const v = props.span.tags?.find(t => t.key === 'tool.output')?.value;
+    return v ? String(v) : null;
+  });
+  const toolName = createMemo(() => {
+    const v = props.span.tags?.find(t => t.key === 'tool.name')?.value;
+    return v ? String(v) : null;
+  });
+
+  // Parse tool input JSON into something readable
+  const parsedInput = createMemo(() => {
+    const raw = toolInput();
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+  });
+
+  // Extract the most relevant field from parsed input for the hero display
+  const heroContent = createMemo(() => {
+    const p = parsedInput();
+    const name = toolName();
+    if (!p) return null;
+    if (name === 'bash' || name === 'Bash') {
+      return { label: 'Command', value: String(p.command ?? p.cmd ?? ''), lang: 'bash' };
+    }
+    if (name === 'ls' || name === 'list_directory') {
+      return { label: 'Path', value: String(p.path ?? p.directory ?? '.'), lang: 'path' };
+    }
+    if (name === 'read' || name === 'Read' || name === 'read_file') {
+      const path = String(p.filePath ?? p.path ?? p.file ?? '');
+      const offset = p.offset ? ` (offset: ${p.offset})` : '';
+      const limit = p.limit ? ` (limit: ${p.limit})` : '';
+      return { label: 'File', value: path + offset + limit, lang: 'path' };
+    }
+    if (name === 'write' || name === 'Write' || name === 'write_file') {
+      return { label: 'File', value: String(p.filePath ?? p.path ?? p.file ?? ''), lang: 'path' };
+    }
+    if (name === 'glob' || name === 'Glob') {
+      return { label: 'Pattern', value: String(p.pattern ?? ''), lang: 'glob' };
+    }
+    if (name === 'grep' || name === 'Grep' || name === 'search') {
+      return { label: 'Pattern', value: String(p.pattern ?? p.query ?? ''), lang: 'regex' };
+    }
+    if (name === 'git_status') {
+      return { label: 'Operation', value: 'git status', lang: 'bash' };
+    }
+    if (name === 'run_agent') {
+      const agent = String(p.agent ?? '');
+      const prompt = String(p.prompt ?? '');
+      return { label: 'Delegate to', value: `${agent}: ${prompt}`, lang: 'text' };
+    }
+    // Fallback: show the first string field
+    for (const [key, val] of Object.entries(p)) {
+      if (typeof val === 'string' && val.length > 0) {
+        return { label: key, value: val, lang: 'text' };
+      }
+    }
+    return null;
+  });
 
   // Categorize tags into semantic groups for display
   const tagGroups = createMemo(() => {
-    const tags = props.span.tags ?? [];
+    const tags = (props.span.tags ?? []).filter(t =>
+      // Hide tool.input/output from tag list — shown in dedicated sections
+      t.key !== 'tool.input' && t.key !== 'tool.output'
+    );
     const groups: Record<string, Array<{ key: string; value: unknown; type: string }>> = {
       'GenAI': [],
       'Agent': [],
@@ -695,7 +764,6 @@ function SpanDetailPanel(props: {
     if (!raw) return null;
     const reasons = (raw as string).split(',').map(r => r.trim()).filter(Boolean);
     if (reasons.length === 0) return null;
-    // Count occurrences
     const counts = new Map<string, number>();
     for (const r of reasons) {
       counts.set(r, (counts.get(r) || 0) + 1);
@@ -708,7 +776,7 @@ function SpanDetailPanel(props: {
   });
 
   return (
-    <div class="w-[360px] flex-shrink-0 border-l border-border bg-surface flex flex-col overflow-hidden">
+    <div class="w-[400px] flex-shrink-0 border-l border-border bg-surface flex flex-col overflow-hidden">
       {/* Header */}
       <div class="flex items-center gap-2 px-4 py-2.5 border-b border-border flex-shrink-0">
         <div class="flex-1 min-w-0">
@@ -716,7 +784,7 @@ function SpanDetailPanel(props: {
             {props.span.operationName}
           </div>
           <div class="text-[10px] text-text-muted font-mono mt-0.5">
-            {props.span.spanID.slice(0, 16)}
+            {isVirtual() ? 'reconstructed from events' : props.span.spanID.slice(0, 16)}
           </div>
         </div>
         <button
@@ -742,6 +810,54 @@ function SpanDetailPanel(props: {
           </Show>
         </div>
 
+        {/* ── Tool Deep Inspection ── */}
+        {/* Hero: the most important field (command, path, pattern) in big mono text */}
+        <Show when={heroContent()}>
+          {(hero) => (
+            <div class="px-4 py-3 border-b border-border-subtle">
+              <div class="text-[10px] font-medium text-text-muted uppercase tracking-wider mb-1.5">{hero().label}</div>
+              <div class={`text-[13px] font-mono leading-relaxed rounded-lg px-3 py-2.5 border break-all whitespace-pre-wrap ${
+                hero().lang === 'bash'
+                  ? 'bg-[#1a1b26] text-emerald-400 border-emerald-500/20'
+                  : hero().lang === 'path'
+                    ? 'bg-surface-2 text-accent border-accent/15'
+                    : 'bg-surface-2 text-text border-border-subtle'
+              }`}>
+                <Show when={hero().lang === 'bash'}>
+                  <span class="text-text-muted/50 select-none mr-1.5">$</span>
+                </Show>
+                {hero().value}
+              </div>
+            </div>
+          )}
+        </Show>
+
+        {/* Full tool input JSON (collapsed by default if hero already shows it) */}
+        <Show when={toolInput()}>
+          <div class="px-4 py-3 border-b border-border-subtle">
+            <ExpandableContent
+              label="Input (full args)"
+              content={formatJSON(toolInput()!)}
+              defaultMaxH="max-h-32"
+              mono
+            />
+          </div>
+        </Show>
+
+        {/* Tool output — the result from the command */}
+        <Show when={toolOutput()}>
+          <div class="px-4 py-3 border-b border-border-subtle">
+            <ExpandableContent
+              label="Output"
+              content={toolOutput()!}
+              defaultMaxH="max-h-48"
+              mono
+              muted={!isError()}
+              error={isError()}
+            />
+          </div>
+        </Show>
+
         {/* Quick token/model info for gen_ai spans */}
         <Show when={quickInfo().inputTokens || quickInfo().outputTokens}>
           <div class="flex flex-wrap gap-2 px-4 py-2 border-b border-border-subtle">
@@ -754,7 +870,7 @@ function SpanDetailPanel(props: {
           </div>
         </Show>
 
-        {/* Finish reasons summary (parsed from comma-separated mess into readable form) */}
+        {/* Finish reasons summary */}
         <Show when={finishReasonsSummary()}>
           <div class="px-4 py-2 border-b border-border-subtle">
             <div class="text-[10px] font-medium text-text-muted uppercase tracking-wider mb-1">Finish Reasons</div>
@@ -897,6 +1013,9 @@ function SpanDetailPanel(props: {
                     eventName === 'gen_ai.tool.output' &&
                     otherFields.some((f) => f.key === 'tool.error' && f.value === true);
 
+                  // Skip tool.call events in the Events section — they're already shown as waterfall rows
+                  if (eventName === 'tool.call') return null;
+
                   return (
                     <div class={`rounded-lg px-3 py-2 border ${
                       isErrorOutput()
@@ -919,7 +1038,7 @@ function SpanDetailPanel(props: {
                         </Show>
                       </div>
                       <Show when={isContentEvent() && contentText()}>
-                        <div class="mt-1.5 text-[11px] font-mono text-text-secondary whitespace-pre-wrap break-words max-h-32 overflow-y-auto">
+                        <div class="mt-1.5 text-[11px] font-mono text-text-secondary whitespace-pre-wrap break-words max-h-40 overflow-y-auto">
                           {contentText()}
                         </div>
                       </Show>
@@ -1032,6 +1151,53 @@ function DelegationChildBanner(props: { agent: string; runName: string; namespac
       </svg>
     </button>
   );
+}
+
+// ── Expandable Content Block ──
+function ExpandableContent(props: {
+  label: string;
+  content: string;
+  defaultMaxH?: string;
+  muted?: boolean;
+  error?: boolean;
+  mono?: boolean;
+}) {
+  const [expanded, setExpanded] = createSignal(false);
+  const maxH = () => props.defaultMaxH || 'max-h-28';
+
+  return (
+    <div>
+      <div class="flex items-center justify-between mb-1">
+        <div class="text-[10px] font-medium text-text-muted uppercase tracking-wider">{props.label}</div>
+        <button
+          class="text-[10px] text-accent hover:text-accent/80 transition-colors px-1"
+          onClick={() => setExpanded(!expanded())}
+        >
+          {expanded() ? 'collapse' : 'expand'}
+        </button>
+      </div>
+      <div
+        class={`text-xs font-mono rounded-lg px-3 py-2.5 border overflow-y-auto whitespace-pre-wrap break-words transition-all ${
+          props.error
+            ? 'bg-error/5 border-error/20 text-error/80'
+            : props.muted
+              ? 'bg-surface-2 border-border-subtle text-text-secondary'
+              : 'bg-surface-2 border-border-subtle text-text'
+        } ${expanded() ? 'max-h-[70vh]' : maxH()}`}
+      >
+        {props.content}
+      </div>
+    </div>
+  );
+}
+
+/** Format JSON string for display (pretty-print if valid JSON) */
+function formatJSON(s: string): string {
+  try {
+    return JSON.stringify(JSON.parse(s), null, 2);
+  } catch {
+    return s;
+  }
 }
 
 function StatPill(props: { label: string; value: string; accent?: boolean }) {
