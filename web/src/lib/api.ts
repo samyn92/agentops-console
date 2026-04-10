@@ -408,11 +408,11 @@ export const traces = {
    */
   search: (opts?: { agentName?: string; limit?: number; start?: number; end?: number }) => {
     const params = new URLSearchParams();
-    // Build a TraceQL query — always select agent.name so the sidebar can display it.
+    // Build a TraceQL query — always select agent.name and agent.mode so the sidebar can display them.
     if (opts?.agentName) {
-      params.set('q', `{ resource.agent.name = "${opts.agentName}" } | select(resource.agent.name)`);
+      params.set('q', `{ resource.agent.name = "${opts.agentName}" } | select(resource.agent.name, resource.agent.mode)`);
     } else {
-      params.set('q', `{ resource.agent.name =~ ".+" } | select(resource.agent.name)`);
+      params.set('q', `{ resource.agent.name =~ ".+" } | select(resource.agent.name, resource.agent.mode)`);
     }
     if (opts?.limit) params.set('limit', String(opts.limit));
     if (opts?.start) params.set('start', String(opts.start));

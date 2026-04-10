@@ -719,13 +719,23 @@ export interface TempoTraceResponse {
   }>
 }
 
-/** A trace summary from Tempo search results. */
+/** A trace summary from Tempo search results, enriched by the BFF with delegation data. */
 export interface TraceSearchResult {
   traceID: string
   rootServiceName?: string
   rootTraceName?: string
   startTimeUnixNano?: string
   durationMs?: number
+  /** Tempo returns both spanSet (singular) and spanSets (plural) */
+  spanSet?: {
+    spans: Array<{
+      spanID: string
+      startTimeUnixNano: string
+      durationNanos: string
+      attributes?: Array<{ key: string; value: { stringValue?: string; intValue?: string } }>
+    }>
+    matched?: number
+  }
   spanSets?: Array<{
     spans: Array<{
       spanID: string
@@ -733,7 +743,17 @@ export interface TraceSearchResult {
       durationNanos: string
       attributes?: Array<{ key: string; value: { stringValue?: string; intValue?: string } }>
     }>
+    matched?: number
   }>
+  // ── Delegation enrichment (from BFF AgentRun CRD lookup) ──
+  /** Parent trace ID if this trace was created via delegation (source=agent) */
+  parentTraceID?: string
+  /** Name of the parent agent that delegated to this agent */
+  parentAgent?: string
+  /** Name of the agent that ran this trace (agentRef from AgentRun) */
+  childAgent?: string
+  /** Source of the run: "agent", "console", "channel", "schedule" */
+  runSource?: string
 }
 
 /** Tempo search response envelope. */

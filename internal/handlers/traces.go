@@ -6,6 +6,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -86,7 +87,13 @@ func (h *Handlers) GetTrace(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(jaeger)
 }
 
-// SearchTraces proxies a trace search to Tempo.
+// SearchTraces proxies a trace search to Tempo and enriches the results
+// with delegation relationship data from AgentRun CRDs.
+//
+// For each trace that corresponds to a delegated AgentRun (source=agent),
+// the response includes parentTraceID and parentAgent so the frontend can
+// render a delegation tree in the traces sidebar.
+//
 // GET /api/v1/traces?q=...&tags=...&limit=...&start=...&end=...
 // → Tempo GET /api/search?q=...&tags=...&limit=...&start=...&end=...
 func (h *Handlers) SearchTraces(w http.ResponseWriter, r *http.Request) {
@@ -96,7 +103,7 @@ func (h *Handlers) SearchTraces(w http.ResponseWriter, r *http.Request) {
 		tempoURL = fmt.Sprintf("%s?%s", tempoURL, qs)
 	}
 
-	client := &http.Client{Timeout: 15 * time.Second}
+	httpClient := &http.Client{Timeout: 15 * time.Second}
 	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, tempoURL, nil)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create request: %s", err)
@@ -104,16 +111,164 @@ func (h *Handlers) SearchTraces(w http.ResponseWriter, r *http.Request) {
 	}
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := client.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "tempo unreachable: %s", err)
 		return
 	}
 	defer resp.Body.Close()
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(resp.StatusCode)
-	io.Copy(w, resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		proxyResponse(w, resp)
+		return
+	}
+
+	// Parse Tempo's search response so we can enrich it.
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "failed to read tempo response: %s", err)
+		return
+	}
+
+	var tempoResp tempoSearchResponse
+	if err := json.Unmarshal(body, &tempoResp); err != nil {
+		// If we can't parse it, return the raw response as-is.
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write(body)
+		return
+	}
+
+	// Build delegation map from AgentRun CRDs.
+	delegationMap := h.buildDelegationMap(r.Context())
+
+	// Enrich each trace with delegation info.
+	enriched := make([]enrichedTraceResult, 0, len(tempoResp.Traces))
+	for _, t := range tempoResp.Traces {
+		et := enrichedTraceResult{
+			TraceID:           t.TraceID,
+			RootServiceName:   t.RootServiceName,
+			RootTraceName:     t.RootTraceName,
+			StartTimeUnixNano: t.StartTimeUnixNano,
+			DurationMs:        t.DurationMs,
+			SpanSet:           t.SpanSet,
+			SpanSets:          t.SpanSets,
+		}
+		if info, ok := delegationMap[t.TraceID]; ok {
+			et.ParentTraceID = info.parentTraceID
+			et.ParentAgent = info.parentAgent
+			et.ChildAgent = info.childAgent
+			et.RunSource = info.runSource
+		}
+		enriched = append(enriched, et)
+	}
+
+	result := enrichedSearchResponse{
+		Traces:  enriched,
+		Metrics: tempoResp.Metrics,
+	}
+
+	writeJSON(w, http.StatusOK, result)
+}
+
+// ── Delegation enrichment types ──
+
+type delegationInfo struct {
+	parentTraceID string
+	parentAgent   string
+	childAgent    string // the agent that ran (agentRef)
+	runSource     string // "agent", "console", "channel", etc.
+}
+
+// buildDelegationMap creates a traceID → delegationInfo index from AgentRun CRDs.
+// For runs with source=agent, we extract the parent trace ID from the
+// agents.agentops.io/traceparent annotation (W3C traceparent format:
+// 00-{traceID}-{spanID}-{flags}).
+func (h *Handlers) buildDelegationMap(ctx context.Context) map[string]delegationInfo {
+	result := make(map[string]delegationInfo)
+
+	runs, err := h.k8s.ListAgentRuns(ctx)
+	if err != nil {
+		return result
+	}
+
+	for _, run := range runs.Items {
+		traceID := run.Status.TraceID
+		if traceID == "" {
+			continue
+		}
+
+		info := delegationInfo{
+			childAgent: run.Spec.AgentRef,
+			runSource:  string(run.Spec.Source),
+		}
+
+		// For delegated runs (source=agent), extract parent trace ID
+		// from the traceparent annotation.
+		if run.Spec.Source == "agent" {
+			if tp, ok := run.Annotations["agents.agentops.io/traceparent"]; ok && tp != "" {
+				info.parentTraceID = extractTraceIDFromTraceparent(tp)
+			}
+			if pa, ok := run.Annotations["agents.agentops.io/parent-agent"]; ok && pa != "" {
+				info.parentAgent = pa
+			} else {
+				info.parentAgent = run.Spec.SourceRef
+			}
+		}
+
+		result[traceID] = info
+	}
+
+	return result
+}
+
+// extractTraceIDFromTraceparent parses a W3C traceparent header
+// (format: "00-{traceID}-{spanID}-{flags}") and returns the trace ID.
+func extractTraceIDFromTraceparent(tp string) string {
+	parts := strings.Split(tp, "-")
+	if len(parts) >= 3 {
+		return parts[1]
+	}
+	return ""
+}
+
+// ── Tempo search response types (for parsing) ──
+
+type tempoSearchResponse struct {
+	Traces  []tempoTraceResult `json:"traces"`
+	Metrics json.RawMessage    `json:"metrics,omitempty"`
+}
+
+type tempoTraceResult struct {
+	TraceID           string          `json:"traceID"`
+	RootServiceName   string          `json:"rootServiceName,omitempty"`
+	RootTraceName     string          `json:"rootTraceName,omitempty"`
+	StartTimeUnixNano string          `json:"startTimeUnixNano,omitempty"`
+	DurationMs        json.RawMessage `json:"durationMs,omitempty"` // can be int or float
+	SpanSet           json.RawMessage `json:"spanSet,omitempty"`
+	SpanSets          json.RawMessage `json:"spanSets,omitempty"`
+}
+
+// ── Enriched search response types (what the frontend receives) ──
+
+type enrichedSearchResponse struct {
+	Traces  []enrichedTraceResult `json:"traces"`
+	Metrics json.RawMessage       `json:"metrics,omitempty"`
+}
+
+type enrichedTraceResult struct {
+	TraceID           string          `json:"traceID"`
+	RootServiceName   string          `json:"rootServiceName,omitempty"`
+	RootTraceName     string          `json:"rootTraceName,omitempty"`
+	StartTimeUnixNano string          `json:"startTimeUnixNano,omitempty"`
+	DurationMs        json.RawMessage `json:"durationMs,omitempty"`
+	SpanSet           json.RawMessage `json:"spanSet,omitempty"`
+	SpanSets          json.RawMessage `json:"spanSets,omitempty"`
+	// Delegation enrichment fields (only set for delegated runs)
+	ParentTraceID string `json:"parentTraceID,omitempty"`
+	ParentAgent   string `json:"parentAgent,omitempty"`
+	ChildAgent    string `json:"childAgent,omitempty"`
+	RunSource     string `json:"runSource,omitempty"`
 }
 
 // ────────────────────────────────────────────────────────────────────
