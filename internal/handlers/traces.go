@@ -99,9 +99,17 @@ func (h *Handlers) GetTrace(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) SearchTraces(w http.ResponseWriter, r *http.Request) {
 	tempoURL := fmt.Sprintf("%s/api/search", tempoBaseURL())
 
-	if qs := r.URL.RawQuery; qs != "" {
-		tempoURL = fmt.Sprintf("%s?%s", tempoURL, qs)
+	// Ensure start/end time range is set — Tempo only searches
+	// in-memory (ingester) data when no range is given, which means
+	// traces disappear from search once flushed to backend blocks.
+	// Default to the last 72h (matching the configured retention).
+	q := r.URL.Query()
+	if q.Get("start") == "" || q.Get("end") == "" {
+		now := time.Now()
+		q.Set("end", strconv.FormatInt(now.Unix(), 10))
+		q.Set("start", strconv.FormatInt(now.Add(-72*time.Hour).Unix(), 10))
 	}
+	tempoURL = fmt.Sprintf("%s?%s", tempoURL, q.Encode())
 
 	httpClient := &http.Client{Timeout: 15 * time.Second}
 	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, tempoURL, nil)
