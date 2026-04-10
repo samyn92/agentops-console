@@ -385,6 +385,7 @@ export interface RuntimeMessagePart {
   provider_executed?: boolean
   // tool-result
   output?: RuntimeToolOutput
+  metadata?: string // ClientMetadata JSON — renderer hints, duration, etc.
 }
 
 export interface RuntimeMessage {

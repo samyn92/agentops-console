@@ -607,6 +607,12 @@ function runtimeToChat(runtimeMessages: RuntimeMessage[]): ChatMessage[] {
                 toolPart.data = output.data;
               }
             }
+            // Restore metadata from working memory (renderer hints, duration, etc.)
+            if (part.metadata) {
+              try {
+                toolPart.metadata = JSON.parse(part.metadata);
+              } catch { /* malformed metadata — ignore */ }
+            }
           }
         }
       }
