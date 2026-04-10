@@ -204,6 +204,19 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
     return childMap;
   });
 
+  // Top-level list of all child delegations (deduped by runName for the banner)
+  const delegationChildren = createMemo(() => {
+    const children: Array<{ agent: string; runName: string; namespace: string }> = [];
+    const seen = new Set<string>();
+    for (const child of spanDelegationChildren().values()) {
+      if (!seen.has(child.runName)) {
+        seen.add(child.runName);
+        children.push(child);
+      }
+    }
+    return children;
+  });
+
   return (
     <div class={`flex flex-col ${props.class || ''}`}>
       <Show when={trace.loading}>
@@ -268,6 +281,15 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
                   </svg>
                 </button>
               )}
+            </Show>
+
+            {/* Delegated to — shows when this trace delegated work to sub-agents */}
+            <Show when={delegationChildren().length > 0}>
+              <div class="border-b border-border">
+                <For each={delegationChildren()}>
+                  {(child) => <DelegationChildBanner agent={child.agent} runName={child.runName} namespace={child.namespace} />}
+                </For>
+              </div>
             </Show>
 
             {/* Prompt & Response + Tool Summary */}
@@ -779,6 +801,49 @@ function SpanDetailPanel(props: {
 }
 
 // ── Subcomponents ──
+
+/** Banner for "Delegated to" — clickable link to navigate to child agent's trace */
+function DelegationChildBanner(props: { agent: string; runName: string; namespace: string }) {
+  const [loading, setLoading] = createSignal(false);
+
+  const navigate = async () => {
+    setLoading(true);
+    try {
+      const run = await agentRuns.get(props.namespace, props.runName);
+      const traceID = run?.status?.traceID;
+      if (traceID) {
+        showTraceDetail(traceID);
+      }
+    } catch (err) {
+      console.warn('Failed to resolve child trace:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <button
+      class="flex items-center gap-2 px-6 py-2 bg-surface-2/50 hover:bg-accent/8 transition-colors cursor-pointer w-full text-left"
+      onClick={navigate}
+      disabled={loading()}
+      title={`View sub-agent trace for ${props.agent}`}
+    >
+      <Show when={loading()} fallback={
+        <svg class="w-3.5 h-3.5 text-accent flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+        </svg>
+      }>
+        <Spinner size="sm" class="w-3.5 h-3.5" />
+      </Show>
+      <span class="text-[10px] uppercase tracking-wider text-accent font-medium">Delegated to</span>
+      <span class="text-xs font-mono text-accent font-semibold">{props.agent}</span>
+      <span class="text-[10px] text-text-muted font-mono truncate">({props.runName})</span>
+      <svg class="w-3 h-3 text-text-muted ml-auto flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+      </svg>
+    </button>
+  );
+}
 
 function StatPill(props: { label: string; value: string; accent?: boolean }) {
   return (
