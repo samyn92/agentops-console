@@ -1,18 +1,9 @@
-// RightPanel — collapsible right sidebar with tabbed content: Runs, Memory, Traces.
-// When memory is enabled: 60/40 split with a draggable horizontal divider.
-// When memory is not enabled: active tab fills the full panel.
-import { Show, createSignal, onMount, onCleanup, Switch, Match } from 'solid-js';
+// RightPanel — collapsible right sidebar with tabbed content: Memory, Traces.
+// Runs have been moved to the left sidebar.
+import { Show, createSignal, Switch, Match } from 'solid-js';
 import { rightPanelState, toggleRightPanel, rightPanelTab, setRightPanelTab } from '../../stores/view';
 import type { RightPanelTab } from '../../stores/view';
 import { memoryEnabled } from '../../stores/memory';
-import { selectedAgent } from '../../stores/agents';
-import {
-  activeRunCount,
-  refreshRuns,
-  startRunPolling,
-  stopRunPolling,
-} from '../../stores/runs';
-import RunsPanelContent from './RunsPanelContent';
 import MemoryPanel from './MemoryPanel';
 import TracesPanel from './TracesPanel';
 
@@ -26,17 +17,7 @@ export default function RightPanel(props: RightPanelProps) {
 
   let panelRef: HTMLElement | undefined;
 
-  onMount(() => {
-    startRunPolling();
-    refreshRuns();
-  });
-
-  onCleanup(() => {
-    stopRunPolling();
-  });
-
   const isExpanded = () => rightPanelState() === 'expanded';
-  const globalActive = () => activeRunCount();
   const hasMemory = () => memoryEnabled();
 
   // Width resize handler (drag left edge)
@@ -82,11 +63,6 @@ export default function RightPanel(props: RightPanelProps) {
             <svg class="w-5 h-5 text-text-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 6h16M4 12h16M4 18h16" />
             </svg>
-            <Show when={globalActive() > 0}>
-              <span class="absolute -top-1.5 -right-1.5 w-4 h-4 bg-accent text-primary-foreground text-[10px] font-bold rounded-full flex items-center justify-center animate-pulse">
-                {globalActive()}
-              </span>
-            </Show>
           </div>
         </button>
       </Show>
@@ -113,30 +89,16 @@ export default function RightPanel(props: RightPanelProps) {
 
           {/* Tab switcher */}
           <div class="flex gap-0.5 flex-1">
-            <TabButton tab="runs" current={rightPanelTab()} label="Runs" />
             <Show when={hasMemory()}>
               <TabButton tab="memory" current={rightPanelTab()} label="Memory" />
             </Show>
             <TabButton tab="traces" current={rightPanelTab()} label="Traces" />
           </div>
-
-          <button
-            class="p-1 rounded-lg hover:bg-surface-hover text-text-muted hover:text-text transition-colors"
-            onClick={() => refreshRuns()}
-            title="Refresh"
-          >
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-          </button>
         </div>
 
         {/* Tab content */}
         <div class="flex-1 min-h-0 overflow-hidden">
           <Switch>
-            <Match when={rightPanelTab() === 'runs'}>
-              <RunsPanelContent />
-            </Match>
             <Match when={rightPanelTab() === 'memory'}>
               <MemoryPanel />
             </Match>

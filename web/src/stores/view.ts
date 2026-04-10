@@ -91,16 +91,41 @@ export function toggleRightPanel() {
   setRightPanelState(current === 'collapsed' ? 'expanded' : 'collapsed');
 }
 
-// ── Right panel tab (memory vs runs vs traces) ──
+// ── Left panel tab (agents vs runs) ──
 
-export type RightPanelTab = 'memory' | 'runs' | 'traces';
+export type LeftPanelTab = 'agents' | 'runs';
+
+const LEFT_TAB_KEY = 'agentops:leftPanelTab';
+
+function loadLeftTabState(): LeftPanelTab {
+  try {
+    const raw = localStorage.getItem(LEFT_TAB_KEY);
+    if (raw === 'agents' || raw === 'runs') return raw;
+  } catch { /* ignore */ }
+  return 'agents';
+}
+
+const [leftPanelTab, setLeftPanelTabRaw] = createSignal<LeftPanelTab>(loadLeftTabState());
+
+export { leftPanelTab };
+
+export function setLeftPanelTab(tab: LeftPanelTab) {
+  setLeftPanelTabRaw(tab);
+  try {
+    localStorage.setItem(LEFT_TAB_KEY, tab);
+  } catch { /* ignore */ }
+}
+
+// ── Right panel tab (memory vs traces) ──
+
+export type RightPanelTab = 'memory' | 'traces';
 
 const TAB_KEY = 'agentops:rightPanelTab';
 
 function loadTabState(): RightPanelTab {
   try {
     const raw = localStorage.getItem(TAB_KEY);
-    if (raw === 'memory' || raw === 'runs' || raw === 'traces') return raw;
+    if (raw === 'memory' || raw === 'traces') return raw;
   } catch { /* ignore */ }
   return 'memory';
 }

@@ -10,12 +10,14 @@
 import { For, Show, createSignal, createMemo } from 'solid-js';
 import { A } from '@solidjs/router';
 import { agentList, selectedAgent, selectAgent } from '../../stores/agents';
-import { leftPanelState, toggleLeftPanel } from '../../stores/view';
-import { getDelegationMap } from '../../stores/runs';
+import { leftPanelState, toggleLeftPanel, leftPanelTab, setLeftPanelTab } from '../../stores/view';
+import type { LeftPanelTab } from '../../stores/view';
+import { getDelegationMap, activeRunCount } from '../../stores/runs';
 import { getChannelsForAgent, channelBoundAgents } from '../../stores/channels';
 import { streamingAgentKeys } from '../../stores/chat';
 import Spinner from '../shared/Spinner';
 import AgentCard from './AgentCard';
+import RunsPanelContent from './RunsPanelContent';
 import type { AgentResponse } from '../../types';
 
 interface SidebarProps {
@@ -125,7 +127,7 @@ export default function Sidebar(props: SidebarProps) {
             </span>
           </div>
           <button
-            class="p-1 rounded-lg hover:bg-surface-hover text-text-secondary hover:text-text transition-colors"
+            class="p-1 rounded-lg hover:bg-surface-hover text-text-secondary hover:text-text transition-colors flex-shrink-0"
             onClick={() => toggleLeftPanel()}
             title="Collapse sidebar"
           >
@@ -135,9 +137,22 @@ export default function Sidebar(props: SidebarProps) {
           </button>
         </div>
 
-        {/* ── Content area (hierarchical agents list) ── */}
+        {/* Tab switcher */}
+        <div class="flex gap-0.5 px-2 py-1.5 border-b border-border flex-shrink-0">
+          <SidebarTabButton tab="agents" current={leftPanelTab()} label="Agents" />
+          <SidebarTabButton tab="runs" current={leftPanelTab()} label="Runs" badge={activeRunCount() > 0 ? activeRunCount() : undefined} />
+        </div>
+
+        {/* ── Content area ── */}
         <div class="flex-1 flex flex-col overflow-hidden min-h-0">
 
+          {/* ── Runs tab ── */}
+          <Show when={leftPanelTab() === 'runs'}>
+            <RunsPanelContent />
+          </Show>
+
+          {/* ── Agents tab (hierarchical agents list) ── */}
+          <Show when={leftPanelTab() === 'agents'}>
           <Show
             when={!agentList.loading}
             fallback={
@@ -302,9 +317,8 @@ export default function Sidebar(props: SidebarProps) {
               </Show>
             </div>
           </Show>
+          </Show>
         </div>
-
-        {/* Bottom bar — Settings */}
         <div class="border-t border-border px-2 py-2 flex-shrink-0">
           <A
             href="/settings"
@@ -380,5 +394,26 @@ function ChannelTypeIcon(props: { type: string }) {
         <path d="M22.65 14.39L12 22.13 1.35 14.39a.84.84 0 01-.3-.94l1.22-3.78 2.44-7.51A.42.42 0 014.82 2a.43.43 0 01.58 0 .42.42 0 01.11.18l2.44 7.49h8.1l2.44-7.51A.42.42 0 0118.6 2a.43.43 0 01.58 0 .42.42 0 01.11.18l2.44 7.51L23 13.45a.84.84 0 01-.35.94z"/>
       </svg>
     </Show>
+  );
+}
+
+/** Tab button for left sidebar (Agents / Runs) */
+function SidebarTabButton(props: { tab: LeftPanelTab; current: LeftPanelTab; label: string; badge?: number }) {
+  return (
+    <button
+      class={`relative px-2.5 py-1 text-[11px] rounded-lg transition-colors ${
+        props.current === props.tab
+          ? 'bg-surface-hover text-text font-medium'
+          : 'text-text-muted hover:text-text-secondary hover:bg-surface-hover/50'
+      }`}
+      onClick={() => setLeftPanelTab(props.tab)}
+    >
+      {props.label}
+      <Show when={props.badge !== undefined && props.badge! > 0}>
+        <span class="ml-1 px-1 py-px text-[9px] font-bold bg-accent text-primary-foreground rounded-full animate-pulse">
+          {props.badge}
+        </span>
+      </Show>
+    </button>
   );
 }

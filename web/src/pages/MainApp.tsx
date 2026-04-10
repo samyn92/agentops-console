@@ -10,7 +10,7 @@ import { onMount, onCleanup, Show, createMemo } from 'solid-js';
 import { startEventStream, stopEventStream } from '../stores/events';
 import { selectedAgent, agentList } from '../stores/agents';
 import { centerView } from '../stores/view';
-import { selectedRunKey, allRuns } from '../stores/runs';
+import { selectedRunKey, allRuns, refreshRuns, startRunPolling, stopRunPolling } from '../stores/runs';
 import { selectedTraceForDetail, clearCenterOverlay } from '../stores/view';
 import { phaseVariant } from '../lib/format';
 import Sidebar from '../components/layout/Sidebar';
@@ -23,13 +23,16 @@ import EmptyState from '../components/shared/EmptyState';
 import Badge from '../components/shared/Badge';
 
 export default function MainApp() {
-  // Start global SSE on mount
+  // Start global SSE and run polling on mount
   onMount(() => {
     startEventStream();
+    startRunPolling();
+    refreshRuns();
   });
 
   onCleanup(() => {
     stopEventStream();
+    stopRunPolling();
   });
 
   const hasAgent = () => selectedAgent() !== null;

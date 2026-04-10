@@ -59,7 +59,7 @@ export function registerKeyboardShortcuts(navigate: ReturnType<typeof useNavigat
     {
       key: '3',
       meta: true,
-      description: 'Toggle runs panel',
+      description: 'Toggle right panel',
       action: () => {
         toggleRightPanel();
       },
@@ -109,7 +109,7 @@ export function getShortcutList(): Array<{ keys: string; description: string }> 
     { keys: `${mod}K`, description: 'Cycle to next agent' },
     { keys: `${mod}N`, description: 'Focus composer' },
     { keys: `${mod}1`, description: 'Toggle agents panel' },
-    { keys: `${mod}3`, description: 'Toggle runs panel' },
+    { keys: `${mod}3`, description: 'Toggle right panel' },
     { keys: `${mod},`, description: 'Go to Settings' },
     { keys: 'Enter', description: 'Send message' },
     { keys: 'Shift+Enter', description: 'New line' },

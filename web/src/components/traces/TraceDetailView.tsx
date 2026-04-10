@@ -4,7 +4,7 @@
 // GenAI semantic convention attributes (model, provider, tokens, tool names).
 import { createSignal, createResource, Show, For, createMemo } from 'solid-js';
 import { selectedTraceForDetail, clearCenterOverlay, showTraceDetail } from '../../stores/view';
-import { traces as tracesAPI } from '../../lib/api';
+import { traces as tracesAPI, agentRuns } from '../../lib/api';
 import type { TraceSpan, TraceSpanLink, TempoTraceResponse, TraceProcess } from '../../types';
 import Spinner from '../shared/Spinner';
 
@@ -185,22 +185,23 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
     return { parentTraceID, parentSpanID, parentAgent, runName };
   });
 
-  // Find spans that have delegation links TO sub-agent traces (run_agent tool spans with links)
-  const spanDelegationLinks = createMemo(() => {
-    const linkMap = new Map<string, TraceSpanLink>();
+  // Find spans that delegated TO sub-agents (run_agent tool spans with delegation.child_* attributes)
+  // These attributes are set by the runtime on the tool.execute: run_agent span after creating the AgentRun CR.
+  const spanDelegationChildren = createMemo(() => {
+    const childMap = new Map<string, { agent: string; runName: string; namespace: string }>();
     for (const node of flatSpans()) {
-      const links = node.span.links;
-      if (links && links.length > 0) {
-        // Find delegation links (those with link.type = "delegation")
-        for (const link of links) {
-          const linkType = link.tags?.find(t => t.key === 'link.type')?.value;
-          if (linkType === 'delegation' && link.traceID) {
-            linkMap.set(node.span.spanID, link);
-          }
-        }
+      const childAgent = getTag(node.span, 'delegation.child_agent');
+      const childRun = getTag(node.span, 'delegation.child_run');
+      const childNs = getTag(node.span, 'delegation.child_namespace');
+      if (childAgent && childRun) {
+        childMap.set(node.span.spanID, {
+          agent: childAgent,
+          runName: childRun,
+          namespace: childNs || 'agents',
+        });
       }
     }
-    return linkMap;
+    return childMap;
   });
 
   return (
@@ -352,7 +353,7 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
                       const durationMs = () => node.span.duration / 1000;
                       const isError = () => node.span.status?.code === 2;
                       const isSelected = () => selectedSpanID() === node.span.spanID;
-                      const delegationLink = () => spanDelegationLinks().get(node.span.spanID);
+                      const delegationChild = () => spanDelegationChildren().get(node.span.spanID);
                       const barColor = () => {
                         if (isError()) return 'bg-error';
                         const op = node.span.operationName;
@@ -406,32 +407,44 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
                           </button>
 
                           {/* Sub-agent trace link — shown when this span delegated to another agent */}
-                          <Show when={delegationLink()}>
-                            {(link) => {
-                              const targetAgent = () => link().tags?.find(t => t.key === 'link.parent_agent')?.value as string | undefined;
-                              const runName = () => link().tags?.find(t => t.key === 'link.run_name')?.value as string | undefined;
+                          <Show when={delegationChild()}>
+                            {(child) => {
+                              const [loading, setLoading] = createSignal(false);
+                              const navigateToChildTrace = async (e: MouseEvent) => {
+                                e.stopPropagation();
+                                setLoading(true);
+                                try {
+                                  const run = await agentRuns.get(child().namespace, child().runName);
+                                  const traceID = run?.status?.traceID;
+                                  if (traceID) {
+                                    showTraceDetail(traceID);
+                                  }
+                                } catch (err) {
+                                  console.warn('Failed to resolve child trace:', err);
+                                } finally {
+                                  setLoading(false);
+                                }
+                              };
                               return (
                                 <button
                                   class="flex items-center gap-1.5 ml-4 px-2 py-0.5 text-left hover:bg-accent/8 transition-colors rounded cursor-pointer"
                                   style={{ 'padding-left': `${(node.depth + 1) * 14 + 16}px` }}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    showTraceDetail(link().traceID);
-                                  }}
-                                  title={`View trace for ${targetAgent() || 'sub-agent'}`}
+                                  onClick={navigateToChildTrace}
+                                  title={`View trace for ${child().agent}`}
+                                  disabled={loading()}
                                 >
-                                  <svg class="w-3 h-3 text-accent flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                                  </svg>
+                                  <Show when={loading()} fallback={
+                                    <svg class="w-3 h-3 text-accent flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                                    </svg>
+                                  }>
+                                    <Spinner size="sm" class="w-3 h-3" />
+                                  </Show>
                                   <span class="text-[10px] text-accent font-medium">
                                     View sub-agent trace
                                   </span>
-                                  <Show when={targetAgent()}>
-                                    <span class="text-[10px] font-mono text-accent/70">{targetAgent()}</span>
-                                  </Show>
-                                  <Show when={runName()}>
-                                    <span class="text-[10px] font-mono text-text-muted truncate max-w-[150px]">{runName()}</span>
-                                  </Show>
+                                  <span class="text-[10px] font-mono text-accent/70">{child().agent}</span>
+                                  <span class="text-[10px] font-mono text-text-muted truncate max-w-[150px]">{child().runName}</span>
                                   <svg class="w-2.5 h-2.5 text-text-muted flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                                   </svg>
