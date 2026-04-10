@@ -79,55 +79,60 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
     );
     if (hasRealToolSpans) return result;
 
-    // No real tool spans — synthesize virtual rows from tool.call events on root span
-    const rootNode = result[0];
-    if (!rootNode?.span?.logs) return result;
-
+    // No real tool spans — synthesize virtual rows from tool.call events.
+    // Events may live on the root agent.prompt span (hooks path) or the
+    // gen_ai.generate child span (post-hoc path). Scan all spans.
     const toolEvents: SpanNode[] = [];
-    for (const log of rootNode.span.logs) {
-      const eventField = log.fields?.find((f) => f.key === 'event');
-      if (eventField?.value !== 'tool.call') continue;
+    let parentNode: SpanNode | undefined;
 
-      const toolName = log.fields?.find((f) => f.key === 'tool.name')?.value as string || 'tool';
-      const toolType = log.fields?.find((f) => f.key === 'tool.type')?.value as string || 'builtin';
-      const durationMs = Number(log.fields?.find((f) => f.key === 'tool.duration_ms')?.value ?? 0);
-      const isError = log.fields?.find((f) => f.key === 'tool.error')?.value === true ||
-                      log.fields?.find((f) => f.key === 'tool.error')?.value === 'true';
+    for (const node of result) {
+      if (!node.span.logs) continue;
+      for (const log of node.span.logs) {
+        const eventField = log.fields?.find((f) => f.key === 'event');
+        if (eventField?.value !== 'tool.call') continue;
 
-      // Synthesize a minimal TraceSpan for the virtual row.
-      // Event timestamp is when the tool finished; back-calculate start time.
-      const durationUs = durationMs * 1000; // ms → microseconds
-      const virtualSpan: TraceSpan = {
-        traceID: rootNode.span.traceID,
-        spanID: `virtual-tool-${toolEvents.length}`,
-        parentSpanID: rootNode.span.spanID,
-        operationName: `tool.execute: ${toolName}`,
-        startTime: log.timestamp - durationUs,
-        duration: durationUs,
-        tags: [
-          { key: 'tool.name', type: 'string', value: toolName },
-          { key: 'tool.type', type: 'string', value: toolType },
-          ...(isError ? [{ key: 'tool.error', type: 'string', value: 'true' }] : []),
-        ],
-        status: isError ? { code: 2 } : undefined,
-      };
+        const toolName = log.fields?.find((f) => f.key === 'tool.name')?.value as string || 'tool';
+        const toolType = log.fields?.find((f) => f.key === 'tool.type')?.value as string || 'builtin';
+        const durationMs = Number(log.fields?.find((f) => f.key === 'tool.duration_ms')?.value ?? 0);
+        const isError = log.fields?.find((f) => f.key === 'tool.error')?.value === true ||
+                        log.fields?.find((f) => f.key === 'tool.error')?.value === 'true';
 
-      toolEvents.push({
-        span: virtualSpan,
-        children: [],
-        depth: rootNode.depth + 1,
-        isVirtualToolCall: true,
-      });
+        if (!parentNode) parentNode = node;
+
+        // Synthesize a minimal TraceSpan for the virtual row.
+        const durationUs = durationMs * 1000; // ms → microseconds
+        const virtualSpan: TraceSpan = {
+          traceID: node.span.traceID,
+          spanID: `virtual-tool-${toolEvents.length}`,
+          parentSpanID: node.span.spanID,
+          operationName: `tool.execute: ${toolName}`,
+          startTime: durationUs > 0 ? log.timestamp - durationUs : log.timestamp,
+          duration: durationUs || 1000, // 1ms placeholder if no duration
+          tags: [
+            { key: 'tool.name', type: 'string', value: toolName },
+            { key: 'tool.type', type: 'string', value: toolType },
+            ...(isError ? [{ key: 'tool.error', type: 'string', value: 'true' }] : []),
+          ],
+          status: isError ? { code: 2 } : undefined,
+        };
+
+        toolEvents.push({
+          span: virtualSpan,
+          children: [],
+          depth: (parentNode?.depth ?? 0) + 1,
+          isVirtualToolCall: true,
+        });
+      }
     }
 
     if (toolEvents.length === 0) return result;
 
-    // Insert virtual tool rows after the root span
+    // Insert virtual tool rows after the span that owns the events
+    const insertAfter = parentNode ?? result[0];
     const enriched: SpanNode[] = [];
     for (const node of result) {
       enriched.push(node);
-      // Insert after root span (first node)
-      if (node === rootNode) {
+      if (node === insertAfter) {
         enriched.push(...toolEvents);
       }
     }

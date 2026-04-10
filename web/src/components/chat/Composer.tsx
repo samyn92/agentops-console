@@ -340,11 +340,11 @@ export default function Composer(props: ComposerProps) {
   };
 
   return (
-    <div class={`bg-background px-4 py-3 ${props.class || ''}`}>
+    <div class={`px-4 py-3 ${props.class || ''}`}>
       <div class="max-w-3xl mx-auto">
         {/* Selected resource context chips */}
         <Show when={ctxCount() > 0}>
-          <div class="flex flex-wrap items-center gap-1 mb-1.5 px-1">
+          <div class="flex flex-wrap items-center gap-1 mb-2 px-1">
             <For each={selectedContextItems()}>
               {(item) => (
                 <ContextChip item={item} onRemove={() => removeContextItem(resourceContextKey(item))} />
@@ -361,116 +361,124 @@ export default function Composer(props: ComposerProps) {
           </div>
         </Show>
 
+        {/* Composer container — elevated surface with generous radius */}
         <div
-          class={`composer-input flex items-end gap-1.5 border border-border rounded-xl px-3 py-2 ${
+          class={`composer-input bg-surface-2 rounded-3xl border border-border-subtle overflow-hidden ${
             isProcessing() ? 'composer-processing' : ''
           }`}
         >
-          {/* Steer mode indicator */}
-          <Show when={streaming()}>
-            <button
-              class={`flex-shrink-0 self-center p-1 rounded-lg transition-colors ${
-                mode() === 'steer'
-                  ? 'bg-accent/20 text-accent'
-                  : 'text-text-muted hover:text-text-secondary'
-              }`}
-              onClick={toggleSteer}
-              title={mode() === 'steer' ? 'Switch to normal mode' : 'Switch to steer mode'}
-            >
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-            </button>
-          </Show>
-
-          {/* Textarea */}
-          <textarea
-            ref={textareaRef}
-            class="flex-1 bg-transparent text-sm text-text placeholder-text-muted resize-none outline-none min-h-[24px] max-h-[200px] leading-[24px]"
-            placeholder={placeholder()}
-            value={input()}
-            disabled={isDisabled()}
-            rows={1}
-            onInput={(e) => {
-              setInput(e.currentTarget.value);
-              autoResize();
-            }}
-            onKeyDown={handleKeyDown}
-          />
-
-          {/* Action buttons */}
-          <div class="flex items-center gap-1 flex-shrink-0 self-center">
-            <Show
-              when={streaming()}
-              fallback={
-                <button
-                  class="p-1.5 rounded-lg bg-primary text-primary-foreground hover:bg-primary-hover disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                  disabled={!input().trim() || isDisabled()}
-                  onClick={handleSubmit}
-                  title="Send message (Enter)"
-                >
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19V5m0 0l-7 7m7-7l7 7" />
-                  </svg>
-                </button>
-              }
-            >
-              {/* During streaming: steer or stop */}
-              <Show when={mode() === 'steer' && input().trim()}>
-                <button
-                  class="p-1.5 rounded-lg bg-accent text-white hover:bg-accent/90 transition-colors"
-                  onClick={handleSubmit}
-                  title="Send steer message"
-                >
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                  </svg>
-                </button>
-              </Show>
-
+          {/* Input row */}
+          <div class="flex items-end gap-2 px-4 py-3">
+            {/* Steer mode indicator */}
+            <Show when={streaming()}>
               <button
-                class="p-1.5 rounded-lg bg-error/10 text-error hover:bg-error/20 transition-colors"
-                onClick={handleStop}
-                title="Stop generation (Esc)"
+                class={`flex-shrink-0 self-center p-1.5 rounded-full transition-all duration-200 ${
+                  mode() === 'steer'
+                    ? 'bg-accent/15 text-accent'
+                    : 'text-text-muted hover:text-text-secondary hover:bg-surface-hover'
+                }`}
+                onClick={toggleSteer}
+                title={mode() === 'steer' ? 'Switch to normal mode' : 'Switch to steer mode'}
               >
-                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                  <rect x="6" y="6" width="12" height="12" rx="2" />
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
               </button>
             </Show>
-          </div>
-        </div>
 
-        {/* Hints + Context gauge */}
-        <div class="flex items-center justify-between mt-1.5 px-1">
-          <span class="text-[11px] text-text-muted">
-            <Show when={streaming() && mode() !== 'steer'}>
-              <kbd class="px-1 py-0.5 bg-surface-2 rounded text-[10px] border border-border-subtle">Esc</kbd>
-              {' to stop'}
-            </Show>
-            <Show when={streaming() && mode() === 'steer'}>
-              <span class="text-accent">Steer mode</span>
-              {' — guide the agent\'s next action'}
-            </Show>
-            <Show when={!streaming() && selectedAgent()}>
-              {(() => {
-                const a = selectedAgent()!;
-                const rs = getAgentRuntimeStatus(a.namespace, a.name);
-                return (
-                  <Show when={rs?.window_size != null}>
-                    <SlidingWindowIndicator
-                      messages={rs?.messages ?? 0}
-                      windowSize={rs!.window_size!}
-                    />
-                  </Show>
-                );
-              })()}
-            </Show>
-          </span>
-          <span class="text-[11px] text-text-muted">
-            <kbd class="px-1 py-0.5 bg-surface-2 rounded text-[10px] border border-border-subtle">Shift+Enter</kbd>
-            {' for newline'}
-          </span>
+            {/* Textarea */}
+            <textarea
+              ref={textareaRef}
+              class="flex-1 bg-transparent text-sm text-text placeholder-text-muted/60 resize-none outline-none min-h-[24px] max-h-[200px] leading-[24px] py-0.5"
+              placeholder={placeholder()}
+              value={input()}
+              disabled={isDisabled()}
+              rows={1}
+              onInput={(e) => {
+                setInput(e.currentTarget.value);
+                autoResize();
+              }}
+              onKeyDown={handleKeyDown}
+            />
+
+            {/* Action buttons */}
+            <div class="flex items-center gap-1.5 flex-shrink-0 self-center">
+              <Show
+                when={streaming()}
+                fallback={
+                  <button
+                    class={`p-2 rounded-full transition-all duration-200 ${
+                      input().trim() && !isDisabled()
+                        ? 'bg-primary text-primary-foreground hover:bg-primary-hover shadow-sm hover:shadow-md scale-100 hover:scale-105'
+                        : 'bg-surface-hover text-text-muted/40 cursor-not-allowed'
+                    }`}
+                    disabled={!input().trim() || isDisabled()}
+                    onClick={handleSubmit}
+                    title="Send message (Enter)"
+                  >
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19V5m0 0l-7 7m7-7l7 7" />
+                    </svg>
+                  </button>
+                }
+              >
+                {/* During streaming: steer or stop */}
+                <Show when={mode() === 'steer' && input().trim()}>
+                  <button
+                    class="p-2 rounded-full bg-accent text-white hover:bg-accent/90 transition-all duration-200 shadow-sm"
+                    onClick={handleSubmit}
+                    title="Send steer message"
+                  >
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                  </button>
+                </Show>
+
+                <button
+                  class="p-2 rounded-full bg-error/10 text-error hover:bg-error/20 transition-all duration-200"
+                  onClick={handleStop}
+                  title="Stop generation (Esc)"
+                >
+                  <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                    <rect x="6" y="6" width="12" height="12" rx="2" />
+                  </svg>
+                </button>
+              </Show>
+            </div>
+          </div>
+
+          {/* Bottom bar — hints inside the container */}
+          <div class="flex items-center justify-between px-4 pb-2.5 pt-0">
+            <span class="text-[11px] text-text-muted/50">
+              <Show when={streaming() && mode() !== 'steer'}>
+                <kbd class="px-1.5 py-0.5 bg-surface rounded-md text-[10px] text-text-muted/60 border border-border-subtle/50">Esc</kbd>
+                <span class="ml-1">to stop</span>
+              </Show>
+              <Show when={streaming() && mode() === 'steer'}>
+                <span class="text-accent/80 font-medium">Steer mode</span>
+                <span class="ml-1">— guide the agent's next action</span>
+              </Show>
+              <Show when={!streaming() && selectedAgent()}>
+                {(() => {
+                  const a = selectedAgent()!;
+                  const rs = getAgentRuntimeStatus(a.namespace, a.name);
+                  return (
+                    <Show when={rs?.window_size != null}>
+                      <SlidingWindowIndicator
+                        messages={rs?.messages ?? 0}
+                        windowSize={rs!.window_size!}
+                      />
+                    </Show>
+                  );
+                })()}
+              </Show>
+            </span>
+            <span class="text-[11px] text-text-muted/40">
+              <kbd class="px-1.5 py-0.5 bg-surface rounded-md text-[10px] text-text-muted/50 border border-border-subtle/50">Shift+Enter</kbd>
+              <span class="ml-1">for newline</span>
+            </span>
+          </div>
         </div>
       </div>
     </div>

@@ -119,5 +119,26 @@ export function parsePartialArgs(
     if (urlMatch) return { key: 'url', value: urlMatch[1] };
   }
 
+  if (toolName === 'run_agent') {
+    const promptMatch = args.match(/"prompt"\s*:\s*"([^"]*)/);
+    if (promptMatch) return { key: 'prompt', value: promptMatch[1] };
+    const agentMatch = args.match(/"agent"\s*:\s*"([^"]*)/);
+    if (agentMatch) return { key: 'agent', value: agentMatch[1] };
+  }
+
   return null;
+}
+
+/** Extract agent name from partial run_agent args */
+export function parseAgentName(args: string): string | null {
+  if (!args) return null;
+  const match = args.match(/"agent"\s*:\s*"([^"]*)/);
+  return match ? match[1] : null;
+}
+
+/** Extract prompt from partial run_agent args */
+export function parseAgentPrompt(args: string): string | null {
+  if (!args) return null;
+  const match = args.match(/"prompt"\s*:\s*"([^"]*)/);
+  return match ? match[1] : null;
 }
