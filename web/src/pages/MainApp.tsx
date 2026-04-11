@@ -11,7 +11,7 @@ import { startEventStream, stopEventStream } from '../stores/events';
 import { selectedAgent, agentList } from '../stores/agents';
 import { centerView } from '../stores/view';
 import { selectedRunKey, allRuns, refreshRuns, startRunPolling, stopRunPolling } from '../stores/runs';
-import { selectedTraceForDetail, clearCenterOverlay } from '../stores/view';
+import { selectedTraceForDetail } from '../stores/view';
 import { phaseVariant } from '../lib/format';
 import Sidebar from '../components/layout/Sidebar';
 import RightPanel from '../components/layout/RightPanel';
@@ -66,20 +66,11 @@ export default function MainApp() {
         {/* ── Unified header bar (h-12, aligned with sidebars) ── */}
         <div class="flex items-center gap-3 px-4 h-12 border-b border-border flex-shrink-0">
           <Show when={showTraceOverlay()}>
-            <button
-              class="p-1 rounded-lg hover:bg-surface-hover text-text-secondary hover:text-text transition-colors"
-              onClick={() => clearCenterOverlay()}
-              title="Back"
-            >
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
-              </svg>
-            </button>
             <svg class="w-4 h-4 text-text-muted flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5" />
             </svg>
-            <span class="text-sm font-semibold text-text font-mono truncate">
-              Trace {selectedTraceForDetail()!.slice(0, 16)}...
+            <span class="text-sm font-semibold text-text font-mono truncate min-w-0">
+              {selectedTraceForDetail()}
             </span>
             <div class="ml-auto flex-shrink-0">
               <Badge variant="info" dot>trace</Badge>

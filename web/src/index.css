@@ -1573,13 +1573,19 @@
   overflow: hidden;
   padding: 10px 12px 8px 14px;
   border-radius: 10px;
-  border: 1px solid transparent;
+  border: 1px solid color-mix(in srgb, var(--border) 45%, transparent);
   background: transparent;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
   cursor: pointer;
   transition:
     background-color 150ms ease,
     border-color 150ms ease,
     box-shadow 150ms ease;
+}
+
+:root.dark .run-card {
+  border-color: color-mix(in srgb, var(--border) 35%, transparent);
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.12);
 }
 
 /* Left-edge indicator — shared base, hidden by default */
@@ -2264,4 +2270,49 @@ a.run-card__branch-tag--link:hover .run-card__branch-tag-extlink {
   .mobile-drawer button {
     min-height: 44px;
   }
+}
+
+/* ── Trace list items ── */
+
+.trace-list-item {
+  border-left: 2px solid transparent;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease;
+}
+
+.trace-list-item--active {
+  background: var(--accent-muted);
+  border-left-color: var(--accent);
+}
+
+.trace-list-item--active:hover {
+  background: var(--accent-muted);
+}
+
+/* ── Trace badges ── */
+
+.trace-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 4px;
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 500;
+  line-height: 16px;
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  border: 1px solid var(--border-subtle);
+}
+
+.trace-badge--task {
+  background: color-mix(in srgb, var(--warning) 8%, transparent);
+  color: var(--warning);
+  border-color: color-mix(in srgb, var(--warning) 15%, transparent);
+}
+
+.trace-badge--delegated {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 15%, transparent);
 }

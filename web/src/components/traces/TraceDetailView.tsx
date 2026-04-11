@@ -1,12 +1,12 @@
-// TraceDetailView — full center-stage trace waterfall with rich span detail.
+// TraceDetailView — full center-stage trace waterfall.
 // Opens when a trace is clicked from the TracesPanel in the left sidebar.
-// Features: span hierarchy waterfall, click-to-inspect span detail with
-// GenAI semantic convention attributes (model, provider, tokens, tool names).
-import { createSignal, createResource, Show, For, createMemo } from 'solid-js';
-import { selectedTraceForDetail, clearCenterOverlay, showTraceDetail } from '../../stores/view';
+// Span detail is rendered in the RightPanel sidebar via shared view state.
+import { createSignal, createResource, Show, For, createMemo, createEffect, on } from 'solid-js';
+import { selectedTraceForDetail, clearCenterOverlay, showTraceDetail, selectedSpanID, selectSpan, clearSelectedSpan } from '../../stores/view';
 import { traces as tracesAPI } from '../../lib/api';
-import type { TraceSpan, TraceSpanLink, TempoTraceResponse, TraceProcess } from '../../types';
+import type { TraceSpan, TempoTraceResponse, TraceProcess } from '../../types';
 import Spinner from '../shared/Spinner';
+import Markdown from '../shared/Markdown';
 
 interface TraceDetailViewProps {
   class?: string;
@@ -21,9 +21,20 @@ interface SpanNode {
   isVirtualToolCall?: boolean;
 }
 
-export default function TraceDetailView(props: TraceDetailViewProps) {
-  const [selectedSpanID, setSelectedSpanID] = createSignal<string | null>(null);
+/** Parsed tool.call event data from span logs */
+type ToolEventData = {
+  toolName: string;
+  toolType: string;
+  durationMs: number;
+  isError: boolean;
+  toolInput?: string;
+  toolOutput?: string;
+  toolStep?: unknown;
+  timestamp: number;
+  parentNode: SpanNode;
+};
 
+export default function TraceDetailView(props: TraceDetailViewProps) {
   const [trace] = createResource(selectedTraceForDetail, async (traceID) => {
     if (!traceID) return null;
     try {
@@ -80,67 +91,103 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
     if (hasRealToolSpans) return result;
 
     // No real tool spans — synthesize virtual rows from tool.call events.
-    // Events may live on the root agent.prompt span (hooks path) or the
-    // gen_ai.generate child span (post-hoc path). Scan all spans.
-    const toolEvents: SpanNode[] = [];
-    let parentNode: SpanNode | undefined;
+    // Events may live on the root agent.prompt span (hooks path — has tool.duration_ms
+    // and real timestamps) or the gen_ai.generate child span (post-hoc path — has
+    // tool.input, tool.output, tool.step but no duration and clustered timestamps).
+    // Collect from all spans, deduplicate by tool name order, and merge fields.
+
+    // Collect events from all spans, keyed by source
+    const hooksEvents: ToolEventData[] = [];  // from agent.prompt (has duration)
+    const postHocEvents: ToolEventData[] = []; // from gen_ai.generate/stream (has input/output/step)
 
     for (const node of result) {
       if (!node.span.logs) continue;
+      const isGenAISpan = node.span.operationName.startsWith('gen_ai.');
       for (const log of node.span.logs) {
         const eventField = log.fields?.find((f) => f.key === 'event');
         if (eventField?.value !== 'tool.call') continue;
 
-        const toolName = log.fields?.find((f) => f.key === 'tool.name')?.value as string || 'tool';
-        const toolType = log.fields?.find((f) => f.key === 'tool.type')?.value as string || 'builtin';
-        const durationMs = Number(log.fields?.find((f) => f.key === 'tool.duration_ms')?.value ?? 0);
-        const isError = log.fields?.find((f) => f.key === 'tool.error')?.value === true ||
-                        log.fields?.find((f) => f.key === 'tool.error')?.value === 'true';
-        const toolInput = log.fields?.find((f) => f.key === 'tool.input')?.value as string | undefined;
-        const toolOutput = log.fields?.find((f) => f.key === 'tool.output')?.value as string | undefined;
-        const toolStep = log.fields?.find((f) => f.key === 'tool.step')?.value;
-
-        if (!parentNode) parentNode = node;
-
-        // Synthesize a minimal TraceSpan for the virtual row.
-        const durationUs = durationMs * 1000; // ms → microseconds
-        const tags: Array<{ key: string; type: string; value: unknown }> = [
-          { key: 'tool.name', type: 'string', value: toolName },
-          { key: 'tool.type', type: 'string', value: toolType },
-          ...(isError ? [{ key: 'tool.error', type: 'string', value: 'true' }] : []),
-          ...(toolInput ? [{ key: 'tool.input', type: 'string', value: toolInput }] : []),
-          ...(toolOutput ? [{ key: 'tool.output', type: 'string', value: toolOutput }] : []),
-          ...(toolStep != null ? [{ key: 'tool.step', type: 'int64', value: toolStep }] : []),
-        ];
-        const virtualSpan: TraceSpan = {
-          traceID: node.span.traceID,
-          spanID: `virtual-tool-${toolEvents.length}`,
-          parentSpanID: node.span.spanID,
-          operationName: `tool.execute: ${toolName}`,
-          startTime: durationUs > 0 ? log.timestamp - durationUs : log.timestamp,
-          duration: durationUs || 1000, // 1ms placeholder if no duration
-          tags,
-          status: isError ? { code: 2 } : undefined,
+        const data: ToolEventData = {
+          toolName: log.fields?.find((f) => f.key === 'tool.name')?.value as string || 'tool',
+          toolType: log.fields?.find((f) => f.key === 'tool.type')?.value as string || 'builtin',
+          durationMs: Number(log.fields?.find((f) => f.key === 'tool.duration_ms')?.value ?? 0),
+          isError: log.fields?.find((f) => f.key === 'tool.error')?.value === true ||
+                   log.fields?.find((f) => f.key === 'tool.error')?.value === 'true',
+          toolInput: log.fields?.find((f) => f.key === 'tool.input')?.value as string | undefined,
+          toolOutput: log.fields?.find((f) => f.key === 'tool.output')?.value as string | undefined,
+          toolStep: log.fields?.find((f) => f.key === 'tool.step')?.value,
+          timestamp: log.timestamp,
+          parentNode: node,
         };
 
-        toolEvents.push({
-          span: virtualSpan,
-          children: [],
-          depth: (parentNode?.depth ?? 0) + 1,
-          isVirtualToolCall: true,
-        });
+        if (isGenAISpan) {
+          postHocEvents.push(data);
+        } else {
+          hooksEvents.push(data);
+        }
       }
     }
 
-    if (toolEvents.length === 0) return result;
+    // Merge: prefer hooks events (real timestamps + duration), enrich with post-hoc data.
+    // If only one source exists, use it directly.
+    let mergedEvents: ToolEventData[];
+    if (hooksEvents.length > 0 && postHocEvents.length > 0) {
+      // Both paths fired — merge by matching tool call order (same tool at same index).
+      mergedEvents = hooksEvents.map((hook, i) => {
+        const postHoc = postHocEvents[i];
+        if (!postHoc) return hook;
+        return {
+          ...hook,
+          // Keep hooks timestamp and duration (real values)
+          // Enrich with post-hoc input/output/step if hooks path lacks them
+          toolInput: hook.toolInput ?? postHoc.toolInput,
+          toolOutput: hook.toolOutput ?? postHoc.toolOutput,
+          toolStep: hook.toolStep ?? postHoc.toolStep,
+        };
+      });
+    } else {
+      mergedEvents = hooksEvents.length > 0 ? hooksEvents : postHocEvents;
+    }
 
-    // Insert virtual tool rows after the span that owns the events
+    if (mergedEvents.length === 0) return result;
+
+    const parentNode = mergedEvents[0]!.parentNode;
+    const toolEventNodes: SpanNode[] = mergedEvents.map((data, i) => {
+      const durationUs = data.durationMs * 1000; // ms → microseconds
+      const tags: Array<{ key: string; type: string; value: unknown }> = [
+        { key: 'tool.name', type: 'string', value: data.toolName },
+        { key: 'tool.type', type: 'string', value: data.toolType },
+        ...(data.isError ? [{ key: 'tool.error', type: 'string', value: 'true' }] : []),
+        ...(data.toolInput ? [{ key: 'tool.input', type: 'string', value: data.toolInput }] : []),
+        ...(data.toolOutput ? [{ key: 'tool.output', type: 'string', value: data.toolOutput }] : []),
+        ...(data.toolStep != null ? [{ key: 'tool.step', type: 'int64', value: data.toolStep }] : []),
+      ];
+      const virtualSpan: TraceSpan = {
+        traceID: parentNode.span.traceID,
+        spanID: `virtual-tool-${i}`,
+        parentSpanID: parentNode.span.spanID,
+        operationName: `tool.execute: ${data.toolName}`,
+        startTime: durationUs > 0 ? data.timestamp - durationUs : data.timestamp,
+        duration: durationUs || 1000, // 1ms placeholder if no duration
+        tags,
+        status: data.isError ? { code: 2 } : undefined,
+      };
+
+      return {
+        span: virtualSpan,
+        children: [],
+        depth: (parentNode?.depth ?? 0) + 1,
+        isVirtualToolCall: true,
+      };
+    });
+
+    // Insert virtual tool rows after the parent span
     const insertAfter = parentNode ?? result[0];
     const enriched: SpanNode[] = [];
     for (const node of result) {
       enriched.push(node);
       if (node === insertAfter) {
-        enriched.push(...toolEvents);
+        enriched.push(...toolEventNodes);
       }
     }
     return enriched;
@@ -161,17 +208,24 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
     return { min, max: max === min ? max + 1 : max };
   });
 
-  // Selected span data
-  const selectedSpan = createMemo(() => {
+  // Selected span data — reads from shared view store
+  const selectedSpanNode = createMemo(() => {
     const id = selectedSpanID();
     if (!id) return null;
-    return flatSpans().find((n) => n.span.spanID === id)?.span ?? null;
+    return flatSpans().find((n) => n.span.spanID === id) ?? null;
   });
 
   // Processes (for resource-level attributes)
   const processes = createMemo(() => {
     return trace()?.data?.[0]?.processes ?? {};
   });
+
+  // Push selected span data to shared store so RightPanel can render it
+  createEffect(on([selectedSpanNode, processes], ([node, procs]) => {
+    if (node) {
+      selectSpan(node.span.spanID, node.span, procs);
+    }
+  }));
 
   // Root span summary info
   const rootSummary = createMemo(() => {
@@ -273,63 +327,58 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
       </Show>
 
       <Show when={!trace.loading && !trace.error && trace()}>
-        <div class="flex-1 flex min-h-0 overflow-hidden">
-          {/* Left: Waterfall + Span list */}
-          <div class="flex-1 flex flex-col min-w-0 overflow-hidden">
-            {/* Summary stats bar */}
-            <Show when={rootSummary()}>
-              {(summary) => (
-                <div class="flex flex-wrap items-center gap-2 px-5 py-2.5 border-b border-border bg-surface/50">
-                  <StatPill label="Duration" value={formatDuration(summary().totalDuration)} />
-                  <StatPill label="Spans" value={String(summary().spanCount)} />
-                  <Show when={summary().model}>
-                    <StatPill label="Model" value={shortModelName(summary().model!)} accent />
-                  </Show>
-                  <Show when={summary().provider}>
-                    <StatPill label="Provider" value={summary().provider!} />
-                  </Show>
-                  <Show when={summary().inputTokens}>
-                    <StatPill label="In" value={`${Number(summary().inputTokens).toLocaleString()} tok`} />
-                  </Show>
-                  <Show when={summary().outputTokens}>
-                    <StatPill label="Out" value={`${Number(summary().outputTokens).toLocaleString()} tok`} />
-                  </Show>
-                  <Show when={summary().steps}>
-                    <StatPill label="Steps" value={String(summary().steps)} />
-                  </Show>
-                  <Show when={toolSummary().length > 0}>
-                    <StatPill label="Tools" value={String(toolSummary().length)} />
-                  </Show>
-                </div>
-              )}
-            </Show>
+        <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
+          {/* Summary stats bar — pinned */}
+          <Show when={rootSummary()}>
+            {(summary) => (
+              <div class="flex flex-wrap items-center gap-1.5 px-5 py-2.5 border-b border-border flex-shrink-0">
+                <StatPill label="Duration" value={formatDuration(summary().totalDuration)} highlight />
+                <StatPill label="Spans" value={String(summary().spanCount)} />
+                <Show when={summary().model}>
+                  <StatPill label="Model" value={shortModelName(summary().model!)} accent />
+                </Show>
+                <Show when={summary().provider}>
+                  <StatPill label="Provider" value={summary().provider!} />
+                </Show>
+                <Show when={summary().inputTokens}>
+                  <StatPill label="In" value={`${Number(summary().inputTokens).toLocaleString()} tok`} />
+                </Show>
+                <Show when={summary().outputTokens}>
+                  <StatPill label="Out" value={`${Number(summary().outputTokens).toLocaleString()} tok`} />
+                </Show>
+                <Show when={summary().steps}>
+                  <StatPill label="Steps" value={String(summary().steps)} />
+                </Show>
+                <Show when={toolSummary().length > 0}>
+                  <StatPill label="Tools" value={String(toolSummary().length)} />
+                </Show>
+              </div>
+            )}
+          </Show>
 
-            {/* Prompt & Response — expandable sections */}
-            <Show when={userPrompt() || assistantResponse()}>
-              <div class="px-5 py-3 border-b border-border space-y-2.5">
-                <Show when={userPrompt()}>
-                  <ExpandableContent label="Prompt" content={userPrompt()!} defaultMaxH="max-h-28" />
-                </Show>
-                <Show when={assistantResponse()}>
-                  <ExpandableContent label="Response" content={assistantResponse()!} muted defaultMaxH="max-h-28" />
-                </Show>
+          {/* Scrollable content: prompt, tools, waterfall, response */}
+          <div class="flex-1 overflow-y-auto min-h-0">
+            {/* Prompt */}
+            <Show when={userPrompt()}>
+              <div class="px-5 py-3 border-b border-border">
+                <ExpandableContent label="Prompt" content={userPrompt()!} defaultMaxH="max-h-[20vh]" />
               </div>
             </Show>
 
             {/* Tool calls summary pills */}
             <Show when={toolSummary().length > 0}>
-              <div class="px-5 py-2 border-b border-border">
-                <div class="flex flex-wrap gap-1.5">
-                  <span class="text-[10px] font-medium text-text-muted uppercase tracking-wider mr-1 self-center">
+              <div class="px-5 py-2.5 border-b border-border">
+                <div class="flex flex-wrap items-center gap-1.5">
+                  <span class="text-[10px] font-semibold text-text-muted uppercase tracking-wider mr-0.5 self-center">
                     Tools ({toolSummary().length})
                   </span>
                   <For each={toolSummary()}>
                     {(tool) => (
                       <span
-                        class={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono border ${
+                        class={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-mono transition-colors ${
                           tool.isError
-                            ? 'bg-error/5 border-error/20 text-error'
-                            : 'bg-warning/5 border-warning/20 text-warning'
+                            ? 'bg-error/6 border border-error/15 text-error/80'
+                            : 'bg-warning/6 border border-warning/15 text-warning/90'
                         }`}
                       >
                         {tool.name.startsWith('mcp_') ? tool.name.slice(4).replace('_', '/') : tool.name}
@@ -341,588 +390,129 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
             </Show>
 
             {/* Waterfall */}
-            <div class="flex-1 overflow-y-auto">
-              <div class="py-1">
-                <Show
-                  when={flatSpans().length > 0}
-                  fallback={
-                    <div class="text-sm text-text-muted text-center py-12">
-                      No spans found for this trace.
-                    </div>
-                  }
-                >
-                  {/* Waterfall header */}
-                  <div class="flex items-center gap-2 px-4 py-1.5 border-b border-border-subtle">
-                    <div class="text-[10px] font-medium text-text-muted uppercase tracking-wider" style={{ width: '200px' }}>
-                      Operation
-                    </div>
-                    <div class="flex-1 text-[10px] font-medium text-text-muted uppercase tracking-wider">
-                      Timeline
-                    </div>
-                    <div class="text-[10px] font-medium text-text-muted uppercase tracking-wider w-16 text-right">
-                      Duration
-                    </div>
+            <div class="py-1">
+              <Show
+                when={flatSpans().length > 0}
+                fallback={
+                  <div class="text-sm text-text-muted text-center py-12">
+                    No spans found for this trace.
                   </div>
+                }
+              >
+                {/* Waterfall header */}
+                <div class="flex items-center gap-2 px-4 py-2 border-b border-border-subtle bg-surface/30">
+                  <div class="text-[10px] font-semibold text-text-muted uppercase tracking-wider" style={{ width: '200px' }}>
+                    Operation
+                  </div>
+                  <div class="flex-1 text-[10px] font-semibold text-text-muted uppercase tracking-wider">
+                    Timeline
+                  </div>
+                  <div class="text-[10px] font-semibold text-text-muted uppercase tracking-wider w-16 text-right">
+                    Duration
+                  </div>
+                </div>
 
-                  <For each={flatSpans()}>
-                    {(node) => {
-                      const range = timeRange();
-                      const totalDuration = range.max - range.min;
-                      const leftPct = () => ((node.span.startTime - range.min) / totalDuration) * 100;
-                      const widthPct = () => Math.max(0.3, (node.span.duration / totalDuration) * 100);
-                      const durationMs = () => node.span.duration / 1000;
-                      const isError = () => node.span.status?.code === 2;
-                      const isSelected = () => selectedSpanID() === node.span.spanID;
-                      const isVirtual = () => !!node.isVirtualToolCall;
-                      const barColor = () => {
-                        if (isError()) return 'bg-error';
-                        const op = node.span.operationName;
-                        if (op.startsWith('gen_ai.')) return 'bg-info';
-                        if (op.startsWith('tool.') || op.startsWith('mcp.')) return 'bg-warning';
-                        if (op.startsWith('engram.')) return 'bg-success/70';
-                        if (op === 'agent.step') return 'bg-accent/50';
-                        return 'bg-accent';
-                      };
+                <For each={flatSpans()}>
+                  {(node) => {
+                    const range = timeRange();
+                    const totalDuration = range.max - range.min;
+                    const leftPct = () => ((node.span.startTime - range.min) / totalDuration) * 100;
+                    const widthPct = () => Math.max(0.3, (node.span.duration / totalDuration) * 100);
+                    const durationMs = () => node.span.duration / 1000;
+                    const isError = () => node.span.status?.code === 2;
+                    const isSelected = () => selectedSpanID() === node.span.spanID;
+                    const isVirtual = () => !!node.isVirtualToolCall;
+                    const barColor = () => {
+                      if (isError()) return 'bg-error';
+                      const op = node.span.operationName;
+                      if (op.startsWith('gen_ai.')) return 'bg-info';
+                      if (op.startsWith('tool.') || op.startsWith('mcp.')) return 'bg-warning';
+                      if (op.startsWith('engram.')) return 'bg-success/70';
+                      if (op === 'agent.step') return 'bg-accent/40';
+                      return 'bg-accent';
+                    };
 
-                      const toolName = () => getTag(node.span, 'tool.name') || getTag(node.span, 'gen_ai.tool.name');
-                      const model = () => getTag(node.span, 'gen_ai.request.model');
+                    const toolName = () => getTag(node.span, 'tool.name') || getTag(node.span, 'gen_ai.tool.name');
+                    const model = () => getTag(node.span, 'gen_ai.request.model');
 
                       return (
                         <div class="flex flex-col">
                           <button
-                            class={`w-full flex items-center gap-2 px-4 py-1 transition-colors cursor-pointer border-l-2 ${
+                            class={`w-full flex items-center gap-2 px-4 py-1.5 transition-all duration-100 cursor-pointer border-l-2 rounded-none ${
                               isSelected()
                                 ? 'bg-accent/8 border-l-accent'
-                                : 'border-l-transparent hover:bg-surface-hover/50'
+                                : 'border-l-transparent hover:bg-surface-hover/40'
                             }`}
-                            onClick={() => setSelectedSpanID(isSelected() ? null : node.span.spanID)}
+                          onClick={() => {
+                            const isCurrentlySelected = selectedSpanID() === node.span.spanID;
+                            if (isCurrentlySelected) {
+                              clearSelectedSpan();
+                            } else {
+                              selectSpan(node.span.spanID, node.span, processes());
+                            }
+                          }}
+                        >
+                          {/* Operation name */}
+                          <div
+                            class="flex-shrink-0 text-[11px] font-mono truncate text-left"
+                            style={{ width: '200px', 'padding-left': `${node.depth * 14}px` }}
                           >
-                            {/* Operation name */}
-                            <div
-                              class="flex-shrink-0 text-[11px] font-mono truncate text-left"
-                              style={{ width: '200px', 'padding-left': `${node.depth * 14}px` }}
-                            >
-                              <span class={`${isError() ? 'text-error' : 'text-text-secondary'}`}>
-                                {spanDisplayName(node.span.operationName, toolName(), model())}
-                              </span>
-                            </div>
-
-                            {/* Waterfall bar */}
-                            <div class="flex-1 h-5 relative min-w-0">
-                              <div
-                                class={`absolute top-1 h-3 rounded-[3px] ${barColor()} transition-all ${
-                                  isVirtual() ? 'opacity-50' : 'opacity-85 hover:opacity-100'
-                                }`}
-                                style={{
-                                  left: `${leftPct()}%`,
-                                  width: `${widthPct()}%`,
-                                  'min-width': '3px',
-                                  ...(isVirtual() ? { 'background-image': 'repeating-linear-gradient(90deg, transparent, transparent 3px, rgba(0,0,0,0.15) 3px, rgba(0,0,0,0.15) 6px)' } : {}),
-                                }}
-                              />
-                            </div>
-
-                            {/* Duration */}
-                            <span class="flex-shrink-0 text-[10px] font-mono text-text-muted w-16 text-right">
-                              {formatDuration(durationMs())}
+                            <span class={`${isError() ? 'text-error' : isSelected() ? 'text-text' : 'text-text-secondary'}`}>
+                              {spanDisplayName(node.span.operationName, toolName(), model())}
                             </span>
-                          </button>
-                        </div>
-                      );
-                    }}
-                  </For>
+                          </div>
 
-                  {/* Legend */}
-                  <div class="flex flex-wrap gap-4 px-4 mt-3 pt-2.5 border-t border-border-subtle">
-                    <LegendDot color="bg-accent" label="agent" />
-                    <LegendDot color="bg-info" label="gen_ai" />
-                    <LegendDot color="bg-warning" label="tool / mcp" />
-                    <LegendDot color="bg-success/70" label="engram" />
-                    <LegendDot color="bg-error" label="error" />
-                  </div>
-                </Show>
-              </div>
+                          {/* Waterfall bar */}
+                          <div class="flex-1 h-5 relative min-w-0">
+                            <div
+                              class={`absolute top-1 h-3 rounded-[3px] transition-all duration-100 ${barColor()} ${
+                                isVirtual()
+                                  ? 'opacity-40'
+                                  : isSelected()
+                                    ? 'opacity-100 shadow-sm'
+                                    : 'opacity-75 hover:opacity-95'
+                              }`}
+                              style={{
+                                left: `${leftPct()}%`,
+                                width: `${widthPct()}%`,
+                                'min-width': '3px',
+                                ...(isVirtual() ? { 'background-image': 'repeating-linear-gradient(90deg, transparent, transparent 3px, rgba(0,0,0,0.12) 3px, rgba(0,0,0,0.12) 6px)' } : {}),
+                              }}
+                            />
+                          </div>
+
+                          {/* Duration */}
+                          <span class={`flex-shrink-0 text-[10px] font-mono w-16 text-right tabular-nums ${
+                            isSelected() ? 'text-text-secondary' : 'text-text-muted'
+                          }`}>
+                            {formatDuration(durationMs())}
+                          </span>
+                        </button>
+                      </div>
+                    );
+                  }}
+                </For>
+
+                {/* Legend */}
+                <div class="flex flex-wrap gap-4 px-4 py-3 mt-1 border-t border-border-subtle">
+                  <LegendDot color="bg-accent" label="agent" />
+                  <LegendDot color="bg-info" label="gen_ai" />
+                  <LegendDot color="bg-warning" label="tool / mcp" />
+                  <LegendDot color="bg-success/70" label="engram" />
+                  <LegendDot color="bg-error" label="error" />
+                </div>
+              </Show>
             </div>
-          </div>
 
-          {/* Right: Span detail panel */}
-          <Show when={selectedSpan()}>
-            {(span) => (
-              <SpanDetailPanel
-                span={span()}
-                processes={processes()}
-                onClose={() => setSelectedSpanID(null)}
-              />
-            )}
-          </Show>
+            {/* Response — directly after waterfall */}
+            <Show when={assistantResponse()}>
+              <div class="px-5 py-3 border-t border-border">
+                <ExpandableContent label="Response" content={assistantResponse()!} muted defaultMaxH="max-h-[25vh]" />
+              </div>
+            </Show>
+          </div>
         </div>
       </Show>
-    </div>
-  );
-}
-
-// ── Span Detail Panel ──
-
-function SpanDetailPanel(props: {
-  span: TraceSpan;
-  processes: Record<string, TraceProcess>;
-  onClose: () => void;
-}) {
-  const isError = () => props.span.status?.code === 2;
-  const isVirtual = () => props.span.spanID.startsWith('virtual-tool-');
-
-  // Get tool.input and tool.output from tags (virtual rows carry these)
-  const toolInput = createMemo(() => {
-    const v = props.span.tags?.find(t => t.key === 'tool.input')?.value;
-    return v ? String(v) : null;
-  });
-  const toolOutput = createMemo(() => {
-    const v = props.span.tags?.find(t => t.key === 'tool.output')?.value;
-    return v ? String(v) : null;
-  });
-  const toolName = createMemo(() => {
-    const v = props.span.tags?.find(t => t.key === 'tool.name')?.value;
-    return v ? String(v) : null;
-  });
-
-  // Parse tool input JSON into something readable
-  const parsedInput = createMemo(() => {
-    const raw = toolInput();
-    if (!raw) return null;
-    try {
-      return JSON.parse(raw) as Record<string, unknown>;
-    } catch {
-      return null;
-    }
-  });
-
-  // Extract the most relevant field from parsed input for the hero display
-  const heroContent = createMemo(() => {
-    const p = parsedInput();
-    const name = toolName();
-    if (!p) return null;
-    if (name === 'bash' || name === 'Bash') {
-      return { label: 'Command', value: String(p.command ?? p.cmd ?? ''), lang: 'bash' };
-    }
-    if (name === 'ls' || name === 'list_directory') {
-      return { label: 'Path', value: String(p.path ?? p.directory ?? '.'), lang: 'path' };
-    }
-    if (name === 'read' || name === 'Read' || name === 'read_file') {
-      const path = String(p.filePath ?? p.path ?? p.file ?? '');
-      const offset = p.offset ? ` (offset: ${p.offset})` : '';
-      const limit = p.limit ? ` (limit: ${p.limit})` : '';
-      return { label: 'File', value: path + offset + limit, lang: 'path' };
-    }
-    if (name === 'write' || name === 'Write' || name === 'write_file') {
-      return { label: 'File', value: String(p.filePath ?? p.path ?? p.file ?? ''), lang: 'path' };
-    }
-    if (name === 'glob' || name === 'Glob') {
-      return { label: 'Pattern', value: String(p.pattern ?? ''), lang: 'glob' };
-    }
-    if (name === 'grep' || name === 'Grep' || name === 'search') {
-      return { label: 'Pattern', value: String(p.pattern ?? p.query ?? ''), lang: 'regex' };
-    }
-    if (name === 'git_status') {
-      return { label: 'Operation', value: 'git status', lang: 'bash' };
-    }
-    if (name === 'run_agent') {
-      const agent = String(p.agent ?? '');
-      const prompt = String(p.prompt ?? '');
-      return { label: 'Delegate to', value: `${agent}: ${prompt}`, lang: 'text' };
-    }
-    // Fallback: show the first string field
-    for (const [key, val] of Object.entries(p)) {
-      if (typeof val === 'string' && val.length > 0) {
-        return { label: key, value: val, lang: 'text' };
-      }
-    }
-    return null;
-  });
-
-  // Categorize tags into semantic groups for display
-  const tagGroups = createMemo(() => {
-    const tags = (props.span.tags ?? []).filter(t =>
-      // Hide tool.input/output from tag list — shown in dedicated sections
-      t.key !== 'tool.input' && t.key !== 'tool.output'
-    );
-    const groups: Record<string, Array<{ key: string; value: unknown; type: string }>> = {
-      'GenAI': [],
-      'Agent': [],
-      'Delegation': [],
-      'Tool': [],
-      'Memory': [],
-      'Other': [],
-    };
-
-    for (const tag of tags) {
-      if (tag.key.startsWith('gen_ai.')) {
-        groups['GenAI'].push(tag);
-      } else if (tag.key.startsWith('delegation.')) {
-        groups['Delegation'].push(tag);
-      } else if (tag.key.startsWith('agent.') || tag.key.startsWith('step.')) {
-        groups['Agent'].push(tag);
-      } else if (tag.key.startsWith('tool.') || tag.key.startsWith('mcp.')) {
-        groups['Tool'].push(tag);
-      } else if (tag.key.startsWith('engram.')) {
-        groups['Memory'].push(tag);
-      } else {
-        groups['Other'].push(tag);
-      }
-    }
-
-    // Remove empty groups
-    return Object.entries(groups).filter(([, tags]) => tags.length > 0);
-  });
-
-  // Process tags (resource attributes from the process)
-  const processTags = createMemo(() => {
-    const pid = props.span.processID;
-    if (!pid || !props.processes[pid]) return [];
-    return props.processes[pid].tags ?? [];
-  });
-
-  // Quick info extracted from tags for the header area
-  const quickInfo = createMemo(() => {
-    const tags = props.span.tags ?? [];
-    const get = (key: string) => tags.find(t => t.key === key)?.value;
-    return {
-      model: get('gen_ai.request.model') || get('gen_ai.response.model'),
-      provider: get('gen_ai.provider.name'),
-      inputTokens: get('gen_ai.usage.input_tokens') as number | undefined,
-      outputTokens: get('gen_ai.usage.output_tokens') as number | undefined,
-      finishReasons: get('gen_ai.response.finish_reasons') as string | undefined,
-      toolName: get('tool.name'),
-      agentName: get('agent.name'),
-      stepNumber: get('step.number') as number | undefined,
-    };
-  });
-
-  // Parse finish_reasons into a readable summary
-  const finishReasonsSummary = createMemo(() => {
-    const raw = quickInfo().finishReasons;
-    if (!raw) return null;
-    const reasons = (raw as string).split(',').map(r => r.trim()).filter(Boolean);
-    if (reasons.length === 0) return null;
-    const counts = new Map<string, number>();
-    for (const r of reasons) {
-      counts.set(r, (counts.get(r) || 0) + 1);
-    }
-    const parts: string[] = [];
-    for (const [reason, count] of counts) {
-      parts.push(count > 1 ? `${count}x ${reason}` : reason);
-    }
-    return parts.join(', ');
-  });
-
-  return (
-    <div class="w-[400px] flex-shrink-0 border-l border-border bg-surface flex flex-col overflow-hidden">
-      {/* Header */}
-      <div class="flex items-center gap-2 px-4 py-2.5 border-b border-border flex-shrink-0">
-        <div class="flex-1 min-w-0">
-          <div class={`text-xs font-mono font-medium truncate ${isError() ? 'text-error' : 'text-text'}`}>
-            {props.span.operationName}
-          </div>
-          <div class="text-[10px] text-text-muted font-mono mt-0.5">
-            {isVirtual() ? 'reconstructed from events' : props.span.spanID.slice(0, 16)}
-          </div>
-        </div>
-        <button
-          class="p-1 rounded hover:bg-surface-hover text-text-muted hover:text-text transition-colors flex-shrink-0"
-          onClick={props.onClose}
-        >
-          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
-      </div>
-
-      {/* Scrollable content */}
-      <div class="flex-1 overflow-y-auto">
-        {/* Duration + Status row */}
-        <div class="flex gap-2 px-4 py-2.5 border-b border-border-subtle">
-          <MiniStat label="Duration" value={formatDuration(props.span.duration / 1000)} />
-          <Show when={isError()}>
-            <MiniStat label="Status" value="ERROR" error />
-          </Show>
-          <Show when={!isError() && props.span.status?.code === 1}>
-            <MiniStat label="Status" value="OK" success />
-          </Show>
-        </div>
-
-        {/* ── Tool Deep Inspection ── */}
-        {/* Hero: the most important field (command, path, pattern) in big mono text */}
-        <Show when={heroContent()}>
-          {(hero) => (
-            <div class="px-4 py-3 border-b border-border-subtle">
-              <div class="text-[10px] font-medium text-text-muted uppercase tracking-wider mb-1.5">{hero().label}</div>
-              <div class={`text-[13px] font-mono leading-relaxed rounded-lg px-3 py-2.5 border break-all whitespace-pre-wrap ${
-                hero().lang === 'bash'
-                  ? 'bg-[#1a1b26] text-emerald-400 border-emerald-500/20'
-                  : hero().lang === 'path'
-                    ? 'bg-surface-2 text-accent border-accent/15'
-                    : 'bg-surface-2 text-text border-border-subtle'
-              }`}>
-                <Show when={hero().lang === 'bash'}>
-                  <span class="text-text-muted/50 select-none mr-1.5">$</span>
-                </Show>
-                {hero().value}
-              </div>
-            </div>
-          )}
-        </Show>
-
-        {/* Full tool input JSON (collapsed by default if hero already shows it) */}
-        <Show when={toolInput()}>
-          <div class="px-4 py-3 border-b border-border-subtle">
-            <ExpandableContent
-              label="Input (full args)"
-              content={formatJSON(toolInput()!)}
-              defaultMaxH="max-h-32"
-              mono
-            />
-          </div>
-        </Show>
-
-        {/* Tool output — the result from the command */}
-        <Show when={toolOutput()}>
-          <div class="px-4 py-3 border-b border-border-subtle">
-            <ExpandableContent
-              label="Output"
-              content={toolOutput()!}
-              defaultMaxH="max-h-48"
-              mono
-              muted={!isError()}
-              error={isError()}
-            />
-          </div>
-        </Show>
-
-        {/* Quick token/model info for gen_ai spans */}
-        <Show when={quickInfo().inputTokens || quickInfo().outputTokens}>
-          <div class="flex flex-wrap gap-2 px-4 py-2 border-b border-border-subtle">
-            <Show when={quickInfo().inputTokens}>
-              <MiniStat label="Input" value={`${Number(quickInfo().inputTokens).toLocaleString()} tok`} />
-            </Show>
-            <Show when={quickInfo().outputTokens}>
-              <MiniStat label="Output" value={`${Number(quickInfo().outputTokens).toLocaleString()} tok`} />
-            </Show>
-          </div>
-        </Show>
-
-        {/* Finish reasons summary */}
-        <Show when={finishReasonsSummary()}>
-          <div class="px-4 py-2 border-b border-border-subtle">
-            <div class="text-[10px] font-medium text-text-muted uppercase tracking-wider mb-1">Finish Reasons</div>
-            <div class="text-[11px] font-mono text-text-secondary">{finishReasonsSummary()}</div>
-          </div>
-        </Show>
-
-        {/* Status error message */}
-        <Show when={isError() && props.span.status?.message}>
-          <div class="mx-4 mt-3 px-3 py-2 bg-error/5 border border-error/20 rounded-lg">
-            <span class="text-[10px] uppercase tracking-wider text-error font-medium">Error</span>
-            <p class="text-xs text-error/80 font-mono mt-1 whitespace-pre-wrap break-all">
-              {props.span.status!.message}
-            </p>
-          </div>
-        </Show>
-
-        {/* Tag groups */}
-        <div class="px-4 py-3 space-y-3">
-          <For each={tagGroups()}>
-            {([groupName, tags]) => (
-              <div>
-                <div class="text-[10px] font-medium text-text-muted uppercase tracking-wider mb-1.5">
-                  {groupName}
-                </div>
-                <div class="space-y-0.5">
-                  <For each={tags as Array<{ key: string; value: unknown; type: string }>}>
-                    {(tag) => (
-                      <TagRow key={tag.key} value={tag.value} type={tag.type} />
-                    )}
-                  </For>
-                </div>
-              </div>
-            )}
-          </For>
-
-           {/* Resource Attributes (from process) */}
-          <Show when={processTags().length > 0}>
-            <div>
-              <div class="text-[10px] font-medium text-text-muted uppercase tracking-wider mb-1.5">
-                Resource
-              </div>
-              <div class="space-y-0.5">
-                <For each={processTags()}>
-                  {(tag: { key: string; value: unknown; type?: string }) => (
-                    <TagRow key={tag.key} value={tag.value} type={tag.type || 'string'} />
-                  )}
-                </For>
-              </div>
-            </div>
-          </Show>
-        </div>
-
-        {/* Linked Traces — delegation links */}
-        <Show when={(props.span.links?.length ?? 0) > 0}>
-          <div class="px-4 py-3 border-t border-border-subtle">
-            <div class="text-[10px] font-medium text-text-muted uppercase tracking-wider mb-2">
-              Linked Traces
-            </div>
-            <div class="space-y-1.5">
-              <For each={props.span.links!}>
-                {(link) => {
-                  const linkType = () => link.tags?.find(t => t.key === 'link.type')?.value as string | undefined;
-                  const agentName = () => link.tags?.find(t => t.key === 'link.parent_agent')?.value as string | undefined;
-                  const runName = () => link.tags?.find(t => t.key === 'link.run_name')?.value as string | undefined;
-                  return (
-                    <button
-                      class="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-accent/5 border border-accent/15 hover:bg-accent/10 hover:border-accent/25 transition-colors cursor-pointer text-left"
-                      onClick={() => link.traceID && showTraceDetail(link.traceID)}
-                      title={`Navigate to linked trace ${link.traceID?.slice(0, 16)}...`}
-                    >
-                      <svg class="w-3.5 h-3.5 text-accent flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                      </svg>
-                      <div class="flex-1 min-w-0">
-                        <Show when={linkType() === 'delegation'}>
-                          <span class="text-[10px] text-accent font-medium">Parent trace</span>
-                        </Show>
-                        <Show when={linkType() !== 'delegation'}>
-                          <span class="text-[10px] text-text-muted">{linkType() || 'linked'}</span>
-                        </Show>
-                        <Show when={agentName()}>
-                          <span class="text-[10px] font-mono text-accent ml-1">{agentName()}</span>
-                        </Show>
-                        <Show when={runName()}>
-                          <div class="text-[9px] font-mono text-text-muted truncate">{runName()}</div>
-                        </Show>
-                        <div class="text-[9px] font-mono text-text-muted/60 truncate">{link.traceID?.slice(0, 24)}...</div>
-                      </div>
-                      <svg class="w-3 h-3 text-text-muted flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                      </svg>
-                    </button>
-                  );
-                }}
-              </For>
-            </div>
-          </div>
-        </Show>
-
-        {/* Events / Logs */}
-        <Show when={(props.span.logs?.length ?? 0) > 0}>
-          <div class="px-4 py-3 border-t border-border-subtle">
-            <div class="text-[10px] font-medium text-text-muted uppercase tracking-wider mb-2">
-              Events
-            </div>
-            <div class="space-y-2">
-              <For each={props.span.logs!}>
-                {(log) => {
-                  const eventName = log.fields?.find((f) => f.key === 'event')?.value as string | undefined;
-                  const otherFields = log.fields?.filter((f) => f.key !== 'event') ?? [];
-
-                  const isContentEvent = () =>
-                    eventName === 'gen_ai.content.prompt' ||
-                    eventName === 'gen_ai.content.completion' ||
-                    eventName === 'gen_ai.tool.input' ||
-                    eventName === 'gen_ai.tool.output';
-
-                  const contentLabel = () => {
-                    switch (eventName) {
-                      case 'gen_ai.content.prompt': return 'Prompt';
-                      case 'gen_ai.content.completion': return 'Response';
-                      case 'gen_ai.tool.input': return 'Tool Input';
-                      case 'gen_ai.tool.output': return 'Tool Output';
-                      default: return eventName || 'event';
-                    }
-                  };
-
-                  const contentText = () => {
-                    if (!isContentEvent()) return null;
-                    const contentKeys = ['gen_ai.prompt', 'gen_ai.completion', 'tool.input', 'tool.output'];
-                    for (const key of contentKeys) {
-                      const field = otherFields.find((f) => f.key === key);
-                      if (field) return String(field.value);
-                    }
-                    return null;
-                  };
-
-                  const isErrorOutput = () =>
-                    eventName === 'gen_ai.tool.output' &&
-                    otherFields.some((f) => f.key === 'tool.error' && f.value === true);
-
-                  // Skip tool.call events in the Events section — they're already shown as waterfall rows
-                  if (eventName === 'tool.call') return null;
-
-                  return (
-                    <div class={`rounded-lg px-3 py-2 border ${
-                      isErrorOutput()
-                        ? 'bg-error/5 border-error/20'
-                        : isContentEvent()
-                          ? 'bg-surface-2 border-border'
-                          : 'bg-surface-2 border-border-subtle'
-                    }`}>
-                      <div class="flex items-center gap-2">
-                        <span class={`text-[10px] font-mono font-medium ${
-                          isErrorOutput() ? 'text-error' :
-                          isContentEvent() ? 'text-accent' : 'text-warning'
-                        }`}>
-                          {contentLabel()}
-                        </span>
-                        <Show when={!isContentEvent()}>
-                          <span class="text-[9px] text-text-muted font-mono">
-                            {log.timestamp > 0 ? new Date(log.timestamp / 1000).toISOString().slice(11, 23) : ''}
-                          </span>
-                        </Show>
-                      </div>
-                      <Show when={isContentEvent() && contentText()}>
-                        <div class="mt-1.5 text-[11px] font-mono text-text-secondary whitespace-pre-wrap break-words max-h-40 overflow-y-auto">
-                          {contentText()}
-                        </div>
-                      </Show>
-                      <Show when={!isContentEvent() && otherFields.length > 0}>
-                        <div class="mt-1.5 space-y-0.5">
-                          <For each={otherFields}>
-                            {(field) => (
-                              <div class="flex gap-2 text-[10px]">
-                                <span class="text-text-muted font-mono flex-shrink-0">{field.key}:</span>
-                                <span class="text-text-secondary font-mono break-all">{String(field.value)}</span>
-                              </div>
-                            )}
-                          </For>
-                        </div>
-                      </Show>
-                      {/* Show non-content fields for content events too */}
-                      <Show when={isContentEvent()}>
-                        {(() => {
-                          const metaFields = otherFields.filter(
-                            (f) => !['gen_ai.prompt', 'gen_ai.completion', 'tool.input', 'tool.output'].includes(f.key)
-                          );
-                          return (
-                            <Show when={metaFields.length > 0}>
-                              <div class="mt-1 space-y-0.5">
-                                <For each={metaFields}>
-                                  {(field) => (
-                                    <div class="flex gap-2 text-[9px]">
-                                      <span class="text-text-muted font-mono flex-shrink-0">{field.key}:</span>
-                                      <span class="text-text-secondary font-mono break-all">{String(field.value)}</span>
-                                    </div>
-                                  )}
-                                </For>
-                              </div>
-                            </Show>
-                          );
-                        })()}
-                      </Show>
-                    </div>
-                  );
-                }}
-              </For>
-            </div>
-          </div>
-        </Show>
-      </div>
     </div>
   );
 }
@@ -939,133 +529,46 @@ function ExpandableContent(props: {
   mono?: boolean;
 }) {
   const [expanded, setExpanded] = createSignal(false);
-  const maxH = () => props.defaultMaxH || 'max-h-28';
+  const maxH = () => props.defaultMaxH || 'max-h-24';
 
   return (
     <div>
-      <div class="flex items-center justify-between mb-1">
-        <div class="text-[10px] font-medium text-text-muted uppercase tracking-wider">{props.label}</div>
+      <div class="flex items-center justify-between mb-1.5">
+        <div class="text-[10px] font-semibold text-text-muted uppercase tracking-wider">{props.label}</div>
         <button
-          class="text-[10px] text-accent hover:text-accent/80 transition-colors px-1"
+          class="text-[10px] font-medium text-accent/70 hover:text-accent transition-colors px-1 py-0.5 rounded hover:bg-accent/5"
           onClick={() => setExpanded(!expanded())}
         >
           {expanded() ? 'collapse' : 'expand'}
         </button>
       </div>
       <div
-        class={`text-xs font-mono rounded-lg px-3 py-2.5 border overflow-y-auto whitespace-pre-wrap break-words transition-all ${
+        class={`text-[12px] leading-relaxed rounded-lg px-3.5 py-3 border overflow-y-auto transition-all duration-200 ${
           props.error
-            ? 'bg-error/5 border-error/20 text-error/80'
+            ? 'bg-error/4 border-error/12 text-error/80'
             : props.muted
-              ? 'bg-surface-2 border-border-subtle text-text-secondary'
-              : 'bg-surface-2 border-border-subtle text-text'
+              ? 'bg-surface-2/80 border-border-subtle text-text-secondary'
+              : 'bg-surface-2/80 border-border-subtle text-text'
         } ${expanded() ? 'max-h-[70vh]' : maxH()}`}
       >
-        {props.content}
+        <Markdown content={props.content} class="text-[12px]" />
       </div>
     </div>
   );
 }
 
-/** Format JSON string for display (pretty-print if valid JSON) */
-function formatJSON(s: string): string {
-  try {
-    return JSON.stringify(JSON.parse(s), null, 2);
-  } catch {
-    return s;
-  }
-}
-
-function StatPill(props: { label: string; value: string; accent?: boolean }) {
+function StatPill(props: { label: string; value: string; accent?: boolean; highlight?: boolean }) {
   return (
-    <div class="flex items-center gap-1.5 px-2 py-1 rounded-md bg-surface-2 border border-border-subtle">
+    <div class={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-colors ${
+      props.highlight
+        ? 'bg-accent/5 border-accent/15'
+        : 'bg-surface-2/60 border-border-subtle'
+    }`}>
       <span class="text-[10px] text-text-muted">{props.label}</span>
-      <span class={`text-[11px] font-mono font-medium ${props.accent ? 'text-accent' : 'text-text'}`}>
+      <span class={`text-[11px] font-mono font-medium tabular-nums ${
+        props.accent ? 'text-accent' : props.highlight ? 'text-text' : 'text-text-secondary'
+      }`}>
         {props.value}
-      </span>
-    </div>
-  );
-}
-
-function MiniStat(props: { label: string; value: string; error?: boolean; success?: boolean }) {
-  return (
-    <div class="flex flex-col gap-0.5 px-2 py-1 rounded-md bg-surface-2 border border-border-subtle min-w-[50px]">
-      <span class="text-[9px] text-text-muted uppercase tracking-wider">{props.label}</span>
-      <span
-        class={`text-[11px] font-mono font-medium ${
-          props.error ? 'text-error' : props.success ? 'text-success' : 'text-text'
-        }`}
-      >
-        {props.value}
-      </span>
-    </div>
-  );
-}
-
-function TagRow(props: { key: string; value: unknown; type: string }) {
-  const isTokenCount = () =>
-    props.key.includes('.input_tokens') ||
-    props.key.includes('.output_tokens') ||
-    props.key.includes('.reasoning_tokens') ||
-    props.key.includes('.cache_');
-  const isModel = () => props.key.includes('.model') || props.key.includes('.provider');
-  const isError = () => props.key === 'tool.error' && props.value === true;
-
-  // Pretty display key (strip namespace prefix)
-  const displayKey = () => {
-    const k = props.key;
-    if (k.startsWith('gen_ai.')) return k.slice(7);
-    if (k.startsWith('agent.')) return k.slice(6);
-    if (k.startsWith('tool.')) return k.slice(5);
-    if (k.startsWith('engram.')) return k.slice(7);
-    if (k.startsWith('step.')) return k.slice(5);
-    if (k.startsWith('delegation.')) return k.slice(11);
-    return k;
-  };
-
-  // Format value — special handling for finish_reasons
-  const displayValue = () => {
-    const v = props.value;
-    // Parse repeated finish_reasons into a summary
-    if (props.key === 'gen_ai.response.finish_reasons' && typeof v === 'string') {
-      const reasons = v.split(',').map(r => r.trim()).filter(Boolean);
-      if (reasons.length > 3) {
-        const counts = new Map<string, number>();
-        for (const r of reasons) counts.set(r, (counts.get(r) || 0) + 1);
-        const parts: string[] = [];
-        for (const [reason, count] of counts) parts.push(count > 1 ? `${count}x ${reason}` : reason);
-        return parts.join(', ');
-      }
-    }
-    if (typeof v === 'number') {
-      if (isTokenCount()) return v.toLocaleString();
-      return String(v);
-    }
-    if (typeof v === 'boolean') return v ? 'true' : 'false';
-    return String(v ?? '');
-  };
-
-  return (
-    <div class="flex items-start gap-2 py-0.5">
-      <span
-        class="text-[10px] font-mono text-text-muted flex-shrink-0 min-w-[110px] truncate"
-        title={props.key}
-      >
-        {displayKey()}
-      </span>
-      <span
-        class={`text-[11px] font-mono break-all ${
-          isError()
-            ? 'text-error'
-            : isModel()
-              ? 'text-accent font-medium'
-              : isTokenCount()
-                ? 'text-info'
-                : 'text-text-secondary'
-        }`}
-        title={`${props.key}: ${displayValue()}`}
-      >
-        {displayValue()}
       </span>
     </div>
   );
@@ -1074,7 +577,7 @@ function TagRow(props: { key: string; value: unknown; type: string }) {
 function LegendDot(props: { color: string; label: string }) {
   return (
     <div class="flex items-center gap-1.5">
-      <div class={`w-2 h-2 rounded-sm ${props.color}`} />
+      <div class={`w-2.5 h-1.5 rounded-[2px] ${props.color} opacity-80`} />
       <span class="text-[10px] text-text-muted">{props.label}</span>
     </div>
   );

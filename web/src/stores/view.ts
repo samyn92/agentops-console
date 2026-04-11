@@ -1,5 +1,6 @@
 // View store — tracks layout state for both sidebars and center panel routing.
 import { createSignal } from 'solid-js';
+import type { TraceSpan, TraceProcess } from '../types';
 
 export type PanelState = 'collapsed' | 'expanded';
 
@@ -27,12 +28,43 @@ export { selectedTraceForDetail };
 
 export function showTraceDetail(traceID: string) {
   setSelectedTraceForDetail(traceID);
+  setSelectedSpanIDRaw(null);
+  setSelectedSpanDataRaw(null);
+  setTraceProcessesRaw({});
   setCenterViewRaw('trace-detail');
 }
 
 export function clearCenterOverlay() {
   setCenterViewRaw('default');
   setSelectedTraceForDetail(null);
+  setSelectedSpanIDRaw(null);
+  setSelectedSpanDataRaw(null);
+  setTraceProcessesRaw({});
+}
+
+// ── Selected span state (shared between TraceDetailView and RightPanel) ──
+// When a span is clicked in the waterfall, it populates these signals so
+// the RightPanel can render SpanDetailPanel instead of Memory/Tools/Resources.
+
+const [selectedSpanID, setSelectedSpanIDRaw] = createSignal<string | null>(null);
+const [selectedSpanData, setSelectedSpanDataRaw] = createSignal<TraceSpan | null>(null);
+const [traceProcesses, setTraceProcessesRaw] = createSignal<Record<string, TraceProcess>>({});
+
+export { selectedSpanID, selectedSpanData, traceProcesses };
+
+export function selectSpan(spanID: string | null, span: TraceSpan | null, processes?: Record<string, TraceProcess>) {
+  setSelectedSpanIDRaw(spanID);
+  setSelectedSpanDataRaw(span);
+  if (processes !== undefined) setTraceProcessesRaw(processes);
+  // Auto-expand the right panel when selecting a span
+  if (spanID && span) {
+    setRightPanelState('expanded');
+  }
+}
+
+export function clearSelectedSpan() {
+  setSelectedSpanIDRaw(null);
+  setSelectedSpanDataRaw(null);
 }
 
 // ── Left panel (agents) ──
@@ -91,7 +123,8 @@ export function toggleRightPanel() {
   setRightPanelState(current === 'collapsed' ? 'expanded' : 'collapsed');
 }
 
-// ── Left panel tab (agents, runs, traces) ──
+// ── Left panel tab (agents, traces) ──
+// Note: 'runs' kept in type for localStorage backwards compat — falls back to 'agents'.
 
 export type LeftPanelTab = 'agents' | 'runs' | 'traces';
 
@@ -100,7 +133,7 @@ const LEFT_TAB_KEY = 'agentops:leftPanelTab';
 function loadLeftTabState(): LeftPanelTab {
   try {
     const raw = localStorage.getItem(LEFT_TAB_KEY);
-    if (raw === 'agents' || raw === 'runs' || raw === 'traces') return raw;
+    if (raw === 'agents' || raw === 'traces') return raw;
   } catch { /* ignore */ }
   return 'agents';
 }
