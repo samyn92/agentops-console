@@ -8,6 +8,7 @@ import { getSelectedContext, clearContextItems } from './resources';
 import type {
   FEPEvent,
   Usage,
+  ContextBudget,
   ToolMetadata,
   RuntimeMessage,
   RuntimeMessagePart,
@@ -31,6 +32,7 @@ interface AgentChatState {
   totalUsage: ReturnType<typeof createSignal<Usage | null>>;
   lastStepUsage: ReturnType<typeof createSignal<Usage | null>>;
   activeModel: ReturnType<typeof createSignal<string | null>>;
+  contextBudget: ReturnType<typeof createSignal<ContextBudget | null>>;
   activeText: ReturnType<typeof createSignal<{ id: string; content: string } | null>>;
   activeReasoning: ReturnType<typeof createSignal<{ id: string; content: string } | null>>;
   activeToolInput: ReturnType<typeof createSignal<{ id: string; toolName: string; args: string } | null>>;
@@ -78,6 +80,7 @@ function getOrCreateState(key: string): AgentChatState {
       totalUsage: createSignal<Usage | null>(null),
       lastStepUsage: createSignal<Usage | null>(null),
       activeModel: createSignal<string | null>(null),
+      contextBudget: createSignal<ContextBudget | null>(null),
       activeText: createSignal<{ id: string; content: string } | null>(null),
       activeReasoning: createSignal<{ id: string; content: string } | null>(null),
       activeToolInput: createSignal<{ id: string; toolName: string; args: string } | null>(null),
@@ -109,6 +112,7 @@ export const currentStep = () => currentState()?.currentStep[0]() ?? 0;
 export const totalUsage = () => currentState()?.totalUsage[0]() ?? null;
 export const lastStepUsage = () => currentState()?.lastStepUsage[0]() ?? null;
 export const activeModel = () => currentState()?.activeModel[0]() ?? null;
+export const contextBudget = () => currentState()?.contextBudget[0]() ?? null;
 export const activeText = () => currentState()?.activeText[0]() ?? null;
 export const activeReasoning = () => currentState()?.activeReasoning[0]() ?? null;
 export const activeToolInput = () => currentState()?.activeToolInput[0]() ?? null;
@@ -290,6 +294,7 @@ function handleFEPEvent(state: AgentChatState, key: string, event: FEPEvent) {
   const [, setUsage] = state.totalUsage;
   const [, setLastStep] = state.lastStepUsage;
   const [, setModel] = state.activeModel;
+  const [, setBudget] = state.contextBudget;
   const [, setATxt] = state.activeText;
   const [, setAReason] = state.activeReasoning;
   const [, setAToolIn] = state.activeToolInput;
@@ -302,6 +307,10 @@ function handleFEPEvent(state: AgentChatState, key: string, event: FEPEvent) {
       // Capture trace_id for the Traces panel / Run detail linking
       if (event.trace_id) {
         setTraceID(event.trace_id);
+      }
+      // Capture context budget snapshot for the UI gauge
+      if (event.context_budget) {
+        setBudget(event.context_budget);
       }
       // Use server timestamp (RFC3339 UTC) for the assistant message if available.
       if (event.timestamp) {
@@ -360,6 +369,10 @@ function handleFEPEvent(state: AgentChatState, key: string, event: FEPEvent) {
           finishReason: event.finish_reason || 'unknown',
           toolCallCount: event.tool_call_count || 0,
         });
+      }
+      // Update context budget with actual token data
+      if (event.context_budget) {
+        setBudget(event.context_budget);
       }
       break;
 

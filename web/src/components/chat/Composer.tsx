@@ -1,11 +1,11 @@
 // Composer — input area with send/stop/steer functionality
 import { createSignal, Show, createMemo, createEffect, For, onCleanup } from 'solid-js';
-import { streaming } from '../../stores/chat';
+import { streaming, contextBudget } from '../../stores/chat';
 import { sendMessage, abortStream, steerAgent, setWindowSize, clearWorkingMemory } from '../../stores/chat';
 import { selectedAgent, getAgentStatus, getAgentRuntimeStatus } from '../../stores/agents';
 import { selectedContextItems, removeContextItem, selectedContextCount, clearContextItems } from '../../stores/resources';
 import { resourceContextKey } from '../../types/api';
-import type { ResourceContext } from '../../types';
+import type { ResourceContext, ContextBudget as ContextBudgetType } from '../../types';
 
 // ── Sliding window indicator (clickable — opens config popover) ──
 
@@ -151,6 +151,135 @@ function SlidingWindowIndicator(props: { messages: number; windowSize: number })
         </div>
       </Show>
     </span>
+  );
+}
+
+// ── Context window usage indicator ──
+
+function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return String(n);
+}
+
+function ContextUsageIndicator(props: { budget: ContextBudgetType }) {
+  const [open, setOpen] = createSignal(false);
+
+  const usedTokens = createMemo(() => {
+    const b = props.budget;
+    // Prefer actual tokens (from API response) over estimates
+    return b.actual_input_tokens > 0
+      ? b.actual_input_tokens
+      : b.system_prompt_tokens + b.tool_tokens + b.memory_context_tokens + b.conversation_tokens + b.prompt_tokens;
+  });
+
+  const pct = createMemo(() => {
+    if (props.budget.context_window <= 0) return 0;
+    return Math.min((usedTokens() / props.budget.context_window) * 100, 100);
+  });
+
+  const barColor = createMemo(() => {
+    const p = pct();
+    if (p < 50) return 'bg-accent';
+    if (p < 75) return 'bg-warning';
+    return 'bg-error';
+  });
+
+  const textColor = createMemo(() => {
+    const p = pct();
+    if (p < 50) return 'text-text-muted/60';
+    if (p < 75) return 'text-warning';
+    return 'text-error';
+  });
+
+  // Close popover on outside click
+  let containerRef: HTMLSpanElement | undefined;
+  function handleDocClick(e: MouseEvent) {
+    if (containerRef && !containerRef.contains(e.target as Node)) {
+      setOpen(false);
+    }
+  }
+  createEffect(() => {
+    if (open()) document.addEventListener('mousedown', handleDocClick);
+    else document.removeEventListener('mousedown', handleDocClick);
+  });
+  onCleanup(() => document.removeEventListener('mousedown', handleDocClick));
+
+  return (
+    <span ref={containerRef} class="relative inline-flex items-center">
+      <button
+        class={`inline-flex items-center gap-1.5 ${textColor()} hover:text-text-secondary transition-colors cursor-pointer`}
+        onClick={() => setOpen(!open())}
+        title="Context window usage — click for details"
+      >
+        {/* Mini bar */}
+        <span class="inline-flex items-center w-8 h-1.5 bg-surface-2 rounded-full overflow-hidden">
+          <span
+            class={`h-full rounded-full transition-all ${barColor()}`}
+            style={{ width: `${pct()}%` }}
+          />
+        </span>
+        <span class="text-[11px] font-mono tabular-nums select-none">
+          {pct().toFixed(0)}%
+        </span>
+      </button>
+
+      <Show when={open()}>
+        <div class="absolute bottom-full left-0 mb-2 bg-surface border border-border rounded-lg shadow-lg p-3 w-56 z-50">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs text-text-secondary font-medium">Context window</span>
+            <span class="text-xs font-mono tabular-nums text-text-muted">
+              {formatTokens(usedTokens())} / {formatTokens(props.budget.context_window)}
+            </span>
+          </div>
+
+          {/* Full-width bar */}
+          <div class="w-full h-2 bg-surface-2 rounded-full overflow-hidden mb-3">
+            <div
+              class={`h-full rounded-full transition-all ${barColor()}`}
+              style={{ width: `${pct()}%` }}
+            />
+          </div>
+
+          {/* Breakdown */}
+          <div class="space-y-1.5 text-[11px]">
+            <BudgetRow label="System prompt" tokens={props.budget.system_prompt_tokens} total={props.budget.context_window} />
+            <BudgetRow label="Tools" tokens={props.budget.tool_tokens} total={props.budget.context_window} />
+            <BudgetRow label="Memory context" tokens={props.budget.memory_context_tokens} total={props.budget.context_window} />
+            <BudgetRow label="Conversation" tokens={props.budget.conversation_tokens} total={props.budget.context_window} />
+            <BudgetRow label="User prompt" tokens={props.budget.prompt_tokens} total={props.budget.context_window} />
+            <div class="border-t border-border-subtle pt-1.5 mt-1.5">
+              <div class="flex justify-between text-text-secondary">
+                <span>Available</span>
+                <span class="font-mono tabular-nums">
+                  {formatTokens(Math.max(0, props.budget.context_window - usedTokens()))}
+                </span>
+              </div>
+            </div>
+            <Show when={props.budget.cache_read_tokens > 0}>
+              <div class="flex justify-between text-text-muted/60">
+                <span>Cache hits</span>
+                <span class="font-mono tabular-nums text-accent/70">
+                  {formatTokens(props.budget.cache_read_tokens)}
+                </span>
+              </div>
+            </Show>
+          </div>
+        </div>
+      </Show>
+    </span>
+  );
+}
+
+function BudgetRow(props: { label: string; tokens: number; total: number }) {
+  const pct = () => props.total > 0 ? (props.tokens / props.total * 100).toFixed(1) : '0';
+  return (
+    <div class="flex justify-between text-text-muted">
+      <span>{props.label}</span>
+      <span class="font-mono tabular-nums">
+        {formatTokens(props.tokens)} <span class="text-text-muted/40">({pct()}%)</span>
+      </span>
+    </div>
   );
 }
 
@@ -450,7 +579,7 @@ export default function Composer(props: ComposerProps) {
 
           {/* Bottom bar — hints inside the container */}
           <div class="flex items-center justify-between px-4 pb-2.5 pt-0">
-            <span class="text-[11px] text-text-muted/50">
+            <span class="inline-flex items-center gap-3 text-[11px] text-text-muted/50">
               <Show when={streaming() && mode() !== 'steer'}>
                 <kbd class="px-1.5 py-0.5 bg-surface rounded-md text-[10px] text-text-muted/60 border border-border-subtle/50">Esc</kbd>
                 <span class="ml-1">to stop</span>
@@ -472,6 +601,10 @@ export default function Composer(props: ComposerProps) {
                     </Show>
                   );
                 })()}
+              </Show>
+              {/* Context window usage — always visible when budget data exists */}
+              <Show when={contextBudget()}>
+                {(budget) => <ContextUsageIndicator budget={budget()} />}
               </Show>
             </span>
             <span class="text-[11px] text-text-muted/40">

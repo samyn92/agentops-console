@@ -11,6 +11,21 @@ export interface Usage {
   cache_read_tokens: number
 }
 
+/** Pre-flight context window budget breakdown from the runtime. */
+export interface ContextBudget {
+  context_window: number
+  budget_tokens: number
+  system_prompt_tokens: number
+  tool_tokens: number
+  memory_context_tokens: number
+  conversation_tokens: number
+  prompt_tokens: number
+  actual_input_tokens: number
+  actual_output_tokens: number
+  cache_read_tokens: number
+  cache_write_tokens: number
+}
+
 export type FinishReason =
   | "stop"
   | "length"
@@ -66,6 +81,7 @@ export interface AgentStartEvent extends FEPEventBase {
   session_id: string
   prompt: string
   trace_id?: string
+  context_budget?: ContextBudget
 }
 
 export interface AgentFinishEvent extends FEPEventBase {
@@ -96,6 +112,7 @@ export interface StepFinishEvent extends FEPEventBase {
   usage: Usage
   finish_reason: FinishReason
   tool_call_count: number
+  context_budget?: ContextBudget
 }
 
 export interface TextStartEvent extends FEPEventBase {
