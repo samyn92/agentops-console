@@ -4,7 +4,7 @@
 
 Go Backend-for-Frontend (BFF) + SolidJS Progressive Web App.
 
-- **BFF** (`cmd/console/main.go`) — chi router proxying K8s API, Engram, Tempo, and agent runtime pods. SSE multiplexer for real-time Fantasy Event Protocol streaming.
+- **BFF** (`cmd/console/main.go`) — chi router proxying K8s API, agentops-memory, Tempo, and agent runtime pods. SSE multiplexer for real-time Fantasy Event Protocol streaming.
 - **Frontend** (`web/`) — SolidJS 1.9 + Vite 7 + Tailwind 4 PWA.
 
 ### External Service Dependencies
@@ -14,7 +14,7 @@ The BFF proxies to these services (resolved via cluster DNS in dev):
 | Service | DNS / Env Override | Port | Purpose |
 |---------|-------------------|------|---------|
 | Agent runtimes | `{name}.{ns}.svc:4096` / `AGENT_URL_OVERRIDE` | 4096 | Prompt, stream, steer, abort, working memory |
-| Engram | `engram.agents.svc:7437` / `ENGRAM_URL_OVERRIDE` | 7437 | Memory observations, search, context, timeline |
+| Memory | `agentops-memory.agents.svc:7437` / `ENGRAM_URL_OVERRIDE` | 7437 | Memory observations, search, context, timeline |
 | Tempo | `tempo.observability.svc:3200` / `TEMPO_URL` | 3200 | Distributed traces |
 | Kubernetes API | In-cluster ServiceAccount | 443 | CRDs, pods, deployments, events |
 
@@ -23,7 +23,7 @@ The BFF proxies to these services (resolved via cluster DNS in dev):
 All REST under `/api/v1`:
 - `/agents` — list, get, status
 - `/agents/{ns}/{name}/prompt|stream|steer|abort` — proxy to agent runtime
-- `/agents/{ns}/{name}/memory/*` — proxy to Engram
+- `/agents/{ns}/{name}/memory/*` — proxy to agentops-memory
 - `/agentruns` — list, get, create
 - `/channels`, `/agenttools`, `/agentresources` — CRD browsing
 - `/traces` — proxy to Tempo

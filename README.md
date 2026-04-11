@@ -54,13 +54,13 @@ Go BFF Server (:8080)
   |     +-- GitHub API (token from K8s Secret)
   |     +-- GitLab API (token from K8s Secret)
   |
-  +-- Engram Proxy
+  +-- Memory Proxy
         +-- Memory observations CRUD
         +-- Search, context, timeline, stats
         +-- AI-assisted memory extraction
   |
   v
-Agent Runtimes (:4096)         Kubernetes API           Engram (:7437)
+Agent Runtimes (:4096)         Kubernetes API           agentops-memory (:7437)
   /prompt/stream (FEP SSE)      CRDs via informers       Memory REST API
   /permission/{pid}/reply        Pods, Deployments        Observations, sessions
   /question/{qid}/reply          Secrets (forge tokens)   Search, timeline
@@ -72,7 +72,7 @@ The Go server holds no domain logic. It proxies and aggregates:
 
 - All prompt/control requests forwarded to agent runtimes
 - Git forge API calls authenticated with credentials from K8s Secrets
-- Engram memory operations proxied with automatic project scoping
+- Memory operations proxied with automatic project scoping
 - CRD data served from the informer cache (no direct API server polling)
 - Real-time events from multiple agents multiplexed into a single SSE stream
 
@@ -124,7 +124,7 @@ Agents can ask structured questions via the `question` tool. The console renders
 
 ### Memory Management
 
-Full Engram memory UI for agents with `spec.memory` configured:
+Full agentops-memory UI for agents with `spec.memory` configured:
 
 - Browse and search observations (facts, summaries, decisions, patterns)
 - Create observations manually ("Remember this") or via AI-assisted extraction from conversations
@@ -266,7 +266,7 @@ helm uninstall agentops-console -n agent-system
 
 | Variable | Description |
 |----------|-------------|
-| `ENGRAM_URL_OVERRIDE` | Override Engram URL resolution (dev mode) |
+| `ENGRAM_URL_OVERRIDE` | Override memory service URL resolution (dev mode) |
 | `AGENT_URL_OVERRIDE` | Override agent service URL resolution (dev mode) |
 
 ### Helm Values
@@ -321,7 +321,7 @@ All endpoints are prefixed with `/api/v1`.
 | `POST` | `/agents/{ns}/{name}/permission/{pid}/reply` | Reply to permission gate |
 | `POST` | `/agents/{ns}/{name}/question/{qid}/reply` | Reply to question |
 
-### Memory (Engram)
+### Memory (agentops-memory)
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -427,7 +427,7 @@ agentops-console/
     handlers/
       handlers.go                # Agent, run, channel, tool, K8s endpoints
       agentresources.go          # Resource catalog + GitHub/GitLab forge proxy
-      engram.go                  # Engram memory proxy (URL resolution, project scoping)
+      engram.go                  # Memory proxy (URL resolution, project scoping)
       kubernetes.go              # Enhanced K8s resource browser (12 resource types)
     k8s/
       client.go                  # controller-runtime client + informer cache
@@ -455,7 +455,7 @@ agentops-console/
         agents.ts                #   Agent list + selection
         chat.ts                  #   Conversations, messages, streaming state
         events.ts                #   SSE connection management
-        memory.ts                #   Engram memory state
+        memory.ts                #   Memory service state
         resources.ts             #   Resource browser state
         runs.ts                  #   AgentRun state
         settings.ts              #   User preferences
@@ -536,10 +536,10 @@ go build -o console ./cmd/console/
 | Repository | Description |
 |------------|-------------|
 | [agentops-core](https://github.com/samyn92/agentops-core) | Kubernetes operator (CRDs, controllers, webhooks) |
-| [agentops-runtime](https://github.com/samyn92/agentops-runtime) | Agent runtime (Fantasy SDK + Engram memory) |
+| [agentops-runtime](https://github.com/samyn92/agentops-runtime) | Agent runtime (Fantasy SDK + agentops-memory) |
 | [agent-channels](https://github.com/samyn92/agent-channels) | Channel bridge images (Telegram, Slack, GitLab, etc.) |
 | [agent-tools](https://github.com/samyn92/agent-tools) | OCI tool/agent packaging CLI + tool packages |
-| [Engram](https://github.com/samyn92/engram) | Shared memory server (fork) |
+| [agentops-memory](https://github.com/samyn92/agentops-memory) | Purpose-built memory service (SQLite + FTS5 BM25) |
 | [Charm Fantasy SDK](https://github.com/charmbracelet/fantasy) | AI agent framework |
 
 ---
