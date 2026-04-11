@@ -76,11 +76,20 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
 
   // Flatten tree for rendering, then inject virtual tool call rows
   // from tool.call events on the root span when real tool.execute spans are missing.
+  // Also collapses redundant mcp.call children under their parent tool.execute.
   const flatSpans = createMemo((): SpanNode[] => {
     const result: SpanNode[] = [];
     function flatten(node: SpanNode) {
+      // Collapse: if this is a tool.execute span with a single mcp.call child,
+      // skip the child — the parent already shows all the info we need.
+      const collapseMcp = node.span.operationName.startsWith('tool.execute') &&
+        node.children.length === 1 &&
+        node.children[0].span.operationName.startsWith('mcp.call');
+
       result.push(node);
-      for (const child of node.children) flatten(child);
+      if (!collapseMcp) {
+        for (const child of node.children) flatten(child);
+      }
     }
     for (const root of spanTree()) flatten(root);
 
@@ -206,6 +215,55 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
       if (end > max) max = end;
     }
     return { min, max: max === min ? max + 1 : max };
+  });
+
+  // Time ruler tick marks (evenly spaced across the trace duration)
+  const timeRulerTicks = createMemo(() => {
+    const range = timeRange();
+    const totalMs = (range.max - range.min) / 1000;
+    if (totalMs <= 0) return [];
+
+    // Pick a nice tick interval
+    const targetTicks = 5;
+    const rawInterval = totalMs / targetTicks;
+    const niceIntervals = [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 10, 50, 100, 500, 1000, 5000, 10000, 30000, 60000];
+    const interval = niceIntervals.find((n) => n >= rawInterval) ?? rawInterval;
+
+    const ticks: Array<{ pct: number; label: string }> = [];
+    for (let ms = 0; ms <= totalMs; ms += interval) {
+      const pct = (ms / totalMs) * 100;
+      if (pct > 100) break;
+      ticks.push({ pct, label: formatDuration(ms) });
+    }
+    return ticks;
+  });
+
+  // Group spans into swimlanes by category for structured display
+  type Swimlane = { label: string; kind: 'agent' | 'tools' | 'steps'; spans: SpanNode[] };
+  const swimlanes = createMemo((): Swimlane[] => {
+    const spans = flatSpans();
+    const agent: SpanNode[] = [];
+    const tools: SpanNode[] = [];
+    const steps: SpanNode[] = [];
+
+    for (const node of spans) {
+      const op = node.span.operationName;
+      if (op === 'agent.step') {
+        steps.push(node);
+      } else if (
+        op.startsWith('tool.') || op.startsWith('mcp.') || node.isVirtualToolCall
+      ) {
+        tools.push(node);
+      } else {
+        agent.push(node);
+      }
+    }
+
+    const lanes: Swimlane[] = [];
+    if (agent.length > 0) lanes.push({ label: 'Agent Flow', kind: 'agent', spans: agent });
+    if (tools.length > 0) lanes.push({ label: 'Tools', kind: 'tools', spans: tools });
+    if (steps.length > 0) lanes.push({ label: 'Steps', kind: 'steps', spans: steps });
+    return lanes;
   });
 
   // Selected span data — reads from shared view store
@@ -399,98 +457,151 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
                   </div>
                 }
               >
-                {/* Waterfall header */}
+                {/* Waterfall header with time ruler */}
                 <div class="flex items-center gap-2 px-4 py-2 border-b border-border-subtle bg-surface/30">
                   <div class="text-[10px] font-semibold text-text-muted uppercase tracking-wider" style={{ width: '200px' }}>
                     Operation
                   </div>
-                  <div class="flex-1 text-[10px] font-semibold text-text-muted uppercase tracking-wider">
-                    Timeline
+                  <div class="flex-1 relative min-w-0" style={{ height: '16px' }}>
+                    <For each={timeRulerTicks()}>
+                      {(tick) => (
+                        <div
+                          class="absolute top-0 flex flex-col items-center"
+                          style={{ left: `${tick.pct}%`, transform: 'translateX(-50%)' }}
+                        >
+                          <span class="text-[9px] font-mono text-text-muted/50 tabular-nums whitespace-nowrap">
+                            {tick.label}
+                          </span>
+                        </div>
+                      )}
+                    </For>
                   </div>
                   <div class="text-[10px] font-semibold text-text-muted uppercase tracking-wider w-16 text-right">
                     Duration
                   </div>
                 </div>
 
-                <For each={flatSpans()}>
-                  {(node) => {
-                    const range = timeRange();
-                    const totalDuration = range.max - range.min;
-                    const leftPct = () => ((node.span.startTime - range.min) / totalDuration) * 100;
-                    const widthPct = () => Math.max(0.3, (node.span.duration / totalDuration) * 100);
-                    const durationMs = () => node.span.duration / 1000;
-                    const isError = () => node.span.status?.code === 2;
-                    const isSelected = () => selectedSpanID() === node.span.spanID;
-                    const isVirtual = () => !!node.isVirtualToolCall;
-                    const barColor = () => {
-                      if (isError()) return 'bg-error';
-                      const op = node.span.operationName;
-                      if (op.startsWith('gen_ai.')) return 'bg-info';
-                      if (op.startsWith('tool.') || op.startsWith('mcp.')) return 'bg-warning';
-                      if (op.startsWith('memory.')) return 'bg-success/70';
-                      if (op === 'agent.step') return 'bg-accent/40';
-                      return 'bg-accent';
-                    };
-
-                    const toolName = () => getTag(node.span, 'tool.name') || getTag(node.span, 'gen_ai.tool.name');
-                    const model = () => getTag(node.span, 'gen_ai.request.model');
-
-                      return (
-                        <div class="flex flex-col">
-                          <button
-                            class={`w-full flex items-center gap-2 px-4 py-1.5 transition-all duration-100 cursor-pointer border-l-2 rounded-none ${
-                              isSelected()
-                                ? 'bg-accent/8 border-l-accent'
-                                : 'border-l-transparent hover:bg-surface-hover/40'
-                            }`}
-                          onClick={() => {
-                            const isCurrentlySelected = selectedSpanID() === node.span.spanID;
-                            if (isCurrentlySelected) {
-                              clearSelectedSpan();
-                            } else {
-                              selectSpan(node.span.spanID, node.span, processes());
-                            }
-                          }}
-                        >
-                          {/* Operation name */}
-                          <div
-                            class="flex-shrink-0 text-[11px] font-mono truncate text-left"
-                            style={{ width: '200px', 'padding-left': `${node.depth * 14}px` }}
-                          >
-                            <span class={`${isError() ? 'text-error' : isSelected() ? 'text-text' : 'text-text-secondary'}`}>
-                              {spanDisplayName(node.span.operationName, toolName(), model())}
-                            </span>
-                          </div>
-
-                          {/* Waterfall bar */}
-                          <div class="flex-1 h-5 relative min-w-0">
-                            <div
-                              class={`absolute top-1 h-3 rounded-[3px] transition-all duration-100 ${barColor()} ${
-                                isVirtual()
-                                  ? 'opacity-40'
-                                  : isSelected()
-                                    ? 'opacity-100 shadow-sm'
-                                    : 'opacity-75 hover:opacity-95'
-                              }`}
-                              style={{
-                                left: `${leftPct()}%`,
-                                width: `${widthPct()}%`,
-                                'min-width': '3px',
-                                ...(isVirtual() ? { 'background-image': 'repeating-linear-gradient(90deg, transparent, transparent 3px, rgba(0,0,0,0.12) 3px, rgba(0,0,0,0.12) 6px)' } : {}),
-                              }}
-                            />
-                          </div>
-
-                          {/* Duration */}
-                          <span class={`flex-shrink-0 text-[10px] font-mono w-16 text-right tabular-nums ${
-                            isSelected() ? 'text-text-secondary' : 'text-text-muted'
-                          }`}>
-                            {formatDuration(durationMs())}
-                          </span>
-                        </button>
+                {/* Swimlane groups */}
+                <For each={swimlanes()}>
+                  {(lane) => (
+                    <div class="border-b border-border-subtle/50 last:border-b-0">
+                      {/* Swimlane header */}
+                      <div class="flex items-center gap-2 px-4 py-1.5 bg-surface/20">
+                        <div class={`w-1 h-3 rounded-full ${
+                          lane.kind === 'agent' ? 'bg-accent/60' :
+                          lane.kind === 'tools' ? 'bg-warning/60' :
+                          'bg-accent/30'
+                        }`} />
+                        <span class="text-[9px] font-semibold text-text-muted/70 uppercase tracking-widest">
+                          {lane.label}
+                        </span>
+                        <span class="text-[9px] text-text-muted/40 font-mono">{lane.spans.length}</span>
                       </div>
-                    );
-                  }}
+
+                      {/* Spans within this swimlane */}
+                      <For each={lane.spans}>
+                        {(node) => {
+                          const range = timeRange();
+                          const totalDuration = range.max - range.min;
+                          const leftPct = () => ((node.span.startTime - range.min) / totalDuration) * 100;
+                          const widthPct = () => Math.max(0.3, (node.span.duration / totalDuration) * 100);
+                          const durationMs = () => node.span.duration / 1000;
+                          const isError = () => node.span.status?.code === 2;
+                          const isSelected = () => selectedSpanID() === node.span.spanID;
+                          const isVirtual = () => !!node.isVirtualToolCall;
+                          const isTiny = () => widthPct() < 5;
+                          const barColor = () => {
+                            if (isError()) return 'bg-error';
+                            const op = node.span.operationName;
+                            if (op.startsWith('gen_ai.')) return 'bg-info';
+                            if (op.startsWith('tool.') || op.startsWith('mcp.')) return 'bg-warning';
+                            if (op.startsWith('memory.')) return 'bg-success/70';
+                            if (op === 'agent.step') return 'bg-accent/40';
+                            return 'bg-accent';
+                          };
+
+                          const toolName = () => getTag(node.span, 'tool.name') || getTag(node.span, 'gen_ai.tool.name');
+                          const model = () => getTag(node.span, 'gen_ai.request.model');
+
+                          // Compute indent relative to lane (tools and steps are flat, agent flow keeps tree depth)
+                          const indent = () => lane.kind === 'agent' ? node.depth * 14 : 0;
+
+                          return (
+                            <button
+                              class={`w-full flex items-center gap-2 px-4 py-1.5 transition-all duration-100 cursor-pointer border-l-2 rounded-none ${
+                                isSelected()
+                                  ? 'bg-accent/8 border-l-accent'
+                                  : 'border-l-transparent hover:bg-surface-hover/40'
+                              }`}
+                              onClick={() => {
+                                const isCurrentlySelected = selectedSpanID() === node.span.spanID;
+                                if (isCurrentlySelected) {
+                                  clearSelectedSpan();
+                                } else {
+                                  selectSpan(node.span.spanID, node.span, processes());
+                                }
+                              }}
+                            >
+                              {/* Operation name */}
+                              <div
+                                class="flex-shrink-0 text-[11px] font-mono truncate text-left"
+                                style={{ width: '200px', 'padding-left': `${indent()}px` }}
+                              >
+                                <span class={`${isError() ? 'text-error' : isSelected() ? 'text-text' : 'text-text-secondary'}`}>
+                                  {spanDisplayName(node.span.operationName, toolName(), model())}
+                                </span>
+                              </div>
+
+                              {/* Waterfall bar with time ruler grid lines */}
+                              <div class="flex-1 h-5 relative min-w-0">
+                                {/* Grid lines aligned with time ruler ticks */}
+                                <For each={timeRulerTicks()}>
+                                  {(tick) => (
+                                    <div
+                                      class="absolute top-0 bottom-0 border-l border-border-subtle/20"
+                                      style={{ left: `${tick.pct}%` }}
+                                    />
+                                  )}
+                                </For>
+                                {/* The bar */}
+                                <div
+                                  class={`absolute top-1 h-3 rounded-[3px] transition-all duration-100 ${barColor()} ${
+                                    isVirtual()
+                                      ? 'opacity-40'
+                                      : isSelected()
+                                        ? 'opacity-100 shadow-sm'
+                                        : 'opacity-75 hover:opacity-95'
+                                  }`}
+                                  style={{
+                                    left: `${leftPct()}%`,
+                                    width: `${widthPct()}%`,
+                                    'min-width': '3px',
+                                    ...(isVirtual() ? { 'background-image': 'repeating-linear-gradient(90deg, transparent, transparent 3px, rgba(0,0,0,0.12) 3px, rgba(0,0,0,0.12) 6px)' } : {}),
+                                  }}
+                                />
+                                {/* Duration label next to tiny bars */}
+                                <Show when={isTiny()}>
+                                  <span
+                                    class="absolute top-[3px] text-[9px] font-mono text-text-muted/60 tabular-nums whitespace-nowrap"
+                                    style={{ left: `${Math.min(leftPct() + widthPct() + 0.5, 95)}%` }}
+                                  >
+                                    {formatDuration(durationMs())}
+                                  </span>
+                                </Show>
+                              </div>
+
+                              {/* Duration */}
+                              <span class={`flex-shrink-0 text-[10px] font-mono w-16 text-right tabular-nums ${
+                                isSelected() ? 'text-text-secondary' : 'text-text-muted'
+                              }`}>
+                                {formatDuration(durationMs())}
+                              </span>
+                            </button>
+                          );
+                        }}
+                      </For>
+                    </div>
+                  )}
                 </For>
 
                 {/* Legend */}

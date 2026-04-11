@@ -25,7 +25,7 @@ export default function TracesPanel() {
     () => refetchTrigger(),
     async () => {
       try {
-        return await tracesAPI.search({ limit: 50 });
+        return await tracesAPI.search({ limit: 200 });
       } catch {
         return { traces: [] };
       }
@@ -78,20 +78,29 @@ export default function TracesPanel() {
       }
     }
 
-    // Sort roots newest-first
+    // Sort roots newest-first with traceID tiebreaker for fully deterministic order.
+    // Uses string comparison on nanosecond timestamps — parseInt loses precision
+    // on 19-digit values (JS Number has ~15-16 significant digits), which caused
+    // unstable/random ordering on refresh.
     roots.sort((a, b) => {
-      const aT = parseInt(a.trace.startTimeUnixNano || '0');
-      const bT = parseInt(b.trace.startTimeUnixNano || '0');
-      return bT - aT;
+      const aT = a.trace.startTimeUnixNano || '0';
+      const bT = b.trace.startTimeUnixNano || '0';
+      // Compare by length first (longer = larger number), then lexicographic.
+      if (aT.length !== bT.length) return bT.length - aT.length;
+      if (bT !== aT) return bT < aT ? -1 : 1;
+      // Tiebreaker: traceID for deterministic order when timestamps are equal
+      return a.trace.traceID < b.trace.traceID ? -1 : a.trace.traceID > b.trace.traceID ? 1 : 0;
     });
 
     // Sort children within each parent by start time (oldest first = execution order)
     for (const node of byID.values()) {
       if (node.children.length > 1) {
         node.children.sort((a, b) => {
-          const aT = parseInt(a.trace.startTimeUnixNano || '0');
-          const bT = parseInt(b.trace.startTimeUnixNano || '0');
-          return aT - bT;
+          const aT = a.trace.startTimeUnixNano || '0';
+          const bT = b.trace.startTimeUnixNano || '0';
+          if (aT.length !== bT.length) return aT.length - bT.length;
+          if (aT !== bT) return aT < bT ? -1 : 1;
+          return a.trace.traceID < b.trace.traceID ? -1 : a.trace.traceID > b.trace.traceID ? 1 : 0;
         });
       }
     }

@@ -15,6 +15,7 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -109,6 +110,13 @@ func (h *Handlers) SearchTraces(w http.ResponseWriter, r *http.Request) {
 		q.Set("end", strconv.FormatInt(now.Unix(), 10))
 		q.Set("start", strconv.FormatInt(now.Add(-72*time.Hour).Unix(), 10))
 	}
+	// Enforce a minimum limit so Tempo returns all traces within the time
+	// range. Tempo searches blocks in parallel and returns the first N it
+	// finds — with a low limit the subset is non-deterministic across calls,
+	// causing the sidebar list to shuffle on every refresh.
+	if lim, _ := strconv.Atoi(q.Get("limit")); lim < 200 {
+		q.Set("limit", "200")
+	}
 	tempoURL = fmt.Sprintf("%s?%s", tempoURL, q.Encode())
 
 	httpClient := &http.Client{Timeout: 15 * time.Second}
@@ -170,6 +178,21 @@ func (h *Handlers) SearchTraces(w http.ResponseWriter, r *http.Request) {
 		}
 		enriched = append(enriched, et)
 	}
+
+	// Sort traces newest-first (descending by StartTimeUnixNano) so the
+	// frontend sidebar always shows a stable, deterministic order.
+	// TraceID tiebreaker ensures identical timestamps sort deterministically.
+	sort.Slice(enriched, func(i, j int) bool {
+		a := enriched[i].StartTimeUnixNano
+		b := enriched[j].StartTimeUnixNano
+		if len(a) != len(b) {
+			return len(a) > len(b) // longer nanosecond string = larger number
+		}
+		if a != b {
+			return a > b // descending
+		}
+		return enriched[i].TraceID < enriched[j].TraceID // stable tiebreaker
+	})
 
 	result := enrichedSearchResponse{
 		Traces:  enriched,
