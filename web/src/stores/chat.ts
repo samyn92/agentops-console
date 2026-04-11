@@ -140,37 +140,6 @@ createEffect(() => {
   hydrateFromWorkingMemory(agent.namespace, agent.name);
 });
 
-/** Update the sliding window size on the runtime (live, no pod restart). */
-export async function setWindowSize(size: number) {
-  const agent = selectedAgent();
-  if (!agent) return;
-  try {
-    await conversationAPI.setWindowSize(agent.namespace, agent.name, size);
-    // Refresh health to pick up the new window_size
-    refreshAgentHealth();
-  } catch (err) {
-    console.error('Failed to set window size:', err);
-  }
-}
-
-/** Clear the agent's working memory (drops all messages, resets turn counter). */
-export async function clearWorkingMemory() {
-  const agent = selectedAgent();
-  if (!agent) return;
-  try {
-    await conversationAPI.clearWorkingMemory(agent.namespace, agent.name);
-    // Clear local chat messages for this agent too
-    const key = agentKey(agent.namespace, agent.name);
-    const state = agentStates.get(key);
-    if (state) {
-      state.messages[1]([]);
-    }
-    refreshAgentHealth();
-  } catch (err) {
-    console.error('Failed to clear working memory:', err);
-  }
-}
-
 // ── Streaming agents (for sidebar indicators) ──
 
 const [streamingAgentKeys, setStreamingAgentKeys] = createSignal<Set<string>>(new Set());
@@ -254,7 +223,7 @@ export async function sendMessage(prompt: string) {
     });
     capturedState.abortController = null;
     markStreaming(capturedKey, false);
-    // Refresh agent health after stream completes (updates sliding window gauge)
+    // Refresh agent health after stream completes (updates context usage)
     refreshAgentHealth();
   }
 }

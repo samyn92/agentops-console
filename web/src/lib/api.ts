@@ -111,15 +111,7 @@ export const conversation = {
   abort: (ns: string, name: string) =>
     del<{ ok: boolean }>(`/agents/${ns}/${name}/abort`),
 
-  /** Set sliding window size (live — no pod restart needed) */
-  setWindowSize: (ns: string, name: string, size: number) =>
-    patch<{ ok: boolean; window_size: number; messages: number }>(`/agents/${ns}/${name}/config/window-size`, { size }),
-
-  /** Clear working memory (drops all messages, resets turn counter) */
-  clearWorkingMemory: (ns: string, name: string) =>
-    del<{ ok: boolean; window_size: number; messages: number }>(`/agents/${ns}/${name}/working-memory`),
-
-  /** Get working memory messages (the current sliding window contents) */
+  /** Get working memory messages */
   getWorkingMemory: (ns: string, name: string) =>
     get<RuntimeMessage[]>(`/agents/${ns}/${name}/working-memory`),
 };
@@ -417,6 +409,8 @@ export const traces = {
     if (opts?.limit) params.set('limit', String(opts.limit));
     if (opts?.start) params.set('start', String(opts.start));
     if (opts?.end) params.set('end', String(opts.end));
+    // Cache-bust: prevent browser HTTP cache from serving stale trace results
+    params.set('_t', String(Date.now()));
     const qs = params.toString();
     return get<TempoSearchResponse>(`/traces${qs ? `?${qs}` : ''}`);
   },

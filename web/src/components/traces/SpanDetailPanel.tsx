@@ -108,7 +108,7 @@ export default function SpanDetailPanel(props: SpanDetailPanelProps) {
         groups['Agent'].push(tag);
       } else if (tag.key.startsWith('tool.') || tag.key.startsWith('mcp.')) {
         groups['Tool'].push(tag);
-      } else if (tag.key.startsWith('engram.')) {
+      } else if (tag.key.startsWith('memory.')) {
         groups['Memory'].push(tag);
       } else {
         groups['Other'].push(tag);
@@ -542,7 +542,7 @@ function TagRow(props: { key: string; value: unknown; type: string }) {
     if (k.startsWith('gen_ai.')) return k.slice(7);
     if (k.startsWith('agent.')) return k.slice(6);
     if (k.startsWith('tool.')) return k.slice(5);
-    if (k.startsWith('engram.')) return k.slice(7);
+    if (k.startsWith('memory.')) return k.slice(7);
     if (k.startsWith('step.')) return k.slice(5);
     if (k.startsWith('delegation.')) return k.slice(11);
     return k;

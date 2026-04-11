@@ -2,9 +2,10 @@
 // Shows recent traces across all agents, grouped into a delegation tree:
 // parent traces are top-level, child (delegated) traces are nested underneath.
 // Clicking a trace opens the full TraceDetailView in the center stage.
-import { createSignal, createResource, createMemo, Show, For } from 'solid-js';
+import { createSignal, createResource, createMemo, Show, For, onMount, onCleanup } from 'solid-js';
 import { traces as tracesAPI } from '../../lib/api';
 import { showTraceDetail, selectedTraceForDetail } from '../../stores/view';
+import { onResourceChanged } from '../../stores/events';
 import type { TraceSearchResult } from '../../types';
 import Spinner from '../shared/Spinner';
 import { relativeTime } from '../../lib/format';
@@ -30,6 +31,28 @@ export default function TracesPanel() {
       }
     },
   );
+
+  // Auto-refetch when K8s resources change (new AgentRuns = new traces)
+  const unsubscribe = onResourceChanged(() => {
+    setRefetchTrigger((n) => n + 1);
+  });
+
+  // Poll every 30s as a fallback (traces from Tempo may lag behind K8s events)
+  let pollInterval: ReturnType<typeof setInterval> | null = null;
+
+  onMount(() => {
+    pollInterval = setInterval(() => {
+      setRefetchTrigger((n) => n + 1);
+    }, 30_000);
+  });
+
+  onCleanup(() => {
+    unsubscribe();
+    if (pollInterval) {
+      clearInterval(pollInterval);
+      pollInterval = null;
+    }
+  });
 
   // Build delegation tree from flat trace list.
   // Traces with parentTraceID are nested under their parent.
@@ -78,12 +101,12 @@ export default function TracesPanel() {
 
   return (
     <div class="flex flex-col h-full">
-      {/* Header with refresh */}
-      <div class="flex items-center gap-2 px-3 py-2 border-b border-border flex-shrink-0">
+      {/* Header */}
+      <div class="flex items-center gap-2 px-4 py-2.5 border-b border-border flex-shrink-0">
         <svg class="w-3.5 h-3.5 text-text-muted flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5" />
         </svg>
-        <span class="text-xs font-medium text-text-secondary flex-1">Traces</span>
+        <span class="text-[11px] font-semibold tracking-wide uppercase text-text-muted flex-1">Traces</span>
         <button
           class="p-1 rounded-md hover:bg-surface-hover text-text-muted hover:text-text transition-colors"
           onClick={() => { setRefetchTrigger((n) => n + 1); }}
@@ -107,17 +130,17 @@ export default function TracesPanel() {
           <Show
             when={traceTree().length > 0}
             fallback={
-              <div class="flex flex-col items-center justify-center py-12 px-4 text-center">
-                <svg class="w-8 h-8 text-text-muted/30 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div class="flex flex-col items-center justify-center py-16 px-6 text-center">
+                <svg class="w-7 h-7 text-text-muted/20 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5" />
                 </svg>
-                <p class="text-xs text-text-muted">
+                <p class="text-[11px] text-text-muted leading-relaxed">
                   No traces yet. Traces appear after agents process their first prompts.
                 </p>
               </div>
             }
           >
-            <div class="flex flex-col p-1.5 gap-px">
+            <div class="flex flex-col px-2 py-1.5 gap-0.5">
               <For each={traceTree()}>
                 {(node) => <TraceTreeItem node={node} depth={0} />}
               </For>
@@ -202,39 +225,47 @@ function TraceListItem(props: {
 
   return (
     <button
-      class={`trace-list-item w-full text-left transition-all duration-150 ${
+      class={`trace-item group w-full text-left rounded-md ${
         isActive()
-          ? 'trace-list-item--active'
-          : 'hover:bg-surface-hover/60'
+          ? 'trace-item--active'
+          : 'hover:bg-surface-hover/50'
       }`}
-      style={{ "padding-left": `${4 + indent()}px` }}
+      style={{ "padding-left": `${12 + indent()}px` }}
       classList={{
-        'py-2.5 pr-4': true,
+        'py-2 pr-3': true,
       }}
       onClick={props.onClick}
     >
-      {/* Row 1: connector + dot + name + duration */}
-      <div class="flex items-center gap-1.5">
+      {/* Line 1: agent name row */}
+      <div class="flex items-center gap-2 min-w-0">
         {/* Tree connector for child nodes */}
         <Show when={isChild()}>
-          <svg class="w-3 h-3 text-text-muted/30 flex-shrink-0" viewBox="0 0 12 12">
-            <path d="M2 0 L2 6 L10 6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+          <svg class="w-3 h-3 text-text-muted/25 flex-shrink-0 -ml-0.5" viewBox="0 0 12 12">
+            <path d="M3 0 L3 6 L10 6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
           </svg>
         </Show>
 
-        {/* Mode indicator dot */}
+        {/* Status dot */}
         <div class={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isTask() ? 'bg-warning' : 'bg-accent'}`} />
 
         {/* Agent name */}
-        <span class={`text-xs font-medium truncate flex-1 ${
+        <span class={`text-[13px] leading-tight font-medium truncate ${
           isActive() ? 'text-text' : isChild() ? 'text-text-secondary' : 'text-text'
         }`}>
           {agentName()}
         </span>
 
-        {/* Duration — right-aligned */}
+        {/* Badge */}
+        <Show when={isTask()}>
+          <span class="trace-badge trace-badge--task">task</span>
+        </Show>
+
+        {/* Spacer */}
+        <span class="flex-1 min-w-2" />
+
+        {/* Duration */}
         <Show when={duration()}>
-          <span class={`text-[10px] font-mono tabular-nums flex-shrink-0 ml-auto ${
+          <span class={`text-[11px] font-mono tabular-nums flex-shrink-0 ${
             isActive() ? 'text-text-secondary' : 'text-text-muted'
           }`}>
             {duration()}
@@ -242,40 +273,36 @@ function TraceListItem(props: {
         </Show>
       </div>
 
-      {/* Row 2: badges + trace ID + time */}
+      {/* Line 2: metadata */}
       <div
-        class="flex items-center gap-1 mt-1"
-        style={{ "margin-left": isChild() ? '18px' : '12px' }}
+        class="flex items-center gap-1.5 mt-1"
+        style={{ "margin-left": isChild() ? '20px' : '14px' }}
       >
-        <Show when={isTask()}>
-          <span class="trace-badge trace-badge--task">task</span>
-        </Show>
+        <span class="text-[11px] font-mono text-text-muted/50">{props.trace.traceID.slice(0, 8)}</span>
+
         <Show when={isDelegated() && !isChild()}>
           <span class="trace-badge trace-badge--delegated">delegated</span>
         </Show>
-        <Show when={props.trace.runSource === 'console'}>
-          <span class="trace-badge">console</span>
+
+        <Show when={props.trace.runSource === 'console' || props.trace.runSource === 'channel' || props.trace.runSource === 'schedule'}>
+          <span class="text-[11px] text-text-muted/30">&middot;</span>
+          <span class="text-[11px] text-text-muted/50">{props.trace.runSource}</span>
         </Show>
-        <Show when={props.trace.runSource === 'channel'}>
-          <span class="trace-badge">channel</span>
-        </Show>
-        <Show when={props.trace.runSource === 'schedule'}>
-          <span class="trace-badge">schedule</span>
-        </Show>
-        <span class="text-[10px] font-mono text-text-muted/40 truncate">{props.trace.traceID.slice(0, 8)}</span>
+
         <span class="flex-1" />
+
         <Show when={startTime()}>
-          <span class="text-[10px] text-text-muted tabular-nums">{relativeTime(startTime())}</span>
+          <span class="text-[11px] text-text-muted/50 tabular-nums">{relativeTime(startTime())}</span>
         </Show>
       </div>
 
       {/* Parent agent attribution for orphaned delegated traces */}
       <Show when={isDelegated() && props.trace.parentAgent && !isChild()}>
-        <div class="flex items-center gap-1 mt-0.5" style={{ "margin-left": '12px' }}>
-          <svg class="w-2.5 h-2.5 text-text-muted/30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 11l5-5m0 0l5 5m-5-5v12" />
+        <div class="flex items-center gap-1.5 mt-0.5" style={{ "margin-left": '14px' }}>
+          <svg class="w-2.5 h-2.5 text-text-muted/30" viewBox="0 0 10 10" fill="none" stroke="currentColor">
+            <path d="M5 8 L5 2 M2.5 4.5 L5 2 L7.5 4.5" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
           </svg>
-          <span class="text-[9px] text-text-muted/50 font-mono">from {props.trace.parentAgent}</span>
+          <span class="text-[11px] text-text-muted/40 font-mono">{props.trace.parentAgent}</span>
         </div>
       </Show>
     </button>

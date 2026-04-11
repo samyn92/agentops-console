@@ -589,7 +589,6 @@ export interface RuntimeStatus {
   model: string
   steps: number
   messages?: number
-  window_size?: number
   turns?: number
   memory_enabled?: boolean
 }

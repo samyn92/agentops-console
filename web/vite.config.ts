@@ -53,6 +53,11 @@ export default defineConfig({
       workbox: {
         runtimeCaching: [
           {
+            // Traces and SSE endpoints — always network, never cache
+            urlPattern: /\/api\/v1\/(traces|agents\/events|watch)/i,
+            handler: 'NetworkOnly',
+          },
+          {
             urlPattern: /\/api\/v1\/.*/i,
             handler: 'NetworkFirst',
             options: {

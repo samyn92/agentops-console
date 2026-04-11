@@ -176,6 +176,7 @@ func (h *Handlers) SearchTraces(w http.ResponseWriter, r *http.Request) {
 		Metrics: tempoResp.Metrics,
 	}
 
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 	writeJSON(w, http.StatusOK, result)
 }
 

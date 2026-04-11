@@ -427,7 +427,7 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
                       const op = node.span.operationName;
                       if (op.startsWith('gen_ai.')) return 'bg-info';
                       if (op.startsWith('tool.') || op.startsWith('mcp.')) return 'bg-warning';
-                      if (op.startsWith('engram.')) return 'bg-success/70';
+                      if (op.startsWith('memory.')) return 'bg-success/70';
                       if (op === 'agent.step') return 'bg-accent/40';
                       return 'bg-accent';
                     };
@@ -498,7 +498,7 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
                   <LegendDot color="bg-accent" label="agent" />
                   <LegendDot color="bg-info" label="gen_ai" />
                   <LegendDot color="bg-warning" label="tool / mcp" />
-                  <LegendDot color="bg-success/70" label="engram" />
+                  <LegendDot color="bg-success/70" label="memory" />
                   <LegendDot color="bg-error" label="error" />
                 </div>
               </Show>
@@ -631,7 +631,7 @@ function spanDisplayName(operation: string, toolName?: string, model?: string): 
     if (toolName) return `mcp:${toolName}`;
     return 'mcp';
   }
-  if (operation.startsWith('engram.')) return operation.slice(7).replace('_', ' ');
+  if (operation.startsWith('memory.')) return operation.slice(7).replace('_', ' ');
   return operation;
 }
 

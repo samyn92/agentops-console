@@ -2274,19 +2274,16 @@ a.run-card__branch-tag--link:hover .run-card__branch-tag-extlink {
 
 /* ── Trace list items ── */
 
-.trace-list-item {
-  border-left: 2px solid transparent;
+.trace-item {
   transition:
-    background-color 150ms ease,
-    border-color 150ms ease;
+    background-color 120ms ease;
 }
 
-.trace-list-item--active {
+.trace-item--active {
   background: var(--accent-muted);
-  border-left-color: var(--accent);
 }
 
-.trace-list-item--active:hover {
+.trace-item--active:hover {
   background: var(--accent-muted);
 }
 
@@ -2295,24 +2292,22 @@ a.run-card__branch-tag--link:hover .run-card__branch-tag-extlink {
 .trace-badge {
   display: inline-flex;
   align-items: center;
-  padding: 0 4px;
+  padding: 1px 5px;
   border-radius: 4px;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 500;
-  line-height: 16px;
+  line-height: 1;
   background: var(--bg-hover);
   color: var(--text-muted);
-  border: 1px solid var(--border-subtle);
+  flex-shrink: 0;
 }
 
 .trace-badge--task {
-  background: color-mix(in srgb, var(--warning) 8%, transparent);
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
   color: var(--warning);
-  border-color: color-mix(in srgb, var(--warning) 15%, transparent);
 }
 
 .trace-badge--delegated {
-  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
   color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 15%, transparent);
 }

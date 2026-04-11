@@ -159,7 +159,7 @@ export function getAgentStatus(ns: string, name: string) {
 
 /**
  * Get the RuntimeStatus for a specific agent (from the last health poll).
- * Used by the Composer for the sliding window gauge.
+ * Used by the Composer for the context usage indicator.
  */
 export function getAgentRuntimeStatus(ns: string, name: string): RuntimeStatus | null {
   const key = `${ns}/${name}`;

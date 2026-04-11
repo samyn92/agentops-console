@@ -182,26 +182,6 @@ func (c *Client) GetAgent(ctx context.Context, namespace, name string) (*agentsv
 	return agent, nil
 }
 
-// PatchAgentMemoryWindowSize patches the Agent CR's spec.memory.windowSize field.
-func (c *Client) PatchAgentMemoryWindowSize(ctx context.Context, namespace, name string, windowSize int) error {
-	agent := &agentsv1alpha1.Agent{}
-	if err := c.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, agent); err != nil {
-		return fmt.Errorf("get agent: %w", err)
-	}
-
-	patch := client.MergeFrom(agent.DeepCopy())
-
-	if agent.Spec.Memory == nil {
-		agent.Spec.Memory = &agentsv1alpha1.MemorySpec{}
-	}
-	agent.Spec.Memory.WindowSize = windowSize
-
-	if err := c.client.Patch(ctx, agent, patch); err != nil {
-		return fmt.Errorf("patch agent: %w", err)
-	}
-	return nil
-}
-
 // GetAgentServiceURL returns the URL to reach an agent's HTTP server.
 // Supports 4 modes: AGENT_URL_OVERRIDE (dev), KUBECTL_PROXY_URL (dev multi-agent),
 // dev mode ClusterIP lookup, and in-cluster DNS.

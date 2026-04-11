@@ -1,158 +1,11 @@
 // Composer — input area with send/stop/steer functionality
 import { createSignal, Show, createMemo, createEffect, For, onCleanup } from 'solid-js';
 import { streaming, contextBudget } from '../../stores/chat';
-import { sendMessage, abortStream, steerAgent, setWindowSize, clearWorkingMemory } from '../../stores/chat';
-import { selectedAgent, getAgentStatus, getAgentRuntimeStatus } from '../../stores/agents';
+import { sendMessage, abortStream, steerAgent } from '../../stores/chat';
+import { selectedAgent, getAgentStatus } from '../../stores/agents';
 import { selectedContextItems, removeContextItem, selectedContextCount, clearContextItems } from '../../stores/resources';
 import { resourceContextKey } from '../../types/api';
 import type { ResourceContext, ContextBudget as ContextBudgetType } from '../../types';
-
-// ── Sliding window indicator (clickable — opens config popover) ──
-
-function SlidingWindowIndicator(props: { messages: number; windowSize: number }) {
-  const [open, setOpen] = createSignal(false);
-  const [localSize, setLocalSize] = createSignal(props.windowSize);
-  const [localMessages, setLocalMessages] = createSignal(props.messages);
-  const [saving, setSaving] = createSignal(false);
-  const [clearing, setClearing] = createSignal(false);
-  let debounceTimer: ReturnType<typeof setTimeout> | undefined;
-  let sliderRef: HTMLInputElement | undefined;
-
-  // Sync local state when props change (e.g. after server confirms)
-  createEffect(() => {
-    setLocalMessages(props.messages);
-  });
-  createEffect(() => {
-    const ws = props.windowSize;
-    if (!open()) setLocalSize(ws);
-  });
-
-  // Keep slider DOM element in sync with localSize (SolidJS range input quirk)
-  createEffect(() => {
-    const val = localSize();
-    if (sliderRef) sliderRef.value = String(val);
-  });
-
-  const pct = createMemo(() => {
-    if (localSize() <= 0) return 0;
-    return Math.min((localMessages() / localSize()) * 100, 100);
-  });
-
-  const textColor = createMemo(() => {
-    const p = pct();
-    if (p < 75) return 'text-text-muted/60';
-    if (p < 90) return 'text-warning';
-    return 'text-error';
-  });
-
-  function handleSliderChange(val: number) {
-    setLocalSize(val);
-    setSaving(true);
-    clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(async () => {
-      try {
-        await setWindowSize(val);
-      } finally {
-        setSaving(false);
-      }
-    }, 300);
-  }
-
-  async function handleClear() {
-    setClearing(true);
-    setLocalMessages(0); // optimistic
-    try {
-      await clearWorkingMemory();
-    } finally {
-      setClearing(false);
-    }
-  }
-
-  // Close popover on outside click
-  let containerRef: HTMLSpanElement | undefined;
-  function handleDocClick(e: MouseEvent) {
-    if (containerRef && !containerRef.contains(e.target as Node)) {
-      setOpen(false);
-    }
-  }
-
-  createEffect(() => {
-    if (open()) {
-      document.addEventListener('mousedown', handleDocClick);
-    } else {
-      document.removeEventListener('mousedown', handleDocClick);
-    }
-  });
-
-  onCleanup(() => {
-    document.removeEventListener('mousedown', handleDocClick);
-    clearTimeout(debounceTimer);
-  });
-
-  return (
-    <span ref={containerRef} class="relative inline-flex items-center">
-      <button
-        class={`inline-flex items-center gap-1 ${textColor()} hover:text-text-secondary transition-colors cursor-pointer`}
-        onClick={() => setOpen(!open())}
-        title="Working memory — click to adjust"
-      >
-        <svg class="w-3 h-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
-          <line x1="2" y1="4" x2="14" y2="4" />
-          <line x1="2" y1="8" x2="14" y2="8" />
-          <line x1="2" y1="12" x2="14" y2="12" />
-        </svg>
-        <span class="text-[11px] select-none">
-          {localMessages()}/{localSize()}
-        </span>
-      </button>
-
-      <Show when={open()}>
-        <div class="absolute bottom-full left-0 mb-2 bg-surface border border-border rounded-lg shadow-lg p-3 w-52 z-50">
-          <div class="flex items-center justify-between mb-2">
-            <span class="text-xs text-text-secondary font-medium">Working memory</span>
-            <span class="text-xs font-mono tabular-nums text-text-muted">
-              {localMessages()}/{localSize()}
-              <Show when={saving()}>
-                <span class="text-accent ml-1 text-[10px]">saving</span>
-              </Show>
-            </span>
-          </div>
-          <input
-            ref={sliderRef}
-            type="range"
-            min="4"
-            max="100"
-            step="2"
-            value={localSize()}
-            onInput={(e) => handleSliderChange(parseInt(e.currentTarget.value))}
-            class="w-full h-1.5 bg-surface-2 rounded-full appearance-none cursor-pointer
-              [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5
-              [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-accent [&::-webkit-slider-thumb]:cursor-pointer
-              [&::-webkit-slider-thumb]:shadow-sm [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-surface
-              [&::-moz-range-thumb]:w-3.5 [&::-moz-range-thumb]:h-3.5 [&::-moz-range-thumb]:rounded-full
-              [&::-moz-range-thumb]:bg-accent [&::-moz-range-thumb]:cursor-pointer [&::-moz-range-thumb]:border-2
-              [&::-moz-range-thumb]:border-surface"
-          />
-          <div class="flex justify-between mt-1 text-[9px] text-text-muted/50">
-            <span>4</span>
-            <span>100</span>
-          </div>
-          <button
-            class={`w-full mt-2 pt-2 border-t border-border-subtle text-[11px] transition-colors text-center
-              ${localMessages() > 0
-                ? 'text-text-muted hover:text-error cursor-pointer'
-                : 'text-text-muted/30 cursor-default'
-              }`}
-            disabled={localMessages() === 0 || clearing()}
-            onClick={handleClear}
-          >
-            {clearing() ? 'Clearing...' : localMessages() === 0 ? 'Empty' : 'Clear memory'}
-          </button>
-        </div>
-      </Show>
-    </span>
-  );
-}
 
 // ── Context window usage indicator ──
 
@@ -492,12 +345,12 @@ export default function Composer(props: ComposerProps) {
 
         {/* Composer container — elevated surface with generous radius */}
         <div
-          class={`composer-input bg-surface-2 rounded-3xl border border-border-subtle overflow-hidden ${
+          class={`composer-input bg-surface-2 rounded-3xl border border-border-subtle ${
             isProcessing() ? 'composer-processing' : ''
           }`}
         >
           {/* Input row */}
-          <div class="flex items-end gap-2 px-4 py-3">
+          <div class="flex items-end gap-2 px-4 py-3 overflow-hidden rounded-t-3xl">
             {/* Steer mode indicator */}
             <Show when={streaming()}>
               <button
@@ -587,20 +440,6 @@ export default function Composer(props: ComposerProps) {
               <Show when={streaming() && mode() === 'steer'}>
                 <span class="text-accent/80 font-medium">Steer mode</span>
                 <span class="ml-1">— guide the agent's next action</span>
-              </Show>
-              <Show when={!streaming() && selectedAgent()}>
-                {(() => {
-                  const a = selectedAgent()!;
-                  const rs = getAgentRuntimeStatus(a.namespace, a.name);
-                  return (
-                    <Show when={rs?.window_size != null}>
-                      <SlidingWindowIndicator
-                        messages={rs?.messages ?? 0}
-                        windowSize={rs!.window_size!}
-                      />
-                    </Show>
-                  );
-                })()}
               </Show>
               {/* Context window usage — always visible when budget data exists */}
               <Show when={contextBudget()}>

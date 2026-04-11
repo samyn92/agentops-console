@@ -13,7 +13,6 @@ import SourceReference from './SourceReference';
 import ToolInputPreview from './ToolInputPreview';
 import { memoryEnabled } from '../../stores/memory';
 import RememberAction from './RememberAction';
-import { formatTime } from '../../lib/format';
 
 interface MessageBubbleProps {
   message: ChatMessage;
@@ -77,11 +76,6 @@ export default function MessageBubble(props: MessageBubbleProps) {
           <div class="chat-bubble-user px-3.5 py-2 text-[14px] leading-[20px] tracking-[0.25px]">
             {msg().content || ''}
           </div>
-          <Show when={msg().timestamp}>
-            <span class="chat-timestamp">
-              {formatTime(msg().timestamp)}
-            </span>
-          </Show>
         </div>
       </div>
     );
@@ -106,7 +100,7 @@ export default function MessageBubble(props: MessageBubbleProps) {
 
   const hasActiveToolInput = () => props.isLastAssistant && props.activeToolInput;
 
-  const hasFooter = () => !!msg().timestamp;
+  const hasFooter = () => msg().role === 'assistant' && memoryEnabled();
 
   return (
     <Show when={hasVisibleContent()}>
@@ -191,14 +185,9 @@ export default function MessageBubble(props: MessageBubbleProps) {
             />
           </Show>
 
-          {/* Footer row — timestamp + remember action */}
-          <Show when={hasFooter() || (msg().role === 'assistant' && memoryEnabled())}>
+          {/* Footer row — remember action */}
+          <Show when={hasFooter()}>
             <div class="flex items-center px-0.5 gap-2">
-              <Show when={msg().timestamp}>
-                <span class="chat-timestamp">
-                  {formatTime(msg().timestamp)}
-                </span>
-              </Show>
               <Show when={msg().role === 'assistant' && memoryEnabled()}>
                 <RememberAction message={msg()} />
               </Show>
