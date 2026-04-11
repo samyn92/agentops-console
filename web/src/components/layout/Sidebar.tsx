@@ -36,7 +36,7 @@ export default function Sidebar(props: SidebarProps) {
   // 60% agents, 40% runs by default.
   const [splitPct, setSplitPct] = createSignal(60);
   const [isSplitDragging, setIsSplitDragging] = createSignal(false);
-  let splitContainerRef: HTMLElement | undefined;
+  let splitContainerRef: HTMLDivElement | undefined;
 
   const isExpanded = () => leftPanelState() === 'expanded';
 
