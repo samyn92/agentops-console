@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -87,25 +88,25 @@ func proxyToEngram(
 	}
 
 	// Build URL with query parameters
-	url := engramURL + engramPath
+	targetURL := engramURL + engramPath
 
-	params := []string{}
+	qp := url.Values{}
 	// Add project param for endpoints that scope by project
 	needsProject := strings.HasSuffix(engramPath, "/recent") ||
 		engramPath == "/search" ||
 		engramPath == "/context" ||
 		engramPath == "/stats"
 	if needsProject && project != "" {
-		params = append(params, fmt.Sprintf("project=%s", project))
+		qp.Set("project", project)
 	}
 	for k, v := range extraQuery {
-		params = append(params, fmt.Sprintf("%s=%s", k, v))
+		qp.Set(k, v)
 	}
-	if len(params) > 0 {
-		url += "?" + strings.Join(params, "&")
+	if len(qp) > 0 {
+		targetURL += "?" + qp.Encode()
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, url, body)
+	req, err := http.NewRequestWithContext(ctx, method, targetURL, body)
 	if err != nil {
 		return nil, err
 	}
@@ -113,6 +114,6 @@ func proxyToEngram(
 		req.Header.Set("Content-Type", "application/json")
 	}
 
-	slog.Debug("proxying to engram", "method", method, "url", url)
+	slog.Debug("proxying to engram", "method", method, "url", targetURL)
 	return engramClient.Do(req)
 }

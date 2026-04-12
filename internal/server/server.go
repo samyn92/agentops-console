@@ -5,6 +5,8 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -158,8 +160,14 @@ func New(cfg Config, k8sClient *k8s.Client, mux *multiplexer.Multiplexer) *Serve
 	if cfg.WebDir != "" {
 		staticHandler := http.FileServer(http.Dir(cfg.WebDir))
 		r.Get("/*", func(w http.ResponseWriter, r *http.Request) {
-			// Try static file first, fall back to index.html for SPA routing
-			http.StripPrefix("/", staticHandler).ServeHTTP(w, r)
+			// Try static file first
+			path := filepath.Join(cfg.WebDir, filepath.Clean(r.URL.Path))
+			if _, err := os.Stat(path); err == nil {
+				http.StripPrefix("/", staticHandler).ServeHTTP(w, r)
+				return
+			}
+			// Fall back to index.html for SPA client-side routing
+			http.ServeFile(w, r, filepath.Join(cfg.WebDir, "index.html"))
 		})
 	}
 

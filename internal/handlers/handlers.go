@@ -26,6 +26,12 @@ type Handlers struct {
 	mux *multiplexer.Multiplexer
 }
 
+// sanitizePathParam rejects path parameters that contain path traversal characters.
+// This prevents URL path injection when the param is interpolated into upstream URLs.
+func sanitizePathParam(param string) bool {
+	return !strings.Contains(param, "/") && !strings.Contains(param, "..") && param != ""
+}
+
 // New creates a new Handlers instance.
 func New(k8sClient *k8s.Client, mux *multiplexer.Multiplexer) *Handlers {
 	return &Handlers{
@@ -536,6 +542,11 @@ func (h *Handlers) GetMemoryObservation(w http.ResponseWriter, r *http.Request) 
 	name := chi.URLParam(r, "name")
 	obsID := chi.URLParam(r, "obsId")
 
+	if !sanitizePathParam(obsID) {
+		writeError(w, http.StatusBadRequest, "invalid observation ID")
+		return
+	}
+
 	agent, err := h.k8s.GetAgent(r.Context(), ns, name)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "agent not found: %s", err)
@@ -621,6 +632,11 @@ func (h *Handlers) UpdateMemoryObservation(w http.ResponseWriter, r *http.Reques
 	name := chi.URLParam(r, "name")
 	obsID := chi.URLParam(r, "obsId")
 
+	if !sanitizePathParam(obsID) {
+		writeError(w, http.StatusBadRequest, "invalid observation ID")
+		return
+	}
+
 	agent, err := h.k8s.GetAgent(r.Context(), ns, name)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "agent not found: %s", err)
@@ -641,6 +657,11 @@ func (h *Handlers) DeleteMemoryObservation(w http.ResponseWriter, r *http.Reques
 	ns := chi.URLParam(r, "ns")
 	name := chi.URLParam(r, "name")
 	obsID := chi.URLParam(r, "obsId")
+
+	if !sanitizePathParam(obsID) {
+		writeError(w, http.StatusBadRequest, "invalid observation ID")
+		return
+	}
 
 	agent, err := h.k8s.GetAgent(r.Context(), ns, name)
 	if err != nil {
