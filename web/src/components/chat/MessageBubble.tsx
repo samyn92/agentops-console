@@ -1,7 +1,7 @@
 // MessageBubble — single message (user or assistant) with Material You chat styling.
 // Follows M3 chat bubble guidelines: asymmetric radii, density-aware spacing,
 // body-medium typography (14/20), label-small timestamps (11/16).
-import { For, Show, createMemo, createSignal } from 'solid-js';
+import { For, Show, createMemo } from 'solid-js';
 import type {
   ChatMessage, MessagePart, TextPart, ReasoningPart, ToolPart,
   SourcePart, ErrorPart,
@@ -11,8 +11,8 @@ import ReasoningBlock from './ReasoningBlock';
 import ToolCallCard from './ToolCallCard';
 import SourceReference from './SourceReference';
 import ToolInputPreview from './ToolInputPreview';
-import { memoryEnabled } from '../../stores/memory';
-import RememberAction from './RememberAction';
+import { showThinkingBlocks } from '../../stores/settings';
+
 
 interface MessageBubbleProps {
   message: ChatMessage;
@@ -82,25 +82,27 @@ export default function MessageBubble(props: MessageBubbleProps) {
   }
 
   // ── Assistant message ──
-  const groups = createMemo(() => groupParts(msg().parts || []));
+  const groups = createMemo(() => {
+    const parts = msg().parts || [];
+    const filtered = showThinkingBlocks() ? parts : parts.filter(p => p.type !== 'reasoning');
+    return groupParts(filtered);
+  });
 
   const hasVisibleContent = createMemo(() => {
     const g = groups();
     if (g.length > 0) return true;
     if (props.isLastAssistant) {
       if (props.activeText?.content) return true;
-      if (props.activeReasoning?.content) return true;
+      if (showThinkingBlocks() && props.activeReasoning?.content) return true;
       if (props.activeToolInput) return true;
     }
     return false;
   });
 
   const hasActiveStreamBubble = () =>
-    props.isLastAssistant && (props.activeText?.content || props.activeReasoning?.content);
+    props.isLastAssistant && (props.activeText?.content || (showThinkingBlocks() && props.activeReasoning?.content));
 
   const hasActiveToolInput = () => props.isLastAssistant && props.activeToolInput;
-
-  const hasFooter = () => msg().role === 'assistant' && memoryEnabled();
 
   return (
     <Show when={hasVisibleContent()}>
@@ -162,7 +164,7 @@ export default function MessageBubble(props: MessageBubbleProps) {
           {/* Active streaming text/reasoning — in a bubble */}
           <Show when={hasActiveStreamBubble()}>
             <div class="chat-bubble-assistant px-3.5 py-2.5 text-[14px] leading-[20px] tracking-[0.25px]">
-              <Show when={props.activeReasoning}>
+              <Show when={showThinkingBlocks() && props.activeReasoning}>
                 <ReasoningBlock
                   content={props.activeReasoning!.content}
                   isStreaming
@@ -185,14 +187,6 @@ export default function MessageBubble(props: MessageBubbleProps) {
             />
           </Show>
 
-          {/* Footer row — remember action */}
-          <Show when={hasFooter()}>
-            <div class="flex items-center px-0.5 gap-2">
-              <Show when={msg().role === 'assistant' && memoryEnabled()}>
-                <RememberAction message={msg()} />
-              </Show>
-            </div>
-          </Show>
         </div>
       </div>
     </Show>

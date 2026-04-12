@@ -102,7 +102,6 @@ func New(cfg Config, k8sClient *k8s.Client, mux *multiplexer.Multiplexer) *Serve
 			// Agent Runs
 			r.Get("/agentruns", h.ListAgentRuns)
 			r.Get("/agentruns/{ns}/{name}", h.GetAgentRun)
-			r.Post("/agentruns", h.CreateAgentRun)
 
 			// Channels
 			r.Get("/channels", h.ListChannels)

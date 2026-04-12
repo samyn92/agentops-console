@@ -38,7 +38,7 @@ export type FinishReason =
 // ---- Tool Metadata (drives custom UI renderers) ----
 
 export interface ToolMetadata {
-  ui?: string // renderer hint: "terminal" | "diff" | "code" | "file-tree" | "search-results" | "file-created" | "web-fetch" | "agent-run" | "agent-run-status" | "kubernetes-resources" | "helm-release"
+  ui?: string // renderer hint: "terminal" | "diff" | "code" | "file-tree" | "search-results" | "file-created" | "web-fetch" | "agent-run" | "agent-run-status" | "kubernetes-resources" | "helm-release" | "delegation-fan-out"
   [key: string]: unknown
 }
 
@@ -241,6 +241,44 @@ export interface SessionStatusEvent extends FEPEventBase {
   status: "idle" | "busy" | "waiting"
 }
 
+// ---- Delegation Events ----
+// Emitted by the DelegationWatcher in the runtime when run_agents creates
+// parallel fan-out delegations. These flow through the FEP SSE stream.
+
+export interface DelegationFanOutEvent extends FEPEventBase {
+  type: "delegation.fan_out"
+  groupId: string
+  count: number
+  timeout: string // RFC3339
+  runNames: string[]
+  parentAgent: string
+}
+
+export interface DelegationRunCompletedEvent extends FEPEventBase {
+  type: "delegation.run_completed"
+  groupId: string
+  runName: string
+  childAgent: string
+  phase: string // "Completed" | "Failed" | etc.
+  duration: string // Go duration string e.g. "1m23s"
+  remaining: number
+}
+
+export interface DelegationAllCompletedEvent extends FEPEventBase {
+  type: "delegation.all_completed"
+  groupId: string
+  succeeded: number
+  failed: number
+  totalDuration: string
+}
+
+export interface DelegationTimeoutEvent extends FEPEventBase {
+  type: "delegation.timeout"
+  groupId: string
+  completed: number
+  timedOut: number
+}
+
 // ---- Union ----
 
 export type FEPEvent =
@@ -269,6 +307,10 @@ export type FEPEvent =
   | QuestionRepliedEvent
   | SessionIdleEvent
   | SessionStatusEvent
+  | DelegationFanOutEvent
+  | DelegationRunCompletedEvent
+  | DelegationAllCompletedEvent
+  | DelegationTimeoutEvent
 
 // ---- Global SSE Envelope ----
 

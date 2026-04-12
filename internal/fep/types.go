@@ -155,4 +155,10 @@ const (
 	EventQuestionReplied   = "question_replied"
 	EventSessionIdle       = "session_idle"
 	EventSessionStatus     = "session_status"
+
+	// Delegation (parallel fan-out)
+	EventDelegationFanOut       = "delegation.fan_out"
+	EventDelegationRunCompleted = "delegation.run_completed"
+	EventDelegationAllCompleted = "delegation.all_completed"
+	EventDelegationTimeout      = "delegation.timeout"
 )

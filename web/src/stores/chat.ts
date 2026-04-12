@@ -12,6 +12,9 @@ import type {
   ToolMetadata,
   RuntimeMessage,
   RuntimeMessagePart,
+  DelegationRunCompletedEvent,
+  DelegationAllCompletedEvent,
+  DelegationTimeoutEvent,
 } from '../types';
 import type {
   ChatMessage,
@@ -469,6 +472,26 @@ function handleFEPEvent(state: AgentChatState, key: string, event: FEPEvent) {
       setStr(false);
       markStreaming(key, false);
       break;
+
+    // ── Delegation events (update existing run_agents tool part in-place) ──
+
+    case 'delegation.fan_out':
+      // The fan-out event arrives after the run_agents tool_result. We could use
+      // this to confirm the group was registered, but the tool_result metadata
+      // already has all the info. Store the event timestamp for latency tracking.
+      break;
+
+    case 'delegation.run_completed':
+      updateDelegationMeta(state, event as DelegationRunCompletedEvent);
+      break;
+
+    case 'delegation.all_completed':
+      updateDelegationAllCompleted(state, event as DelegationAllCompletedEvent);
+      break;
+
+    case 'delegation.timeout':
+      updateDelegationTimeout(state, event as DelegationTimeoutEvent);
+      break;
   }
 }
 
@@ -510,6 +533,112 @@ function finalizeActiveReasoning(state: AgentChatState) {
   } else {
     state.activeReasoning[1](null);
   }
+}
+
+// ── Delegation metadata updaters ──
+// These find the run_agents tool part by groupId and patch its metadata
+// so the DelegationFanOutCard re-renders with live progress.
+
+/**
+ * Find a tool part with metadata.ui === "delegation-fan-out" and matching groupId.
+ * Returns [messageIndex, partIndex] or null.
+ */
+function findDelegationToolPart(
+  msgs: ChatMessage[],
+  groupId: string,
+): [number, number] | null {
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    const m = msgs[i];
+    if (m.role !== 'assistant' || !m.parts) continue;
+    for (let j = 0; j < m.parts.length; j++) {
+      const p = m.parts[j];
+      if (
+        p.type === 'tool' &&
+        (p as ToolPart).metadata?.ui === 'delegation-fan-out' &&
+        (p as ToolPart).metadata?.groupId === groupId
+      ) {
+        return [i, j];
+      }
+    }
+  }
+  return null;
+}
+
+/** Update delegation tool part when a child run completes. */
+function updateDelegationMeta(state: AgentChatState, event: DelegationRunCompletedEvent) {
+  state.messages[1]((prev) => {
+    const loc = findDelegationToolPart(prev, event.groupId);
+    if (!loc) return prev;
+    const [mi, pi] = loc;
+
+    const updated = [...prev];
+    const msg = { ...updated[mi], parts: [...updated[mi].parts!] };
+    const part = { ...(msg.parts[pi] as ToolPart) };
+    const meta = { ...part.metadata } as ToolMetadata & Record<string, unknown>;
+
+    // Build completedRuns map: { runName: { childAgent, phase, duration } }
+    const completedRuns = (meta._completedRuns as Record<string, unknown>) || {};
+    completedRuns[event.runName] = {
+      childAgent: event.childAgent,
+      phase: event.phase,
+      duration: event.duration,
+    };
+    meta._completedRuns = completedRuns;
+    meta._remaining = event.remaining;
+
+    part.metadata = meta;
+    msg.parts[pi] = part;
+    updated[mi] = msg;
+    return updated;
+  });
+}
+
+/** Mark delegation group as fully completed. */
+function updateDelegationAllCompleted(state: AgentChatState, event: DelegationAllCompletedEvent) {
+  state.messages[1]((prev) => {
+    const loc = findDelegationToolPart(prev, event.groupId);
+    if (!loc) return prev;
+    const [mi, pi] = loc;
+
+    const updated = [...prev];
+    const msg = { ...updated[mi], parts: [...updated[mi].parts!] };
+    const part = { ...(msg.parts[pi] as ToolPart) };
+    const meta = { ...part.metadata } as ToolMetadata & Record<string, unknown>;
+
+    meta._allCompleted = true;
+    meta._succeeded = event.succeeded;
+    meta._failed = event.failed;
+    meta._totalDuration = event.totalDuration;
+    meta._remaining = 0;
+
+    part.metadata = meta;
+    msg.parts[pi] = part;
+    updated[mi] = msg;
+    return updated;
+  });
+}
+
+/** Mark delegation group as timed out. */
+function updateDelegationTimeout(state: AgentChatState, event: DelegationTimeoutEvent) {
+  state.messages[1]((prev) => {
+    const loc = findDelegationToolPart(prev, event.groupId);
+    if (!loc) return prev;
+    const [mi, pi] = loc;
+
+    const updated = [...prev];
+    const msg = { ...updated[mi], parts: [...updated[mi].parts!] };
+    const part = { ...(msg.parts[pi] as ToolPart) };
+    const meta = { ...part.metadata } as ToolMetadata & Record<string, unknown>;
+
+    meta._timedOut = true;
+    meta._completedCount = event.completed;
+    meta._timedOutCount = event.timedOut;
+
+    part.metadata = meta;
+    msg.parts[pi] = part;
+    updated[mi] = msg;
+    return updated;
+  });
 }
 
 // ── Working memory hydration ──

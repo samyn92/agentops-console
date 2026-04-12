@@ -14,10 +14,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/samyn92/agentops-console/internal/fep"
 	"github.com/samyn92/agentops-console/internal/k8s"
 	"github.com/samyn92/agentops-console/internal/multiplexer"
-	agentsv1alpha1 "github.com/samyn92/agentops-core/api/v1alpha1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // Handlers holds all HTTP handler methods.
@@ -159,8 +158,8 @@ func (h *Handlers) AgentPromptStream(w http.ResponseWriter, r *http.Request) {
 	baseURL := h.k8s.GetAgentServiceURL(agent)
 	url := fmt.Sprintf("%s/prompt/stream", baseURL)
 
-	// Read the request body so we can forward it
-	body, err := io.ReadAll(r.Body)
+	// Read the request body so we can forward it (capped at 1 MiB)
+	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "failed to read body: %s", err)
 		return
@@ -216,17 +215,13 @@ func (h *Handlers) AgentPromptStream(w http.ResponseWriter, r *http.Request) {
 		flusher.Flush()
 
 		// Also relay to multiplexer for other global SSE clients
-		var evt struct {
-			Type string `json:"type"`
-		}
-		if json.Unmarshal([]byte(data), &evt) == nil {
-			var fepEvt map[string]any
-			json.Unmarshal([]byte(data), &fepEvt)
-
+		var fepEvt fep.Event
+		if json.Unmarshal([]byte(data), &fepEvt) == nil && fepEvt.Type != "" {
 			select {
 			case eventC <- multiplexer.EnvelopedEvent{
 				Agent:     agentKey,
 				EventType: "agent.event",
+				Event:     fepEvt,
 			}:
 			default:
 			}
@@ -269,72 +264,6 @@ func (h *Handlers) GetAgentRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, run)
-}
-
-func (h *Handlers) CreateAgentRun(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		AgentRef  string `json:"agentRef"`
-		Prompt    string `json:"prompt"`
-		SourceRef string `json:"sourceRef,omitempty"`
-		Git       *struct {
-			ResourceRef string `json:"resourceRef"`
-			Branch      string `json:"branch"`
-			BaseBranch  string `json:"baseBranch,omitempty"`
-		} `json:"git,omitempty"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body: %s", err)
-		return
-	}
-
-	if req.AgentRef == "" || req.Prompt == "" {
-		writeError(w, http.StatusBadRequest, "agentRef and prompt are required")
-		return
-	}
-
-	// Validate git params: if git is set, resourceRef and branch are required
-	if req.Git != nil {
-		if req.Git.ResourceRef == "" || req.Git.Branch == "" {
-			writeError(w, http.StatusBadRequest, "git.resourceRef and git.branch are required when git is set")
-			return
-		}
-	}
-
-	// Build the AgentRun CR
-	name := fmt.Sprintf("%s-run-%d", req.AgentRef, time.Now().UnixMilli())
-	ns := h.k8s.AgentNamespace()
-
-	run := &agentsv1alpha1.AgentRun{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: ns,
-			Labels: map[string]string{
-				"agents.agentops.io/agent": req.AgentRef,
-			},
-		},
-		Spec: agentsv1alpha1.AgentRunSpec{
-			AgentRef:  req.AgentRef,
-			Prompt:    req.Prompt,
-			Source:    agentsv1alpha1.AgentRunSourceConsole,
-			SourceRef: req.SourceRef,
-		},
-	}
-
-	if req.Git != nil {
-		run.Spec.Git = &agentsv1alpha1.AgentRunGitSpec{
-			ResourceRef: req.Git.ResourceRef,
-			Branch:      req.Git.Branch,
-			BaseBranch:  req.Git.BaseBranch,
-		}
-	}
-
-	if err := h.k8s.CreateAgentRun(r.Context(), run); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to create agent run: %s", err)
-		return
-	}
-
-	writeJSON(w, http.StatusCreated, run)
 }
 
 // ── Channel endpoints ──
@@ -575,8 +504,8 @@ func (h *Handlers) CreateMemoryObservation(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Read body, decode, inject project, re-encode
-	body, err := io.ReadAll(r.Body)
+	// Read body, decode, inject project, re-encode (capped at 1 MiB)
+	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "failed to read body: %s", err)
 		return

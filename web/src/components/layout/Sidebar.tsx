@@ -29,7 +29,7 @@ interface SidebarProps {
 }
 
 export default function Sidebar(props: SidebarProps) {
-  const [sidebarWidth, setSidebarWidth] = createSignal(280);
+  const [sidebarWidth, setSidebarWidth] = createSignal(308);
   const [isResizing, setIsResizing] = createSignal(false);
 
   // Split view: percentage of height for the agents section (top).

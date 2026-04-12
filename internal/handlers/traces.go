@@ -68,8 +68,8 @@ func (h *Handlers) GetTrace(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse the OTLP response
-	body, err := io.ReadAll(resp.Body)
+	// Parse the OTLP response (capped at 10 MiB — traces can be large)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 10<<20))
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "failed to read tempo response: %s", err)
 		return
@@ -139,8 +139,8 @@ func (h *Handlers) SearchTraces(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse Tempo's search response so we can enrich it.
-	body, err := io.ReadAll(resp.Body)
+	// Parse Tempo's search response so we can enrich it (capped at 10 MiB).
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 10<<20))
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "failed to read tempo response: %s", err)
 		return

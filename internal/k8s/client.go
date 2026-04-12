@@ -243,16 +243,6 @@ func (c *Client) GetAgentRun(ctx context.Context, namespace, name string) (*agen
 	return run, nil
 }
 
-// CreateAgentRun creates an AgentRun CR in the agents namespace.
-func (c *Client) CreateAgentRun(ctx context.Context, run *agentsv1alpha1.AgentRun) error {
-	return c.client.Create(ctx, run)
-}
-
-// AgentNamespace returns the configured namespace for agent resources.
-func (c *Client) AgentNamespace() string {
-	return c.namespace
-}
-
 // ── Channel operations ──
 
 func (c *Client) ListChannels(ctx context.Context) (*agentsv1alpha1.ChannelList, error) {

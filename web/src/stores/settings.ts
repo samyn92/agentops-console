@@ -76,6 +76,11 @@ const [showSystemPrompts, setShowSystemPrompts] = createSignal(
   stored?.getItem('show-system-prompts') !== 'false',
 );
 
+// Show thinking/reasoning blocks in chat
+const [showThinkingBlocks, setShowThinkingBlocks] = createSignal(
+  stored?.getItem('show-thinking-blocks') !== 'false',
+);
+
 // ── Persist changes ──
 
 createEffect(() => stored?.setItem('theme-mode', themeMode()));
@@ -86,6 +91,7 @@ createEffect(() => stored?.setItem('diff-view', diffView()));
 createEffect(() => stored?.setItem('collapsed-tools', String(collapsedTools())));
 createEffect(() => stored?.setItem('tool-expansion-defaults', JSON.stringify(toolExpansionDefaults())));
 createEffect(() => stored?.setItem('show-system-prompts', String(showSystemPrompts())));
+createEffect(() => stored?.setItem('show-thinking-blocks', String(showThinkingBlocks())));
 
 // ── Resolve effective dark/light mode ──
 
@@ -142,6 +148,7 @@ export {
   toolExpansionDefaults, setToolExpansionDefault, setAllToolExpansionDefaults,
   isToolCollapsed,
   showSystemPrompts, setShowSystemPrompts,
+  showThinkingBlocks, setShowThinkingBlocks,
 };
 
 /** All known built-in tool names for the settings UI */

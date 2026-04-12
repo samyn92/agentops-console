@@ -139,6 +139,62 @@ export function getDelegationMap(): Record<string, string[]> {
   return delegationMap();
 }
 
+// ── Delegation Groups (by CRD label) ──
+// Groups runs that share the same `agents.agentops.io/delegation-group` label.
+// Each group is a parallel fan-out from a single run_agents call.
+
+const DELEGATION_GROUP_LABEL = 'agents.agentops.io/delegation-group';
+
+export interface DelegationGroupInfo {
+  groupId: string;
+  sourceAgent: string; // the daemon that created the delegation
+  runs: AgentRunResponse[];
+  activeCount: number;
+  completedCount: number;
+  failedCount: number;
+  createdAt: string; // earliest creation timestamp in the group
+}
+
+/** All delegation groups, sorted newest-first by group creation time. */
+const delegationGroups = createMemo<DelegationGroupInfo[]>(() => {
+  const runs = allRuns() ?? [];
+  const groups = new Map<string, AgentRunResponse[]>();
+
+  for (const run of runs) {
+    const groupId = run.metadata.labels?.[DELEGATION_GROUP_LABEL];
+    if (!groupId) continue;
+    if (!groups.has(groupId)) groups.set(groupId, []);
+    groups.get(groupId)!.push(run);
+  }
+
+  const result: DelegationGroupInfo[] = [];
+  for (const [groupId, groupRuns] of groups) {
+    const sorted = sortNewestFirst(groupRuns);
+    const sourceAgent = sorted[0]?.spec.sourceRef || '';
+    const activeCount = groupRuns.filter((r) => isActivePhase(r.status?.phase)).length;
+    const completedCount = groupRuns.filter((r) => r.status?.phase === 'Succeeded').length;
+    const failedCount = groupRuns.filter((r) => r.status?.phase === 'Failed').length;
+    const createdAt = sorted[sorted.length - 1]?.metadata.creationTimestamp || '';
+
+    result.push({ groupId, sourceAgent, runs: sorted, activeCount, completedCount, failedCount, createdAt });
+  }
+
+  // Newest groups first
+  return result.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+});
+
+export { delegationGroups, DELEGATION_GROUP_LABEL };
+
+/** Get a specific delegation group by ID. */
+export function getDelegationGroup(groupId: string): DelegationGroupInfo | undefined {
+  return delegationGroups().find((g) => g.groupId === groupId);
+}
+
+/** Check if a run belongs to a delegation group. */
+export function getRunDelegationGroup(run: AgentRunResponse): string | undefined {
+  return run.metadata.labels?.[DELEGATION_GROUP_LABEL];
+}
+
 // ── Helpers ──
 
 function sortNewestFirst(runs: AgentRunResponse[]): AgentRunResponse[] {
@@ -179,6 +235,15 @@ export function getAgentConcurrency(agentName: string): { running: number; queue
   const running = agentSpecificRuns.filter((r) => r.status?.phase === 'Running').length;
   const queued = agentSpecificRuns.filter((r) => r.status?.phase === 'Queued').length;
   return { running, queued };
+}
+
+/** Recent runs for any agent by name, sorted newest-first, capped at `limit`. */
+export function getAgentRuns(agentName: string, limit = 20): AgentRunResponse[] {
+  const runs = allRuns() ?? [];
+  return runs
+    .filter((r) => r.spec.agentRef === agentName)
+    .sort((a, b) => new Date(b.metadata.creationTimestamp).getTime() - new Date(a.metadata.creationTimestamp).getTime())
+    .slice(0, limit);
 }
 
 // ── Public API ──

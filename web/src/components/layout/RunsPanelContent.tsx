@@ -12,6 +12,8 @@ import {
   selectRun,
   clearRunSelection,
   getRunSource,
+  getRunDelegationGroup,
+  delegationGroups,
   type RunFilter as RunFilterType,
   type RunSource,
 } from '../../stores/runs';
@@ -58,6 +60,7 @@ export default function RunsPanelContent() {
                 const isFailed = () => run.status?.phase === 'Failed';
                 const forge = () => getResourceForge(run.spec.git?.resourceRef);
                 const repoName = () => getResourceRepoName(run.spec.git?.resourceRef);
+                const groupId = () => getRunDelegationGroup(run);
 
                 const cardClass = () => {
                   const classes = ['run-card'];
@@ -124,9 +127,17 @@ export default function RunsPanelContent() {
                       <p class="run-card__prompt">{run.spec.prompt}</p>
                     </Show>
 
-                    {/* Row 3 (Footer): Run name + timestamp */}
+                    {/* Row 3 (Footer): Run name + delegation group badge + timestamp */}
                     <div class="run-card__meta">
                       <span class="truncate">{run.metadata.name}</span>
+                      <Show when={groupId()}>
+                        <span class="inline-flex items-center gap-0.5 px-1 py-0 text-[9px] font-mono rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 shrink-0" title={`Delegation group ${groupId()}`}>
+                          <svg class="w-2 h-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+                          </svg>
+                          {groupId()}
+                        </span>
+                      </Show>
                       <span class="run-card__time">{relativeTime(run.metadata.creationTimestamp)}</span>
                     </div>
                   </button>

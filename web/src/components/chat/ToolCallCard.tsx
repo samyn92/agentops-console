@@ -15,6 +15,7 @@ import SearchResultsCard from '../tools/SearchResultsCard';
 import FileCreatedCard from '../tools/FileCreatedCard';
 import WebFetchCard from '../tools/WebFetchCard';
 import AgentRunCard from '../tools/AgentRunCard';
+import DelegationFanOutCard from '../tools/DelegationFanOutCard';
 import KubernetesCard from '../tools/KubernetesCard';
 import HelmCard from '../tools/HelmCard';
 import JsonTreeViewer from '../tools/JsonTreeViewer';
@@ -56,6 +57,7 @@ const renderers: Record<string, (props: ToolCardProps) => any> = {
   'web-fetch': WebFetchCard,
   'agent-run': AgentRunCard,
   'agent-run-status': AgentRunCard,
+  'delegation-fan-out': DelegationFanOutCard,
   'kubernetes-resources': KubernetesCard,
   'helm-release': HelmCard,
 };
@@ -133,7 +135,7 @@ function ToolIcon(props: { toolName: string; category: ToolCategory; class?: str
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6 18L18 6M6 6l12 12" />
         </svg>
       </Match>
-      <Match when={props.toolName === 'run_agent' || props.toolName === 'get_agent_run'}>
+      <Match when={props.toolName === 'run_agent' || props.toolName === 'run_agents' || props.toolName === 'get_agent_run'}>
         <img src="/logo.png" alt="" class={props.class || 'w-5 h-5'} draggable={false} />
       </Match>
     </Switch>
@@ -156,6 +158,7 @@ function ToolActivityLine(props: { part: ToolPart }) {
       case 'fetch': case 'webfetch': return 'Fetching';
       case 'task': return 'Delegating to sub-agent';
       case 'run_agent': return 'Running agent';
+      case 'run_agents': return 'Delegating to agents';
       case 'get_agent_run': return 'Checking agent run';
       default: return `Running ${name.replace(/[_-]/g, ' ')}`;
     }
@@ -181,6 +184,10 @@ function ToolActivityLine(props: { part: ToolPart }) {
       if (name === 'task' && input.description) return input.description as string;
       if ((name === 'run_agent' || name === 'get_agent_run') && (input.agent || input.name)) {
         return (input.agent || input.name) as string;
+      }
+      if (name === 'run_agents' && input.delegations) {
+        const delegations = input.delegations as Array<{ agent?: string }>;
+        return delegations.map((d) => d.agent || '?').join(', ');
       }
       // MCP and other tools: show first arg value as preview
       if (name.startsWith('mcp_')) {
@@ -292,6 +299,7 @@ export default function ToolCallCard(props: ToolCallCardProps) {
       case 'write': return FileCreatedCard;
       case 'fetch': case 'webfetch': return WebFetchCard;
       case 'run_agent': case 'get_agent_run': return AgentRunCard;
+      case 'run_agents': return DelegationFanOutCard;
       default: return GenericCard;
     }
   });
@@ -314,7 +322,7 @@ export default function ToolCallCard(props: ToolCallCardProps) {
   const hasInputArgs = createMemo(() => {
     if (!part().input || part().input === '{}') return false;
     // Builtins with dedicated renderers already show their input contextually
-    const builtinsWithInlineInput = ['bash', 'read', 'edit', 'write', 'grep', 'glob', 'ls', 'fetch', 'webfetch', 'run_agent', 'get_agent_run'];
+    const builtinsWithInlineInput = ['bash', 'read', 'edit', 'write', 'grep', 'glob', 'ls', 'fetch', 'webfetch', 'run_agent', 'run_agents', 'get_agent_run'];
     if (builtinsWithInlineInput.includes(part().toolName)) return false;
     return true;
   });

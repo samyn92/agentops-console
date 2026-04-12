@@ -10,6 +10,7 @@ import {
   collapsedTools, setCollapsedTools,
   toolExpansionDefaults, setToolExpansionDefault, setAllToolExpansionDefaults,
   showSystemPrompts, setShowSystemPrompts,
+  showThinkingBlocks, setShowThinkingBlocks,
   KNOWN_TOOLS,
 } from '../stores/settings';
 import type { ThemeMode, ThemeStyle, SchemeVariant } from '../stores/settings';
@@ -344,10 +345,17 @@ export default function SettingsPage() {
             />
           </SettingRow>
 
-          <SettingRow label="Show System Prompts" description="Display system prompts in agent sidebar" last>
+          <SettingRow label="Show System Prompts" description="Display system prompts in agent sidebar">
             <Toggle
               checked={showSystemPrompts()}
               onChange={setShowSystemPrompts}
+            />
+          </SettingRow>
+
+          <SettingRow label="Show Thinking Blocks" description="Display LLM reasoning/thinking blocks in chat" last>
+            <Toggle
+              checked={showThinkingBlocks()}
+              onChange={setShowThinkingBlocks}
             />
           </SettingRow>
         </SettingSection>

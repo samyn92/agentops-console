@@ -1,9 +1,9 @@
 // AgentCard — M3-styled card for the sidebar agent list.
-// Shows name, model, online indicator, concurrency slots,
+// Shows name, run history queue, online indicator, concurrency slots,
 // and channel/schedule indicator badges.
-import { Show, For } from 'solid-js';
+import { Show, For, createMemo } from 'solid-js';
 import { getAgentStatus } from '../../stores/agents';
-import { getAgentConcurrency } from '../../stores/runs';
+import { getAgentConcurrency, getAgentRuns } from '../../stores/runs';
 import { getChannelsForAgent } from '../../stores/channels';
 import type { AgentResponse } from '../../types';
 
@@ -13,18 +13,6 @@ interface AgentCardProps {
   onSelect: () => void;
   /** Compact variant for nested task agents under an orchestrator */
   compact?: boolean;
-}
-
-/** Shorten model names for compact display (e.g. "claude-sonnet-4-20250514" → "sonnet-4") */
-function shortModel(model: string): string {
-  if (!model) return '';
-  const m = model.toLowerCase();
-  const cleaned = m.replace(/-\d{4}[-]?\d{2}[-]?\d{2}$/g, '').replace(/-\d{8}$/g, '');
-  const withoutVendor = cleaned
-    .replace(/^claude-/, '')
-    .replace(/^gpt-/, 'gpt-')
-    .replace(/^gemini-/, 'gemini-');
-  return withoutVendor;
 }
 
 export default function AgentCard(props: AgentCardProps) {
@@ -37,7 +25,12 @@ export default function AgentCard(props: AgentCardProps) {
   const channels = () => getChannelsForAgent(props.agent.name);
   const hasChannelBindings = () => channels().length > 0;
   const hasSchedule = () => !!props.agent.schedule;
-  const hasIndicators = () => hasChannelBindings() || hasSchedule();
+
+  // Recent runs for the history queue (reversed: oldest first → newest last)
+  const recentRuns = createMemo(() => {
+    const runs = getAgentRuns(props.agent.name, 16);
+    return [...runs].reverse();
+  });
 
   return (
     <button
@@ -71,15 +64,95 @@ export default function AgentCard(props: AgentCardProps) {
         </Show>
       </div>
 
-      {/* Row 2: Model + Indicator badges */}
-      <div class={`flex items-center gap-1.5 flex-wrap ${isCompact() ? 'text-[10px]' : 'text-[11px]'} leading-[16px] tracking-[0.5px]`}>
-        <Show when={props.agent.model}>
-          <span class="text-text-muted font-mono truncate">
-            {shortModel(props.agent.model)}
-          </span>
+       {/* Row 2: Run pipeline + indicator badges */}
+      <div class={`flex items-center gap-1.5 ${isCompact() ? 'text-[10px]' : 'text-[11px]'} leading-[16px]`}>
+        {/* Run history pipeline */}
+        <Show
+          when={recentRuns().length > 0}
+          fallback={
+            <span class="text-text-muted/40 text-[10px]">no runs</span>
+          }
+        >
+          <div class="flex items-center flex-shrink min-w-0 gap-[3px] ml-4">
+            <For each={recentRuns()}>
+              {(run, i) => {
+                const phase = run.status?.phase;
+                const isLast = () => i() === recentRuns().length - 1;
+                const isActive = () => phase === 'Running' || phase === 'Pending' || phase === 'Queued';
+                const lineColor = () => {
+                  switch (phase) {
+                    case 'Succeeded': return 'bg-success/30';
+                    case 'Failed': return 'bg-error/30';
+                    case 'Running': return 'bg-accent/25';
+                    case 'Pending': case 'Queued': return 'bg-accent/20';
+                    default: return 'bg-text-muted/10';
+                  }
+                };
+                const sz = isCompact() ? 9 : 11;
+                return (
+                  <>
+                    <Show when={phase === 'Succeeded'}>
+                      <svg
+                        width={sz} height={sz}
+                        viewBox="0 0 16 16"
+                        class="flex-shrink-0"
+                        title={`${run.metadata.name}: Succeeded`}
+                      >
+                        <circle cx="8" cy="8" r="7.5" fill="none" stroke="var(--success)" stroke-width="1.5" opacity="0.25" />
+                        <circle cx="8" cy="8" r="5.5" fill="var(--success)" opacity="0.15" />
+                        <path d="M5.25 8.25L7 10l3.75-4" fill="none" stroke="var(--success)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+                      </svg>
+                    </Show>
+                    <Show when={phase === 'Failed'}>
+                      <svg
+                        width={sz} height={sz}
+                        viewBox="0 0 16 16"
+                        class="flex-shrink-0"
+                        title={`${run.metadata.name}: Failed`}
+                      >
+                        <circle cx="8" cy="8" r="7.5" fill="none" stroke="var(--error)" stroke-width="1.5" opacity="0.25" />
+                        <circle cx="8" cy="8" r="5.5" fill="var(--error)" opacity="0.15" />
+                        <path d="M5.75 5.75l4.5 4.5M10.25 5.75l-4.5 4.5" fill="none" stroke="var(--error)" stroke-width="1.8" stroke-linecap="round" />
+                      </svg>
+                    </Show>
+                    <Show when={isActive()}>
+                      <svg
+                        width={sz} height={sz}
+                        viewBox="0 0 16 16"
+                        class="flex-shrink-0 run-spinner"
+                        title={`${run.metadata.name}: ${phase}`}
+                      >
+                        <circle cx="8" cy="8" r="6.5" fill="none" stroke="var(--accent)" stroke-width="1.5" opacity="0.15" />
+                        <path
+                          d="M8 1.5a6.5 6.5 0 0 1 6.5 6.5"
+                          fill="none"
+                          stroke="var(--accent)"
+                          stroke-width="1.8"
+                          stroke-linecap="round"
+                        />
+                      </svg>
+                    </Show>
+                    <Show when={!phase || (phase !== 'Succeeded' && phase !== 'Failed' && !isActive())}>
+                      <svg
+                        width={sz} height={sz}
+                        viewBox="0 0 16 16"
+                        class="flex-shrink-0"
+                        title={`${run.metadata.name}: ${phase || 'unknown'}`}
+                      >
+                        <circle cx="8" cy="8" r="3" fill="var(--text-muted)" opacity="0.2" />
+                      </svg>
+                    </Show>
+                    <Show when={!isLast()}>
+                      <div class={`${isCompact() ? 'w-[3px]' : 'w-[4px]'} h-[1px] ${lineColor()} flex-shrink-0 rounded-full`} />
+                    </Show>
+                  </>
+                );
+              }}
+            </For>
+          </div>
         </Show>
 
-
+        <span class="flex-1" />
         {/* Channel indicator */}
         <Show when={hasChannelBindings()}>
           <span

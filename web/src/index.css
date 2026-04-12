@@ -1099,6 +1099,16 @@
   50% { transform: scale(1.8); opacity: 0; }
 }
 
+/* ===== Run Pipeline Spinner ===== */
+.run-spinner {
+  animation: run-spin 0.8s linear infinite;
+}
+
+@keyframes run-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 /* ===== Neural Trace — Agent Activity Beam ===== */
 /* A luminous beam that sweeps back and forth along a rail,
    inspired by OpenCode CLI's bouncing progress bar.

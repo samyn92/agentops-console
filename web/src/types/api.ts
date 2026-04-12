@@ -2,6 +2,39 @@
 
 // ---- Agent CR ----
 
+export interface AgentDiscovery {
+  description?: string
+  tags?: string[]
+  scope?: 'namespace' | 'explicit' | 'hidden'
+  allowedCallers?: string[]
+}
+
+export interface AgentMemoryConfig {
+  serverRef: string
+  project?: string
+  contextLimit?: number
+  windowSize?: number
+  autoSummarize?: boolean
+  autoSave?: boolean
+  autoSearch?: boolean
+}
+
+export interface AgentStorageConfig {
+  size: string
+  storageClass?: string
+}
+
+export interface AgentResourceRef {
+  name: string
+  readOnly?: boolean
+  autoContext?: boolean
+}
+
+export interface AgentResourceRequirements {
+  requests?: { cpu?: string; memory?: string }
+  limits?: { cpu?: string; memory?: string }
+}
+
 export interface AgentSpec {
   mode: "daemon" | "task"
   image?: string
@@ -21,21 +54,26 @@ export interface AgentSpec {
   enableQuestionTool?: boolean
   env?: Record<string, string>
   secrets?: Array<{ name: string; secretKeyRef: { name: string; key: string } }>
-  storage?: { size: string; storageClassName?: string }
+  storage?: AgentStorageConfig
   tools?: Array<{ name: string; permissions?: object; directTools?: string[]; autoContext?: boolean }>
   toolHooks?: {
     blockedCommands?: string[]
     allowedPaths?: string[]
     auditTools?: string[]
+    memorySaveRules?: Array<{ tool: string; matchOutput?: string; type?: string; scope?: string }>
+    contextInjectTools?: Array<{ tool: string; query?: string; limit?: number }>
   }
   contextFiles?: Array<{ path: string; configMapRef: { name: string; key: string } }>
   concurrency?: { maxRuns?: number; policy?: string }
   schedule?: string
   schedulePrompt?: string
   networkPolicy?: { enabled: boolean }
-  resources?: object
+  resources?: AgentResourceRequirements
   serviceAccountName?: string
   timeout?: string
+  discovery?: AgentDiscovery
+  memory?: AgentMemoryConfig
+  resourceBindings?: AgentResourceRef[]
 }
 
 export interface AgentStatus {
