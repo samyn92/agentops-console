@@ -1,7 +1,8 @@
-// Markdown renderer with syntax highlighting
+// Markdown renderer with syntax highlighting and XSS sanitization
 import { createMemo } from 'solid-js';
 import { Marked } from 'marked';
 import hljs from 'highlight.js';
+import DOMPurify from 'dompurify';
 
 interface MarkdownProps {
   content: string;
@@ -51,6 +52,11 @@ export default function Markdown(props: MarkdownProps) {
     } catch {
       result = props.content || '';
     }
+    // Sanitize rendered HTML to prevent XSS from agent/LLM output
+    result = DOMPurify.sanitize(result, {
+      ADD_TAGS: ['code', 'pre'],
+      ADD_ATTR: ['class'],
+    });
     if (props.injectHtml) {
       result = appendInline(result, props.injectHtml);
     }
