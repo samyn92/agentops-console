@@ -96,8 +96,8 @@ export default function AgentCard(props: AgentCardProps) {
                         width={sz} height={sz}
                         viewBox="0 0 16 16"
                         class="flex-shrink-0"
-                        title={`${run.metadata.name}: Succeeded`}
                       >
+                        <title>{`${run.metadata.name}: Succeeded`}</title>
                         <circle cx="8" cy="8" r="7.5" fill="none" stroke="var(--success)" stroke-width="1.5" opacity="0.25" />
                         <circle cx="8" cy="8" r="5.5" fill="var(--success)" opacity="0.15" />
                         <path d="M5.25 8.25L7 10l3.75-4" fill="none" stroke="var(--success)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
@@ -108,8 +108,8 @@ export default function AgentCard(props: AgentCardProps) {
                         width={sz} height={sz}
                         viewBox="0 0 16 16"
                         class="flex-shrink-0"
-                        title={`${run.metadata.name}: Failed`}
                       >
+                        <title>{`${run.metadata.name}: Failed`}</title>
                         <circle cx="8" cy="8" r="7.5" fill="none" stroke="var(--error)" stroke-width="1.5" opacity="0.25" />
                         <circle cx="8" cy="8" r="5.5" fill="var(--error)" opacity="0.15" />
                         <path d="M5.75 5.75l4.5 4.5M10.25 5.75l-4.5 4.5" fill="none" stroke="var(--error)" stroke-width="1.8" stroke-linecap="round" />
@@ -120,8 +120,8 @@ export default function AgentCard(props: AgentCardProps) {
                         width={sz} height={sz}
                         viewBox="0 0 16 16"
                         class="flex-shrink-0 run-spinner"
-                        title={`${run.metadata.name}: ${phase}`}
                       >
+                        <title>{`${run.metadata.name}: ${phase}`}</title>
                         <circle cx="8" cy="8" r="6.5" fill="none" stroke="var(--accent)" stroke-width="1.5" opacity="0.15" />
                         <path
                           d="M8 1.5a6.5 6.5 0 0 1 6.5 6.5"
@@ -137,8 +137,8 @@ export default function AgentCard(props: AgentCardProps) {
                         width={sz} height={sz}
                         viewBox="0 0 16 16"
                         class="flex-shrink-0"
-                        title={`${run.metadata.name}: ${phase || 'unknown'}`}
                       >
+                        <title>{`${run.metadata.name}: ${phase || 'unknown'}`}</title>
                         <circle cx="8" cy="8" r="3" fill="var(--text-muted)" opacity="0.2" />
                       </svg>
                     </Show>
