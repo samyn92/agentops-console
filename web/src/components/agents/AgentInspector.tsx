@@ -66,8 +66,11 @@ export default function AgentInspector(props: AgentInspectorProps) {
   });
 
   const lastRun = createMemo(() => {
-    const r = runs();
-    return r.length > 0 ? r[0] : null;
+    const a = agent();
+    if (!a) return null;
+    // Only show runs targeting this agent (agentRef), not runs it delegated (sourceRef)
+    const ownRuns = runs().filter((r) => r.spec.agentRef === a.name);
+    return ownRuns.length > 0 ? ownRuns[0] : null;
   });
 
   // Run stats

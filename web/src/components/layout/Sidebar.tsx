@@ -46,22 +46,23 @@ export default function Sidebar(props: SidebarProps) {
   const agentTree = createMemo(() => {
     const agents = agentList() ?? [];
     const chBound = channelBoundAgents();
+    const byName = (a: AgentResponse, b: AgentResponse) => a.name.localeCompare(b.name);
 
-    const daemons = agents.filter((a) => a.mode === 'daemon');
+    const daemons = agents.filter((a) => a.mode === 'daemon').sort(byName);
     const tasks = agents.filter((a) => a.mode === 'task');
 
     // Channels: task agents that have channel bindings
-    const channelTasks = tasks.filter((t) => chBound.has(t.name));
+    const channelTasks = tasks.filter((t) => chBound.has(t.name)).sort(byName);
 
     // Scheduled: task agents with spec.schedule but no channel
     const scheduledTasks = tasks.filter(
       (t) => !chBound.has(t.name) && t.schedule,
-    );
+    ).sort(byName);
 
     // Workers: everything else (task agents with no channel or schedule)
     const workers = tasks.filter(
       (t) => !chBound.has(t.name) && !t.schedule,
-    );
+    ).sort(byName);
 
     return { daemons, workers, channelTasks, scheduledTasks };
   });

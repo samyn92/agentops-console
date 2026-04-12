@@ -80,11 +80,11 @@ export function selectedContextCount(): number {
 
 export { resources, refetchResources, selectedContextItems };
 
-/** Get browsable resources (github-repo, gitlab-project) for the selected agent */
+/** Get browsable resources (github-repo, gitlab-project) for the selected agent, sorted by displayName */
 export function browsableResources(): AgentResourceBinding[] {
-  return (resources() || []).filter(
-    (r) => r.kind === 'github-repo' || r.kind === 'gitlab-project'
-  );
+  return (resources() || [])
+    .filter((r) => r.kind === 'github-repo' || r.kind === 'gitlab-project')
+    .sort((a, b) => a.displayName.localeCompare(b.displayName));
 }
 
 /** Get all resources for the selected agent */

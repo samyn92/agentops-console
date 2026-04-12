@@ -58,15 +58,16 @@ export function stopRunPolling() {
 
 /** Runs for the currently selected agent (agentRef OR sourceRef matches).
  *  Used for the center stage TaskAgentView / context display.
+ *  Always sorted newest-first for consistent ordering.
  */
 const contextualRuns = createMemo<AgentRunResponse[]>(() => {
   const runs = allRuns() ?? [];
   const agent = selectedAgent();
 
-  if (!agent) return runs;
-  return runs.filter(
+  if (!agent) return sortNewestFirst(runs);
+  return sortNewestFirst(runs.filter(
     (r) => r.spec.agentRef === agent.name || r.spec.sourceRef === agent.name,
-  );
+  ));
 });
 
 /** Runs filtered by phase filter, sorted newest-first globally. */
