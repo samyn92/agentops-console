@@ -14,6 +14,7 @@
 @import './styles/hljs-theme.css';
 @import './styles/animations.css';
 @import './styles/composing.css';
+@import './styles/tool-card.css';
 @import './styles/neural-trace.css';
 @import './styles/mobile.css';
 @import './styles/reduced-motion.css';

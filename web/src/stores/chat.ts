@@ -1,10 +1,13 @@
 // Chat store — FEP event state machine with per-agent state.
-// Each agent maintains independent messages, streaming state, and interactive
-// requests. One conversation per agent — no sessions.
+// Uses SolidJS createStore + produce for granular reactivity — only changed
+// properties trigger re-renders. No more immutable spread cascades that
+// replace the entire message tree on every SSE event.
 import { createSignal, batch, createEffect, onCleanup } from 'solid-js';
+import { createStore, produce, reconcile } from 'solid-js/store';
 import { streamPrompt, conversation as conversationAPI } from '../lib/api';
-import { selectedAgent, refreshAgentHealth } from './agents';
+import { selectedAgent, refreshAgentHealth, getAgentRuntimeStatus } from './agents';
 import { getSelectedContext, clearContextItems } from './resources';
+import { onFEPEvent } from './events';
 import type {
   FEPEvent,
   Usage,
@@ -27,9 +30,15 @@ import type {
 
 // ── Per-agent state ──
 
+interface MessageStore {
+  list: ChatMessage[];
+}
+
 interface AgentChatState {
-  // Reactive signals (each agent owns its own)
-  messages: ReturnType<typeof createSignal<ChatMessage[]>>;
+  // Messages use a SolidJS store for fine-grained proxy-based reactivity.
+  // Mutations via produce() only notify the specific property path that changed.
+  msgStore: ReturnType<typeof createStore<MessageStore>>;
+  // Scalar signals (cheap — no deep nesting)
   streaming: ReturnType<typeof createSignal<boolean>>;
   currentStep: ReturnType<typeof createSignal<number>>;
   totalUsage: ReturnType<typeof createSignal<Usage | null>>;
@@ -44,6 +53,9 @@ interface AgentChatState {
   lastTraceID: ReturnType<typeof createSignal<string | null>>;
   // Non-reactive
   abortController: AbortController | null;
+  // RAF batching for tool_input_delta
+  _deltaBuffer: Map<string, string>; // toolId → accumulated delta text
+  _deltaRafId: number | null;
 }
 
 interface PendingPermissionState {
@@ -77,7 +89,7 @@ function getOrCreateState(key: string): AgentChatState {
   let state = agentStates.get(key);
   if (!state) {
     state = {
-      messages: createSignal<ChatMessage[]>([]),
+      msgStore: createStore<MessageStore>({ list: [] }),
       streaming: createSignal(false),
       currentStep: createSignal(0),
       totalUsage: createSignal<Usage | null>(null),
@@ -91,11 +103,23 @@ function getOrCreateState(key: string): AgentChatState {
       pendingQuestion: createSignal<PendingQuestionState | null>(null),
       lastTraceID: createSignal<string | null>(null),
       abortController: null,
+      _deltaBuffer: new Map(),
+      _deltaRafId: null,
     };
     agentStates.set(key, state);
     setStateVersion((v) => v + 1); // notify reactive consumers
   }
   return state;
+}
+
+// ── Store accessors (typed helpers) ──
+
+function getMsgs(state: AgentChatState): ChatMessage[] {
+  return state.msgStore[0].list;
+}
+
+function setMsgs(state: AgentChatState, setter: (s: MessageStore) => void) {
+  state.msgStore[1](produce(setter));
 }
 
 // ── Current-agent derived accessors ──
@@ -109,7 +133,7 @@ function currentState(): AgentChatState | null {
   return agentStates.get(agentKey(agent.namespace, agent.name)) ?? null;
 }
 
-export const messages = () => currentState()?.messages[0]() ?? [];
+export const messages = () => currentState()?.msgStore[0].list ?? [];
 export const streaming = () => currentState()?.streaming[0]() ?? false;
 export const currentStep = () => currentState()?.currentStep[0]() ?? 0;
 export const totalUsage = () => currentState()?.totalUsage[0]() ?? null;
@@ -143,6 +167,27 @@ createEffect(() => {
   hydrateFromWorkingMemory(agent.namespace, agent.name);
 });
 
+// ── Seed context budget from status poll on page load / agent switch ──
+// The context budget is normally set by FEP SSE events (agent_start / step_finish),
+// but on browser refresh those events are gone. The runtime /status endpoint always
+// returns the current context_budget, so we seed from the health poll.
+createEffect(() => {
+  const agent = selectedAgent();
+  if (!agent) return;
+
+  const runtimeStatus = getAgentRuntimeStatus(agent.namespace, agent.name);
+  if (!runtimeStatus?.context_budget) return;
+
+  const key = agentKey(agent.namespace, agent.name);
+  const state = getOrCreateState(key);
+  const [getBudget, setBudget] = state.contextBudget;
+
+  // Only seed if no budget is set yet (don't overwrite live FEP data)
+  if (!getBudget()) {
+    setBudget(runtimeStatus.context_budget);
+  }
+});
+
 // ── Streaming agents (for sidebar indicators) ──
 
 const [streamingAgentKeys, setStreamingAgentKeys] = createSignal<Set<string>>(new Set());
@@ -174,7 +219,6 @@ export async function sendMessage(prompt: string) {
 
   const key = agentKey(agent.namespace, agent.name);
   const state = getOrCreateState(key);
-  const [, setMsgs] = state.messages;
   const [, setStr] = state.streaming;
   const [, setStep] = state.currentStep;
   const [, setUsage] = state.totalUsage;
@@ -187,7 +231,9 @@ export async function sendMessage(prompt: string) {
   const assistantMsg: ChatMessage = { role: 'assistant', parts: [], timestamp: Date.now() };
 
   batch(() => {
-    setMsgs((prev) => [...prev, userMsg, assistantMsg]);
+    setMsgs(state, (s) => {
+      s.list.push(userMsg, assistantMsg);
+    });
     setStr(true);
     setStep(0);
     setUsage(null);
@@ -218,6 +264,9 @@ export async function sendMessage(prompt: string) {
       appendPart(capturedState, { type: 'error', error: (err as Error).message });
     }
   } finally {
+    // Flush any pending delta buffer
+    flushDeltaBuffer(capturedState);
+
     batch(() => {
       capturedState.streaming[1](false);
       finalizeActiveText(capturedState);
@@ -241,7 +290,10 @@ export function abortStream() {
     state.abortController.abort();
     state.abortController = null;
   }
-  state?.streaming[1](false);
+  if (state) {
+    flushDeltaBuffer(state);
+    state.streaming[1](false);
+  }
   markStreaming(key, false);
 }
 
@@ -257,10 +309,51 @@ export async function steerAgent(message: string) {
   }
 }
 
+// ── RAF delta batching ──
+// tool_input_delta events can arrive many times per frame. Instead of
+// producing a store mutation per delta, we accumulate into a plain buffer
+// and flush once per animation frame.
+
+function scheduleDeltaFlush(state: AgentChatState) {
+  if (state._deltaRafId !== null) return; // already scheduled
+  state._deltaRafId = requestAnimationFrame(() => {
+    state._deltaRafId = null;
+    flushDeltaBuffer(state);
+  });
+}
+
+function flushDeltaBuffer(state: AgentChatState) {
+  if (state._deltaRafId !== null) {
+    cancelAnimationFrame(state._deltaRafId);
+    state._deltaRafId = null;
+  }
+
+  if (state._deltaBuffer.size === 0) return;
+
+  const buffered = new Map(state._deltaBuffer);
+  state._deltaBuffer.clear();
+
+  setMsgs(state, (s) => {
+    for (const [toolId, delta] of buffered) {
+      const loc = findToolPartInStore(s.list, toolId);
+      if (loc) {
+        const [mi, pi] = loc;
+        (s.list[mi].parts![pi] as ToolPart).input += delta;
+      }
+    }
+  });
+
+  // Keep activeToolInput in sync for any readers
+  for (const [, delta] of buffered) {
+    state.activeToolInput[1]((prev) =>
+      prev ? { ...prev, args: prev.args + delta } : null,
+    );
+  }
+}
+
 // ── FEP Event Handler (agent-scoped) ──
 
 function handleFEPEvent(state: AgentChatState, key: string, event: FEPEvent) {
-  const [, setMsgs] = state.messages;
   const [, setStr] = state.streaming;
   const [, setStep] = state.currentStep;
   const [, setUsage] = state.totalUsage;
@@ -288,13 +381,11 @@ function handleFEPEvent(state: AgentChatState, key: string, event: FEPEvent) {
       if (event.timestamp) {
         const serverTs = new Date(event.timestamp).getTime();
         if (!isNaN(serverTs)) {
-          setMsgs((prev) => {
-            const updated = [...prev];
-            const lastMsg = updated[updated.length - 1];
-            if (lastMsg?.role === 'assistant') {
-              updated[updated.length - 1] = { ...lastMsg, timestamp: serverTs };
+          setMsgs(state, (s) => {
+            const last = s.list[s.list.length - 1];
+            if (last?.role === 'assistant') {
+              last.timestamp = serverTs;
             }
-            return updated;
           });
         }
       }
@@ -322,10 +413,9 @@ function handleFEPEvent(state: AgentChatState, key: string, event: FEPEvent) {
           finalizeActiveText(state);
           finalizeActiveReasoning(state);
           state.activeToolInput[1](null);
-          setMsgs((prev) => [
-            ...prev,
-            { role: 'assistant' as const, parts: [], timestamp: Date.now() },
-          ]);
+          setMsgs(state, (s) => {
+            s.list.push({ role: 'assistant' as const, parts: [], timestamp: Date.now() });
+          });
         });
       }
       break;
@@ -377,29 +467,77 @@ function handleFEPEvent(state: AgentChatState, key: string, event: FEPEvent) {
       break;
 
     case 'tool_input_start':
-      setAToolIn({ id: event.id || '', toolName: event.tool_name || '', args: '' });
-      break;
-
-    case 'tool_input_delta':
-      setAToolIn((prev) =>
-        prev ? { ...prev, args: prev.args + (event.delta || '') } : null,
-      );
-      break;
-
-    case 'tool_input_end':
-      setAToolIn(null);
-      break;
-
-    case 'tool_call':
+      // Unified tool lifecycle: create the tool part immediately with 'composing'
+      // status. The same part transitions through composing → running → done.
       appendPart(state, {
         type: 'tool',
         id: event.id || '',
         toolName: event.tool_name || '',
-        input: event.input || '',
+        input: '',
         output: '',
         isError: false,
-        status: 'running',
+        status: 'composing',
       });
+      // Still set activeToolInput for backward compat with any code reading it
+      setAToolIn({ id: event.id || '', toolName: event.tool_name || '', args: '' });
+      break;
+
+    case 'tool_input_delta': {
+      // Accumulate into buffer; flush on next animation frame.
+      // This collapses rapid deltas into a single store mutation per frame.
+      const deltaId = state.activeToolInput[0]()?.id;
+      if (deltaId && event.delta) {
+        const existing = state._deltaBuffer.get(deltaId) || '';
+        state._deltaBuffer.set(deltaId, existing + event.delta);
+        scheduleDeltaFlush(state);
+      }
+      break;
+    }
+
+    case 'tool_input_end':
+      // Flush any pending deltas before transitioning status
+      flushDeltaBuffer(state);
+      // Transition to 'running' — tool execution is about to start
+      {
+        const endId = state.activeToolInput[0]()?.id;
+        if (endId) {
+          setMsgs(state, (s) => {
+            const loc = findToolPartInStore(s.list, endId);
+            if (loc) {
+              const [mi, pi] = loc;
+              (s.list[mi].parts![pi] as ToolPart).status = 'running';
+            }
+          });
+        }
+        setAToolIn(null);
+      }
+      break;
+
+    case 'tool_call':
+      // Tool execution started (or completed for provider-executed tools).
+      // Update the existing part with final input, or create if missing.
+      {
+        const toolId = event.id || '';
+        const existing = findToolPartInStore(getMsgs(state), toolId);
+        if (existing) {
+          setMsgs(state, (s) => {
+            const [mi, pi] = existing;
+            const part = s.list[mi].parts![pi] as ToolPart;
+            if (event.input) part.input = event.input;
+            part.status = 'running';
+          });
+        } else {
+          appendPart(state, {
+            type: 'tool',
+            id: toolId,
+            toolName: event.tool_name || '',
+            input: event.input || '',
+            output: '',
+            isError: false,
+            status: 'running',
+          });
+        }
+      }
       break;
 
     case 'tool_result': {
@@ -410,34 +548,20 @@ function handleFEPEvent(state: AgentChatState, key: string, event: FEPEvent) {
           metadata = JSON.parse(event.metadata) as ToolMetadata;
         } catch { /* skip */ }
       }
-      setMsgs((prev) => {
-        const updated = [...prev];
-        for (let idx = updated.length - 1; idx >= 0; idx--) {
-          const m = updated[idx];
-          if (m.role !== 'assistant' || !m.parts) continue;
-          const hasMatch = m.parts.some(
-            (p) => p.type === 'tool' && (p as ToolPart).id === toolId,
-          );
-          if (hasMatch) {
-            updated[idx] = {
-              ...m,
-              parts: m.parts.map((p) => {
-                if (p.type === 'tool' && (p as ToolPart).id === toolId) {
-                  return {
-                    ...p,
-                    output: event.output || '',
-                    isError: event.is_error || false,
-                    metadata,
-                    status: event.is_error ? 'error' : 'completed',
-                  } as ToolPart;
-                }
-                return p;
-              }),
-            };
-            break;
-          }
-        }
-        return updated;
+      const dur = typeof metadata?.duration === 'number' ? metadata.duration : undefined;
+
+      setMsgs(state, (s) => {
+        const loc = findToolPartInStore(s.list, toolId);
+        if (!loc) return;
+        const [mi, pi] = loc;
+        const part = s.list[mi].parts![pi] as ToolPart;
+        part.output = event.output || '';
+        part.isError = event.is_error || false;
+        if (metadata) part.metadata = metadata;
+        if (dur !== undefined) part.duration = dur;
+        part.status = event.is_error ? 'error' : 'completed';
+        if (event.media_type) part.mediaType = event.media_type;
+        if (event.data) part.data = event.data;
       });
       break;
     }
@@ -476,9 +600,6 @@ function handleFEPEvent(state: AgentChatState, key: string, event: FEPEvent) {
     // ── Delegation events (update existing run_agents tool part in-place) ──
 
     case 'delegation.fan_out':
-      // The fan-out event arrives after the run_agents tool_result. We could use
-      // this to confirm the group was registered, but the tool_result metadata
-      // already has all the info. Store the event timestamp for latency tracking.
       break;
 
     case 'delegation.run_completed':
@@ -498,16 +619,12 @@ function handleFEPEvent(state: AgentChatState, key: string, event: FEPEvent) {
 // ── Helpers ──
 
 function appendPart(state: AgentChatState, part: MessagePart) {
-  state.messages[1]((prev) => {
-    const updated = [...prev];
-    const lastMsg = updated[updated.length - 1];
-    if (lastMsg?.role === 'assistant') {
-      updated[updated.length - 1] = {
-        ...lastMsg,
-        parts: [...(lastMsg.parts || []), part],
-      };
+  setMsgs(state, (s) => {
+    const last = s.list[s.list.length - 1];
+    if (last?.role === 'assistant') {
+      if (!last.parts) last.parts = [];
+      last.parts.push(part);
     }
-    return updated;
   });
 }
 
@@ -535,15 +652,34 @@ function finalizeActiveReasoning(state: AgentChatState) {
   }
 }
 
+// ── Tool part lookup helpers (work on store proxy arrays) ──
+
+/**
+ * Find a tool part by its tool call ID within a store-proxy messages array.
+ * Returns [messageIndex, partIndex] or null.
+ */
+function findToolPartInStore(
+  msgs: ChatMessage[],
+  toolId: string,
+): [number, number] | null {
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    const m = msgs[i];
+    if (m.role !== 'assistant' || !m.parts) continue;
+    for (let j = 0; j < m.parts.length; j++) {
+      const p = m.parts[j];
+      if (p.type === 'tool' && (p as ToolPart).id === toolId) {
+        return [i, j];
+      }
+    }
+  }
+  return null;
+}
+
 // ── Delegation metadata updaters ──
 // These find the run_agents tool part by groupId and patch its metadata
 // so the DelegationFanOutCard re-renders with live progress.
 
-/**
- * Find a tool part with metadata.ui === "delegation-fan-out" and matching groupId.
- * Returns [messageIndex, partIndex] or null.
- */
-function findDelegationToolPart(
+function findDelegationToolPartInStore(
   msgs: ChatMessage[],
   groupId: string,
 ): [number, number] | null {
@@ -566,78 +702,56 @@ function findDelegationToolPart(
 
 /** Update delegation tool part when a child run completes. */
 function updateDelegationMeta(state: AgentChatState, event: DelegationRunCompletedEvent) {
-  state.messages[1]((prev) => {
-    const loc = findDelegationToolPart(prev, event.groupId);
-    if (!loc) return prev;
+  setMsgs(state, (s) => {
+    const loc = findDelegationToolPartInStore(s.list, event.groupId);
+    if (!loc) return;
     const [mi, pi] = loc;
-
-    const updated = [...prev];
-    const msg = { ...updated[mi], parts: [...updated[mi].parts!] };
-    const part = { ...(msg.parts[pi] as ToolPart) };
-    const meta = { ...part.metadata } as ToolMetadata & Record<string, unknown>;
+    const part = s.list[mi].parts![pi] as ToolPart;
+    if (!part.metadata) part.metadata = {} as ToolMetadata;
+    const meta = part.metadata as ToolMetadata & Record<string, unknown>;
 
     // Build completedRuns map: { runName: { childAgent, phase, duration } }
-    const completedRuns = (meta._completedRuns as Record<string, unknown>) || {};
-    completedRuns[event.runName] = {
+    if (!meta._completedRuns) meta._completedRuns = {};
+    (meta._completedRuns as Record<string, unknown>)[event.runName] = {
       childAgent: event.childAgent,
       phase: event.phase,
       duration: event.duration,
     };
-    meta._completedRuns = completedRuns;
     meta._remaining = event.remaining;
-
-    part.metadata = meta;
-    msg.parts[pi] = part;
-    updated[mi] = msg;
-    return updated;
   });
 }
 
 /** Mark delegation group as fully completed. */
 function updateDelegationAllCompleted(state: AgentChatState, event: DelegationAllCompletedEvent) {
-  state.messages[1]((prev) => {
-    const loc = findDelegationToolPart(prev, event.groupId);
-    if (!loc) return prev;
+  setMsgs(state, (s) => {
+    const loc = findDelegationToolPartInStore(s.list, event.groupId);
+    if (!loc) return;
     const [mi, pi] = loc;
-
-    const updated = [...prev];
-    const msg = { ...updated[mi], parts: [...updated[mi].parts!] };
-    const part = { ...(msg.parts[pi] as ToolPart) };
-    const meta = { ...part.metadata } as ToolMetadata & Record<string, unknown>;
+    const part = s.list[mi].parts![pi] as ToolPart;
+    if (!part.metadata) part.metadata = {} as ToolMetadata;
+    const meta = part.metadata as ToolMetadata & Record<string, unknown>;
 
     meta._allCompleted = true;
     meta._succeeded = event.succeeded;
     meta._failed = event.failed;
     meta._totalDuration = event.totalDuration;
     meta._remaining = 0;
-
-    part.metadata = meta;
-    msg.parts[pi] = part;
-    updated[mi] = msg;
-    return updated;
   });
 }
 
 /** Mark delegation group as timed out. */
 function updateDelegationTimeout(state: AgentChatState, event: DelegationTimeoutEvent) {
-  state.messages[1]((prev) => {
-    const loc = findDelegationToolPart(prev, event.groupId);
-    if (!loc) return prev;
+  setMsgs(state, (s) => {
+    const loc = findDelegationToolPartInStore(s.list, event.groupId);
+    if (!loc) return;
     const [mi, pi] = loc;
-
-    const updated = [...prev];
-    const msg = { ...updated[mi], parts: [...updated[mi].parts!] };
-    const part = { ...(msg.parts[pi] as ToolPart) };
-    const meta = { ...part.metadata } as ToolMetadata & Record<string, unknown>;
+    const part = s.list[mi].parts![pi] as ToolPart;
+    if (!part.metadata) part.metadata = {} as ToolMetadata;
+    const meta = part.metadata as ToolMetadata & Record<string, unknown>;
 
     meta._timedOut = true;
     meta._completedCount = event.completed;
     meta._timedOutCount = event.timedOut;
-
-    part.metadata = meta;
-    msg.parts[pi] = part;
-    updated[mi] = msg;
-    return updated;
   });
 }
 
@@ -721,7 +835,11 @@ function runtimeToChat(runtimeMessages: RuntimeMessage[]): ChatMessage[] {
             // Restore metadata from working memory (renderer hints, duration, etc.)
             if (part.metadata) {
               try {
-                toolPart.metadata = JSON.parse(part.metadata);
+                const meta = JSON.parse(part.metadata);
+                toolPart.metadata = meta;
+                if (typeof meta?.duration === 'number') {
+                  toolPart.duration = meta.duration;
+                }
               } catch { /* malformed metadata — ignore */ }
             }
           }
@@ -749,7 +867,7 @@ async function hydrateFromWorkingMemory(ns: string, name: string) {
 
   // Don't hydrate if already streaming or if we already have messages
   if (state?.streaming[0]()) return;
-  if (state && state.messages[0]().length > 0) return;
+  if (state && getMsgs(state).length > 0) return;
 
   try {
     const runtimeMsgs = await conversationAPI.getWorkingMemory(ns, name);
@@ -760,10 +878,38 @@ async function hydrateFromWorkingMemory(ns: string, name: string) {
 
     // Re-check: might have started streaming while we waited
     const freshState = getOrCreateState(key);
-    if (freshState.streaming[0]() || freshState.messages[0]().length > 0) return;
+    if (freshState.streaming[0]() || getMsgs(freshState).length > 0) return;
 
-    freshState.messages[1](chatMsgs);
+    // Use reconcile for full replacement — wraps plain objects into store proxies
+    freshState.msgStore[1]('list', reconcile(chatMsgs));
   } catch {
     // Silently fail — agent might be unreachable or BFF not ready
   }
+}
+
+// ── Global SSE delegation event subscription ──
+// Delegation events (run_completed, all_completed, timeout) may arrive
+// through the global SSE multiplexer after the parent agent's per-prompt
+// stream has already closed. Subscribe to the global SSE to catch them.
+
+/** Start listening for delegation events on the global SSE. Call once at app mount. */
+export function startDelegationEventListener() {
+  // Subscribe to ALL agents (null key = all) for delegation event types
+  return onFEPEvent(null, (event: FEPEvent) => {
+    // Only handle delegation events
+    if (
+      event.type !== 'delegation.run_completed' &&
+      event.type !== 'delegation.all_completed' &&
+      event.type !== 'delegation.timeout'
+    ) {
+      return;
+    }
+
+    // Route to all agent states — delegation events carry the parentAgent
+    // field but we don't know the namespace. Search all states for matching
+    // delegation tool parts.
+    for (const [key, state] of agentStates.entries()) {
+      handleFEPEvent(state, key, event);
+    }
+  });
 }

@@ -24,6 +24,12 @@ export default function OpsPanel() {
   const agentName = () => agent()?.name ?? '';
   const agentNs = () => agent()?.namespace ?? 'agents';
 
+  // Lifted selection state — only one detail card open at a time across the whole tree
+  const [selectedTreeNode, setSelectedTreeNode] = createSignal<string | null>(null);
+  const toggleTreeNode = (name: string) => {
+    setSelectedTreeNode(prev => prev === name ? null : name);
+  };
+
   // Direct workers (from delegation history)
   const workerNames = createMemo(() => getWorkerAgentsFor(agentName()));
 
@@ -115,7 +121,14 @@ export default function OpsPanel() {
             <Show when={workerNames().length > 0}>
               <For each={workerNames()}>
                 {(name) => (
-                  <AgentTreeNode name={name} namespace={agentNs()} depth={0} parentName={agentName()} />
+                  <AgentTreeNode
+                    name={name}
+                    namespace={agentNs()}
+                    depth={0}
+                    parentName={agentName()}
+                    selectedNode={selectedTreeNode()}
+                    onSelectNode={toggleTreeNode}
+                  />
                 )}
               </For>
             </Show>
@@ -236,9 +249,18 @@ function DelegationRunRow(props: { run: AgentRunResponse }) {
 
 // ── Agent Tree Node (recursive, expandable) ──
 
-function AgentTreeNode(props: { name: string; namespace: string; depth: number; parentName: string }) {
+function AgentTreeNode(props: {
+  name: string;
+  namespace: string;
+  depth: number;
+  parentName: string;
+  selectedNode: string | null;
+  onSelectNode: (name: string) => void;
+  /** Ancestor names for cycle detection */
+  ancestors?: Set<string>;
+}) {
   const [expanded, setExpanded] = createSignal(false);
-  const [detailOpen, setDetailOpen] = createSignal(false);
+  const detailOpen = () => props.selectedNode === props.name;
 
   const agentInfo = createMemo(() => {
     const list = agentList() ?? [];
@@ -291,7 +313,18 @@ function AgentTreeNode(props: { name: string; namespace: string; depth: number; 
     return Math.round((ok / total) * 100);
   });
 
-  const childWorkers = createMemo(() => getWorkerAgentsFor(props.name));
+  // Cycle detection: build ancestor set for children
+  const ancestorSet = createMemo(() => {
+    const s = new Set(props.ancestors ?? []);
+    s.add(props.name);
+    return s;
+  });
+
+  const childWorkers = createMemo(() => {
+    const children = getWorkerAgentsFor(props.name);
+    // Filter out ancestors to prevent infinite recursion
+    return children.filter(c => !ancestorSet().has(c));
+  });
   const hasChildren = () => childWorkers().length > 0;
 
   const latestRun = () => recentRuns()[0] ?? null;
@@ -326,12 +359,13 @@ function AgentTreeNode(props: { name: string; namespace: string; depth: number; 
 
   return (
     <div>
-      {/* Main node row */}
+      {/* Main node row — entire row is clickable to toggle detail */}
       <div
         class={`flex items-center gap-2 px-2 py-2 rounded-lg transition-colors hover:bg-surface-hover cursor-pointer ${
           detailOpen() ? 'bg-surface-hover' : ''
         }`}
         style={{ 'padding-left': `${8 + indent()}px` }}
+        onClick={() => props.onSelectNode(props.name)}
       >
         {/* Tree connector */}
         <Show when={props.depth > 0}>
@@ -358,13 +392,10 @@ function AgentTreeNode(props: { name: string; namespace: string; depth: number; 
         {/* Status dot */}
         <div class={`w-2.5 h-2.5 rounded-full flex-shrink-0 transition-all duration-300 ${statusColor()} ${isBusy() ? 'animate-pulse' : ''}`} />
 
-        {/* Agent name (clickable for detail) */}
-        <button
-          class="text-xs font-semibold text-text truncate hover:text-accent transition-colors"
-          onClick={() => setDetailOpen(!detailOpen())}
-        >
+        {/* Agent name */}
+        <span class={`text-xs font-semibold truncate transition-colors ${detailOpen() ? 'text-accent' : 'text-text'}`}>
           {props.name}
-        </button>
+        </span>
 
         {/* Mode badge */}
         <Show when={agentInfo()?.mode}>
@@ -432,8 +463,8 @@ function AgentTreeNode(props: { name: string; namespace: string; depth: number; 
         </Show>
       </div>
 
-      {/* Detail expansion (inline enrichment) */}
-      <Show when={detailOpen()}>
+      {/* Detail expansion (inline enrichment) — guarded against null agentInfo */}
+      <Show when={detailOpen() && agentInfo()}>
         <AgentDetailCard
           name={props.name}
           agentInfo={agentInfo()!}
@@ -456,6 +487,9 @@ function AgentTreeNode(props: { name: string; namespace: string; depth: number; 
               namespace={props.namespace}
               depth={props.depth + 1}
               parentName={props.name}
+              selectedNode={props.selectedNode}
+              onSelectNode={props.onSelectNode}
+              ancestors={ancestorSet()}
             />
           )}
         </For>

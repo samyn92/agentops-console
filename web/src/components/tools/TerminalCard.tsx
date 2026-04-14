@@ -35,7 +35,13 @@ export default function TerminalCard(props: TerminalCardProps) {
   };
 
   const cwd = () => props.metadata?.cwd as string | undefined;
-  const duration = () => props.metadata?.duration as string | undefined;
+  const duration = (): string | undefined => {
+    const ms = props.metadata?.duration as number | undefined;
+    if (!ms) return undefined;
+    if (ms < 1000) return `${ms}ms`;
+    if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
+    return `${Math.floor(ms / 60000)}m ${Math.round((ms % 60000) / 1000)}s`;
+  };
 
   const outputLines = () => props.output.split('\n');
   const isTruncated = () => outputLines().length > MAX_LINES && !expanded();

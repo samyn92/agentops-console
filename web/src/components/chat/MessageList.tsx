@@ -6,7 +6,6 @@ import {
   streaming,
   activeText,
   activeReasoning,
-  activeToolInput,
 } from '../../stores/chat';
 import MessageBubble from './MessageBubble';
 import AgentThinking from './AgentThinking';
@@ -18,14 +17,25 @@ interface MessageListProps {
 
 export default function MessageList(props: MessageListProps) {
   let listRef: HTMLDivElement | undefined;
+  let anchorRef: HTMLDivElement | undefined;
   let isUserScrolled = false;
   let rafId: number | null = null;
 
   function scheduleScroll() {
-    if (isUserScrolled || !listRef || rafId !== null) return;
+    if (isUserScrolled || !listRef) return;
+    // Cancel any pending rAF so we always scroll with the latest layout
+    if (rafId !== null) cancelAnimationFrame(rafId);
+    // Double-rAF: first frame lets SolidJS commit DOM changes,
+    // second frame scrolls after layout is stable
     rafId = requestAnimationFrame(() => {
-      rafId = null;
-      if (listRef) listRef.scrollTop = listRef.scrollHeight;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        if (anchorRef) {
+          anchorRef.scrollIntoView({ block: 'end' });
+        } else if (listRef) {
+          listRef.scrollTop = listRef.scrollHeight;
+        }
+      });
     });
   }
 
@@ -37,7 +47,6 @@ export default function MessageList(props: MessageListProps) {
     messages();
     activeText();
     activeReasoning();
-    activeToolInput();
     scheduleScroll();
   });
 
@@ -50,6 +59,7 @@ export default function MessageList(props: MessageListProps) {
   createEffect(() => {
     if (streaming()) {
       isUserScrolled = false;
+      scheduleScroll();
     }
   });
 
@@ -65,14 +75,14 @@ export default function MessageList(props: MessageListProps) {
     if (last.role !== 'assistant') return false;
     // Show if assistant has no finalized parts AND no active streaming content
     const hasParts = last.parts && last.parts.length > 0;
-    const hasActive = !!(activeText()?.content || activeReasoning()?.content || activeToolInput());
+    const hasActive = !!(activeText()?.content || activeReasoning()?.content);
     return !hasParts && !hasActive;
   };
 
   return (
     <div
       ref={listRef}
-      class={`flex-1 overflow-y-auto px-4 py-6 ${props.class || ''}`}
+      class={`flex-1 overflow-y-auto px-4 pt-6 pb-10 ${props.class || ''}`}
       onScroll={onScroll}
     >
       <Show
@@ -102,7 +112,6 @@ export default function MessageList(props: MessageListProps) {
                   isLastAssistant={msg.role === 'assistant' && i() === lastIndex()}
                   activeText={i() === lastIndex() ? activeText() : null}
                   activeReasoning={i() === lastIndex() ? activeReasoning() : null}
-                  activeToolInput={i() === lastIndex() ? activeToolInput() : null}
                 />
               );
             }}
@@ -112,6 +121,8 @@ export default function MessageList(props: MessageListProps) {
           <AgentThinking active={showThinking()} />
         </div>
       </Show>
+      {/* Invisible scroll anchor — always at the very bottom of scroll content */}
+      <div ref={anchorRef} class="h-0 w-0" aria-hidden="true" />
     </div>
   );
 }

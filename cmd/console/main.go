@@ -14,6 +14,7 @@ import (
 	"github.com/samyn92/agentops-console/internal/k8s"
 	"github.com/samyn92/agentops-console/internal/multiplexer"
 	"github.com/samyn92/agentops-console/internal/server"
+	"github.com/samyn92/agentops-console/internal/tracing"
 )
 
 func main() {
@@ -43,6 +44,21 @@ func main() {
 	// Context with signal handling
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	// Initialize OTEL tracing (non-fatal if it fails — BFF works without it)
+	tracingShutdown, err := tracing.Init(ctx)
+	if err != nil {
+		slog.Warn("OTEL tracing init failed, continuing without tracing", "error", err)
+	}
+	defer func() {
+		if tracingShutdown != nil {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := tracingShutdown(shutdownCtx); err != nil {
+				slog.Warn("tracing shutdown error", "error", err)
+			}
+		}
+	}()
 
 	// K8s client
 	slog.Info("initializing K8s client", "kubeconfig", kubeconfigPath, "namespace", *namespace, "dev", *dev)

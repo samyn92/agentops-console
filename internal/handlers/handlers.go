@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
 
 	"github.com/samyn92/agentops-console/internal/fep"
 	"github.com/samyn92/agentops-console/internal/k8s"
@@ -211,6 +213,8 @@ func (h *Handlers) AgentPromptStream(w http.ResponseWriter, r *http.Request) {
 	}
 	proxyReq.Header.Set("Content-Type", "application/json")
 	proxyReq.Header.Set("Accept", "text/event-stream")
+	// Propagate W3C trace context to agent runtime for distributed tracing
+	otel.GetTextMapPropagator().Inject(r.Context(), propagation.HeaderCarrier(proxyReq.Header))
 
 	client := &http.Client{Timeout: 0} // no timeout for SSE
 	resp, err := client.Do(proxyReq)
@@ -260,6 +264,7 @@ func (h *Handlers) AgentPromptStream(w http.ResponseWriter, r *http.Request) {
 				Agent:     agentKey,
 				EventType: "agent.event",
 				Event:     fepEvt,
+				RawEvent:  json.RawMessage(data), // preserve full JSON for delegation fields
 			}:
 			default:
 			}
@@ -808,6 +813,8 @@ func (h *Handlers) proxyToAgent(w http.ResponseWriter, r *http.Request, method, 
 	if body != nil {
 		proxyReq.Header.Set("Content-Type", "application/json")
 	}
+	// Propagate W3C trace context to agent runtime for distributed tracing
+	otel.GetTextMapPropagator().Inject(r.Context(), propagation.HeaderCarrier(proxyReq.Header))
 
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(proxyReq)
@@ -835,11 +842,10 @@ func newSSEScanner(body io.ReadCloser) *sseScanner {
 
 func (s *sseScanner) Scan() bool {
 	for {
-		n, err := s.body.Read(s.readBuf)
-		if n > 0 {
-			s.buf = append(s.buf, s.readBuf[:n]...)
-		}
-		// Look for complete SSE frames (always check, even after EOF)
+		// Drain complete frames from the buffer BEFORE blocking on Read().
+		// Multiple SSE frames may arrive in a single TCP segment; returning
+		// them immediately prevents stalls during fast event bursts (e.g.
+		// tool_input_delta → tool_input_end → tool_call).
 		for {
 			idx := bytes.Index(s.buf, []byte("\n\n"))
 			if idx < 0 {
@@ -855,6 +861,12 @@ func (s *sseScanner) Scan() bool {
 					return true
 				}
 			}
+		}
+
+		// No complete frames in buffer — read more from upstream.
+		n, err := s.body.Read(s.readBuf)
+		if n > 0 {
+			s.buf = append(s.buf, s.readBuf[:n]...)
 		}
 		if err != nil {
 			// On EOF, try to parse any remaining buffer as a final frame.

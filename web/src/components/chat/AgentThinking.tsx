@@ -1,69 +1,74 @@
-// AgentThinking — configurable thinking indicator for the chat.
-// Three styles: "orbital" (orbiting dots), "waveform" (audio bars), "helix" (DNA strands).
-// Style is controlled via the thinkingStyle setting.
-import { Show, Switch, Match } from 'solid-js';
-import { thinkingStyle } from '../../stores/settings';
+// AgentThinking — inline thinking indicator.
+// Shows "Thinking..." text with a subtle pulse. After 3 seconds,
+// adds an elapsed timer. Sits inline within the message flow.
+import { Show, onCleanup, createSignal } from 'solid-js';
 
 interface AgentThinkingProps {
   active: boolean;
 }
 
-/** Orbital Trace — 3 dots orbiting a circular path with staggered phase */
-function OrbitalThinking() {
-  return (
-    <div class="agent-thinking--orbital">
-      <div class="agent-thinking--orbital__track" />
-      <div class="agent-thinking--orbital__dot agent-thinking--orbital__dot--1" />
-      <div class="agent-thinking--orbital__dot agent-thinking--orbital__dot--2" />
-      <div class="agent-thinking--orbital__dot agent-thinking--orbital__dot--3" />
-      <div class="agent-thinking--orbital__core" />
-    </div>
-  );
-}
-
-/** Waveform — 4 bars oscillating like an audio equalizer */
-function WaveformThinking() {
-  return (
-    <div class="agent-thinking--waveform">
-      <div class="agent-thinking--waveform__bar agent-thinking--waveform__bar--1" />
-      <div class="agent-thinking--waveform__bar agent-thinking--waveform__bar--2" />
-      <div class="agent-thinking--waveform__bar agent-thinking--waveform__bar--3" />
-      <div class="agent-thinking--waveform__bar agent-thinking--waveform__bar--4" />
-    </div>
-  );
-}
-
-/** DNA Helix — two intertwined strands rotating in pseudo-3D */
-function HelixThinking() {
-  return (
-    <div class="agent-thinking--helix">
-      <div class="agent-thinking--helix__dot agent-thinking--helix__dot-a1" />
-      <div class="agent-thinking--helix__dot agent-thinking--helix__dot-a2" />
-      <div class="agent-thinking--helix__dot agent-thinking--helix__dot-a3" />
-      <div class="agent-thinking--helix__dot agent-thinking--helix__dot-a4" />
-      <div class="agent-thinking--helix__dot agent-thinking--helix__dot-b1" />
-      <div class="agent-thinking--helix__dot agent-thinking--helix__dot-b2" />
-      <div class="agent-thinking--helix__dot agent-thinking--helix__dot-b3" />
-      <div class="agent-thinking--helix__dot agent-thinking--helix__dot-b4" />
-    </div>
-  );
-}
-
 export default function AgentThinking(props: AgentThinkingProps) {
+  const [elapsed, setElapsed] = createSignal(0);
+  let interval: ReturnType<typeof setInterval> | null = null;
+  let startTime = 0;
+
+  // Start/stop timer based on active state
+  const startTimer = () => {
+    startTime = Date.now();
+    setElapsed(0);
+    interval = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - startTime) / 1000));
+    }, 1000);
+  };
+
+  const stopTimer = () => {
+    if (interval) {
+      clearInterval(interval);
+      interval = null;
+    }
+    setElapsed(0);
+  };
+
+  // Watch active prop changes
+  const checkActive = () => {
+    if (props.active && !interval) {
+      startTimer();
+    } else if (!props.active && interval) {
+      stopTimer();
+    }
+  };
+
+  // Use a getter to reactively track props.active
+  // SolidJS will re-run this when active changes
+  const isActive = () => {
+    checkActive();
+    return props.active;
+  };
+
+  onCleanup(() => stopTimer());
+
+  const formatElapsed = (s: number) => {
+    if (s < 60) return `${s}s`;
+    return `${Math.floor(s / 60)}m ${s % 60}s`;
+  };
+
   return (
-    <Show when={props.active}>
-      <div class="agent-thinking mt-3">
-        <Switch>
-          <Match when={thinkingStyle() === 'orbital'}>
-            <OrbitalThinking />
-          </Match>
-          <Match when={thinkingStyle() === 'waveform'}>
-            <WaveformThinking />
-          </Match>
-          <Match when={thinkingStyle() === 'helix'}>
-            <HelixThinking />
-          </Match>
-        </Switch>
+    <Show when={isActive()}>
+      <div class="flex items-center gap-2.5 py-2 mt-2 fade-slide-in">
+        <div class="agent-thinking--helix">
+          <div class="agent-thinking--helix__dot agent-thinking--helix__dot-a1" />
+          <div class="agent-thinking--helix__dot agent-thinking--helix__dot-a2" />
+          <div class="agent-thinking--helix__dot agent-thinking--helix__dot-a3" />
+          <div class="agent-thinking--helix__dot agent-thinking--helix__dot-a4" />
+          <div class="agent-thinking--helix__dot agent-thinking--helix__dot-b1" />
+          <div class="agent-thinking--helix__dot agent-thinking--helix__dot-b2" />
+          <div class="agent-thinking--helix__dot agent-thinking--helix__dot-b3" />
+          <div class="agent-thinking--helix__dot agent-thinking--helix__dot-b4" />
+        </div>
+        <span class="text-xs text-text-muted">Thinking</span>
+        <Show when={elapsed() >= 3}>
+          <span class="text-[10px] text-text-muted/60 tabular-nums">{formatElapsed(elapsed())}</span>
+        </Show>
       </div>
     </Show>
   );

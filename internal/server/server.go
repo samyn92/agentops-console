@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
+	"github.com/riandyrn/otelchi"
 
 	"github.com/samyn92/agentops-console/internal/handlers"
 	"github.com/samyn92/agentops-console/internal/k8s"
@@ -40,6 +41,7 @@ func New(cfg Config, k8sClient *k8s.Client, mux *multiplexer.Multiplexer) *Serve
 	r.Use(chimw.RealIP)
 	r.Use(chimw.Logger)
 	r.Use(chimw.Recoverer)
+	r.Use(otelchi.Middleware("agentops-console", otelchi.WithChiRoutes(r)))
 
 	// CORS
 	corsOpts := cors.Options{

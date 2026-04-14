@@ -30,6 +30,8 @@ export interface AgentResourceRequirements {
 export interface AgentDelegation {
   team: string[]
   maxFanOut?: number
+  strategy?: string
+  preferParallel?: boolean
 }
 
 export interface AgentSpec {
@@ -657,6 +659,7 @@ export interface RuntimeStatus {
   messages?: number
   turns?: number
   memory_enabled?: boolean
+  context_budget?: import('./fep').ContextBudget
 }
 
 // ---- Memory (agentops-memory) ----

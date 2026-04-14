@@ -4,6 +4,7 @@ package multiplexer
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"math"
@@ -37,10 +38,14 @@ type AgentConn struct {
 }
 
 // EnvelopedEvent is an FEP event wrapped with agent identity.
+// RawEvent carries the original JSON so delegation-specific fields
+// (groupId, runName, childAgent, etc.) survive the relay without
+// needing explicit struct fields in fep.Event.
 type EnvelopedEvent struct {
-	Agent     AgentKey  `json:"agent"`
-	EventType string    `json:"eventType"` // SSE event type for the global stream
-	Event     fep.Event `json:"event"`
+	Agent     AgentKey        `json:"agent"`
+	EventType string          `json:"eventType"` // SSE event type for the global stream
+	Event     fep.Event       `json:"event"`
+	RawEvent  json.RawMessage `json:"-"` // original JSON; preferred over Event when set
 }
 
 // NewAgentConn creates a new agent connection manager.

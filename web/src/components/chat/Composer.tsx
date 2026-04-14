@@ -511,7 +511,7 @@ export default function Composer(props: ComposerProps) {
   };
 
   return (
-    <div class={`px-4 py-3 ${props.class || ''}`}>
+    <div class={`px-4 pt-5 pb-4 border-t border-border-subtle/40 ${props.class || ''}`}>
       <div class="max-w-3xl mx-auto">
         {/* Selected resource context chips */}
         <Show when={ctxCount() > 0}>

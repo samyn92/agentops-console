@@ -10,7 +10,6 @@ import StreamingText from './StreamingText';
 import ReasoningBlock from './ReasoningBlock';
 import ToolCallCard from './ToolCallCard';
 import SourceReference from './SourceReference';
-import ToolInputPreview from './ToolInputPreview';
 import { showThinkingBlocks } from '../../stores/settings';
 
 
@@ -18,7 +17,6 @@ interface MessageBubbleProps {
   message: ChatMessage;
   activeText?: { id: string; content: string } | null;
   activeReasoning?: { id: string; content: string } | null;
-  activeToolInput?: { id: string; toolName: string; args: string } | null;
   isLastAssistant?: boolean;
   /** Whether the previous message is the same role (for tighter grouping) */
   prevSameRole?: boolean;
@@ -65,8 +63,9 @@ function groupParts(parts: MessagePart[]): PartGroup[] {
 export default function MessageBubble(props: MessageBubbleProps) {
   const msg = () => props.message;
 
-  // M3 spacing: 8px between same-role messages, 16px between role changes
-  const topSpacing = () => props.prevSameRole ? 'mt-1.5' : 'mt-4';
+  // Spacing between messages: generous breathing room for visual clarity.
+  // Same-role consecutive gets tighter grouping, role changes get full separation.
+  const topSpacing = () => props.prevSameRole ? 'mt-5' : 'mt-7';
 
   // ── User message ──
   if (msg().role === 'user') {
@@ -94,7 +93,6 @@ export default function MessageBubble(props: MessageBubbleProps) {
     if (props.isLastAssistant) {
       if (props.activeText?.content) return true;
       if (showThinkingBlocks() && props.activeReasoning?.content) return true;
-      if (props.activeToolInput) return true;
     }
     return false;
   });
@@ -102,12 +100,10 @@ export default function MessageBubble(props: MessageBubbleProps) {
   const hasActiveStreamBubble = () =>
     props.isLastAssistant && (props.activeText?.content || (showThinkingBlocks() && props.activeReasoning?.content));
 
-  const hasActiveToolInput = () => props.isLastAssistant && props.activeToolInput;
-
   return (
     <Show when={hasVisibleContent()}>
       <div class={`group ${topSpacing()} ${props.class || ''}`}>
-        <div class="max-w-[92%] md:max-w-[80%] space-y-1.5">
+        <div class="max-w-[92%] md:max-w-[80%] space-y-4">
           {/* Render grouped parts */}
           <For each={groups()}>
             {(group) => {
@@ -177,14 +173,6 @@ export default function MessageBubble(props: MessageBubbleProps) {
                 />
               </Show>
             </div>
-          </Show>
-
-          {/* Active tool input preview — outside bubble */}
-          <Show when={hasActiveToolInput()}>
-            <ToolInputPreview
-              toolName={props.activeToolInput!.toolName}
-              args={props.activeToolInput!.args}
-            />
           </Show>
 
         </div>

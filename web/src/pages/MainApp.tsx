@@ -15,6 +15,7 @@ import { selectedRunKey, allRuns, refreshRuns, startRunPolling, stopRunPolling }
 import { selectedTraceForDetail } from '../stores/view';
 import { phaseVariant } from '../lib/format';
 import { MonitorIcon } from '../components/shared/Icons';
+import { startDelegationEventListener } from '../stores/chat';
 import AppErrorBoundary from '../components/shared/ErrorBoundary';
 import Sidebar from '../components/layout/Sidebar';
 import RightPanel from '../components/layout/RightPanel';
@@ -31,6 +32,7 @@ export default function MainApp() {
     startEventStream();
     startRunPolling();
     refreshRuns();
+    const unsubDelegation = startDelegationEventListener();
 
     // Prevent browser back button from leaving the app.
     // Push a guard state so popstate fires before navigation leaves '/'.
@@ -40,7 +42,10 @@ export default function MainApp() {
       history.pushState({ guard: true }, '');
     };
     window.addEventListener('popstate', onPopState);
-    onCleanup(() => window.removeEventListener('popstate', onPopState));
+    onCleanup(() => {
+      window.removeEventListener('popstate', onPopState);
+      unsubDelegation();
+    });
   });
 
   onCleanup(() => {

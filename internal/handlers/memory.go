@@ -13,6 +13,9 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
+
 	agentsv1alpha1 "github.com/samyn92/agentops-core/api/v1alpha1"
 
 	"github.com/samyn92/agentops-console/internal/k8s"
@@ -116,6 +119,8 @@ func proxyToMemory(
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
+	// Propagate W3C trace context to agentops-memory for distributed tracing
+	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
 
 	slog.Debug("proxying to agentops-memory", "method", method, "url", targetURL)
 	return memoryClient.Do(req)

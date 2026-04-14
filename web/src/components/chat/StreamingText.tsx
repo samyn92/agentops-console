@@ -13,8 +13,8 @@ interface StreamingTextProps {
 
 // Characters revealed per animation frame during streaming.
 // Adaptive: starts gentle, accelerates when the buffer is large.
-const BASE_CHARS_PER_FRAME = 2;
-const MAX_CHARS_PER_FRAME = 20;
+const BASE_CHARS_PER_FRAME = 3;
+const MAX_CHARS_PER_FRAME = 30;
 
 // Cursor HTML injected inline at the end of the last block element
 const CURSOR_HTML = '<span class="streaming-cursor"></span>';

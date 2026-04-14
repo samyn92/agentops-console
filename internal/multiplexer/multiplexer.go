@@ -12,6 +12,7 @@ import (
 
 	"github.com/samyn92/agentops-console/internal/fep"
 	"github.com/samyn92/agentops-console/internal/k8s"
+	agentsv1alpha1 "github.com/samyn92/agentops-core/api/v1alpha1"
 )
 
 // Multiplexer manages agent SSE connections and fans out events to browser clients.
@@ -39,17 +40,28 @@ func New(k8sClient *k8s.Client) *Multiplexer {
 func (m *Multiplexer) Start(ctx context.Context) {
 	// Subscribe to K8s watcher for agent CRD changes
 	unsubscribe := m.k8sClient.Watcher().Subscribe(func(event k8s.ResourceEvent) {
-		if event.ResourceKind != "Agent" {
-			// Forward non-agent resource events to clients as resource.changed
+		switch event.ResourceKind {
+		case "Agent":
+			switch event.Type {
+			case k8s.EventAdded, k8s.EventModified:
+				m.ensureAgentConn(ctx, event.Namespace, event.Name)
+			case k8s.EventDeleted:
+				m.removeAgentConn(event.Namespace, event.Name)
+			}
+		case "AgentRun":
+			// Synthesize delegation events from AgentRun phase transitions.
+			// This ensures delegation progress reaches the browser even when
+			// the parent agent's per-prompt SSE stream has already closed.
+			if event.Type == k8s.EventModified {
+				m.handleAgentRunUpdate(event)
+			}
+		default:
+			// Forward other resource events to clients as resource.changed
 			m.broadcastResourceEvent(event)
 			return
 		}
-		switch event.Type {
-		case k8s.EventAdded, k8s.EventModified:
-			m.ensureAgentConn(ctx, event.Namespace, event.Name)
-		case k8s.EventDeleted:
-			m.removeAgentConn(event.Namespace, event.Name)
-		}
+		// Also broadcast as resource.changed so UI can refresh lists
+		m.broadcastResourceEvent(event)
 	})
 
 	// Fan-out loop: read from central event channel, write to all clients
@@ -134,6 +146,76 @@ func (m *Multiplexer) broadcastResourceEvent(event k8s.ResourceEvent) {
 		},
 	}
 	m.broadcast(evt)
+}
+
+// handleAgentRunUpdate synthesizes delegation.run_completed FEP events when
+// an AgentRun transitions to a terminal phase (Succeeded/Failed). This ensures
+// delegation progress reaches the browser via the global SSE multiplexer even
+// when the parent agent's per-prompt stream has already closed and the runtime's
+// DelegationWatcher.emitFEP silently drops events (emitter is nil).
+func (m *Multiplexer) handleAgentRunUpdate(event k8s.ResourceEvent) {
+	run, ok := event.Resource.(*agentsv1alpha1.AgentRun)
+	if !ok || run == nil {
+		return
+	}
+
+	// Only care about agent-sourced runs (delegations) in terminal phases
+	if run.Spec.Source != agentsv1alpha1.AgentRunSourceAgent {
+		return
+	}
+	phase := run.Status.Phase
+	if phase != agentsv1alpha1.AgentRunPhaseSucceeded && phase != agentsv1alpha1.AgentRunPhaseFailed {
+		return
+	}
+
+	// Calculate duration from start to completion
+	duration := ""
+	if run.Status.StartTime != nil && run.Status.CompletionTime != nil {
+		duration = run.Status.CompletionTime.Time.Sub(run.Status.StartTime.Time).String()
+	}
+
+	// Build a delegation.run_completed event as raw JSON so all fields survive
+	delegationEvt := map[string]any{
+		"type":       fep.EventDelegationRunCompleted,
+		"timestamp":  time.Now().UTC().Format(time.RFC3339),
+		"runName":    run.Name,
+		"childAgent": run.Spec.AgentRef,
+		"phase":      string(phase),
+		"duration":   duration,
+		// groupId is not available from K8s — the frontend matches by runName too
+		"groupId": "",
+	}
+	raw, err := json.Marshal(delegationEvt)
+	if err != nil {
+		slog.Error("failed to marshal delegation event", "error", err)
+		return
+	}
+
+	// Emit to the parent agent's SSE clients
+	parentAgent := run.Spec.SourceRef
+	if parentAgent == "" {
+		return
+	}
+	agentKey := AgentKey{Namespace: event.Namespace, Name: parentAgent}
+
+	slog.Info("synthesizing delegation.run_completed from AgentRun status",
+		"run", run.Name,
+		"childAgent", run.Spec.AgentRef,
+		"parentAgent", parentAgent,
+		"phase", string(phase),
+	)
+
+	select {
+	case m.eventC <- EnvelopedEvent{
+		Agent:     agentKey,
+		EventType: "agent.event",
+		Event:     fep.Event{Type: fep.EventDelegationRunCompleted},
+		RawEvent:  json.RawMessage(raw),
+	}:
+	default:
+		slog.Warn("event channel full, dropping synthesized delegation event",
+			"run", run.Name)
+	}
 }
 
 func (m *Multiplexer) ensureAgentConn(ctx context.Context, namespace, name string) {
@@ -228,13 +310,21 @@ func (m *Multiplexer) ServeGlobalSSE(w http.ResponseWriter, r *http.Request) {
 			if !ok {
 				return
 			}
-			// Wrap in envelope format
+			// Wrap in envelope format.
+			// Use RawEvent (original JSON) when available to preserve
+			// delegation-specific fields that fep.Event doesn't model.
+			var eventPayload any
+			if len(evt.RawEvent) > 0 {
+				eventPayload = evt.RawEvent
+			} else {
+				eventPayload = evt.Event
+			}
 			envelope := map[string]any{
 				"agent": map[string]string{
 					"namespace": evt.Agent.Namespace,
 					"name":      evt.Agent.Name,
 				},
-				"event": evt.Event,
+				"event": eventPayload,
 			}
 			writeSSE(w, flusher, evt.EventType, envelope)
 		}

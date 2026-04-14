@@ -11,7 +11,7 @@ import { A } from '@solidjs/router';
 import { agentList, selectedAgent, selectAgent, getDelegationTargetsFor, agentHealth } from '../../stores/agents';
 import { leftPanelState, toggleLeftPanel, leftPanelTab, setLeftPanelTab, showRunDetail, clearCenterOverlay } from '../../stores/view';
 import type { LeftPanelTab } from '../../stores/view';
-import { contextualRuns, selectedRunKey, selectRun, clearRunSelection, getRunSource, delegationGroups, getRunDelegationGroup, getAgentConcurrency, type RunSource } from '../../stores/runs';
+import { contextualRuns, selectedRunKey, selectRun, clearRunSelection, getRunSource, getRunsDelegatedBy, delegationGroups, getRunDelegationGroup, getAgentConcurrency, type RunSource } from '../../stores/runs';
 import { getChannelsForAgent, channelBoundAgents } from '../../stores/channels';
 import { getResourceForge, getResourceRepoName } from '../../stores/resources';
 import { streamingAgentKeys } from '../../stores/chat';
@@ -118,9 +118,26 @@ export default function Sidebar(props: SidebarProps) {
     document.addEventListener('mouseup', onMouseUp);
   }
 
-  // Agent-scoped runs for the bottom split section, grouped by delegation
+  // Agent-scoped runs for the bottom split section, grouped by delegation.
+  // For orchestrators: show delegated runs (runs they created for workers).
+  // For task agents: show contextual runs (runs targeting or sourced from them).
+  const isSelectedOrchestrator = createMemo(() => {
+    const agent = selectedAgent();
+    if (!agent) return false;
+    const agentInfo = (agentList() ?? []).find(
+      (a) => a.namespace === agent.namespace && a.name === agent.name,
+    );
+    return agentInfo?.mode === 'daemon' && !!agentInfo?.delegation;
+  });
+
   const agentRuns = createMemo(() => {
-    const runs = contextualRuns();
+    const agent = selectedAgent();
+    if (!agent) return [];
+
+    const runs = isSelectedOrchestrator()
+      ? getRunsDelegatedBy(agent.name)
+      : contextualRuns();
+
     return [...runs].sort((a, b) => {
       const ta = new Date(a.metadata.creationTimestamp).getTime();
       const tb = new Date(b.metadata.creationTimestamp).getTime();
@@ -406,7 +423,9 @@ export default function Sidebar(props: SidebarProps) {
             <div class="flex flex-col overflow-hidden min-h-0" style={{ height: `${100 - splitPct()}%` }}>
               {/* Section header */}
               <div class="flex items-center gap-1.5 px-3 py-1.5 border-b border-border flex-shrink-0 bg-surface-2/30">
-                <span class="text-[10px] font-medium text-text-muted uppercase tracking-wider">Runs</span>
+                <span class="text-[10px] font-medium text-text-muted uppercase tracking-wider">
+                  {isSelectedOrchestrator() ? 'Delegations' : 'Runs'}
+                </span>
                 <Show when={selectedAgent()}>
                   <span class="text-[10px] text-text-muted/60 font-mono truncate">
                     {selectedAgent()!.name}
@@ -433,7 +452,9 @@ export default function Sidebar(props: SidebarProps) {
                     when={agentRuns().length > 0}
                     fallback={
                       <div class="flex flex-col items-center justify-center py-6 px-4 text-center">
-                        <p class="text-[11px] text-text-muted">No runs for this agent.</p>
+                        <p class="text-[11px] text-text-muted">
+                          {isSelectedOrchestrator() ? 'No delegations yet.' : 'No runs for this agent.'}
+                        </p>
                       </div>
                     }
                   >
