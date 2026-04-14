@@ -173,31 +173,25 @@ export function selectAgent(ns: string, name: string) {
 }
 
 /**
- * Get agents that a given orchestrator CAN delegate to (prospective).
- * Mirrors the runtime's isAgentVisible() logic:
- *  - scope "namespace" (or unset): visible to all agents in the namespace
- *  - scope "explicit": visible only if callerName is in allowedCallers
- *  - scope "hidden": invisible
- * Returns AgentResponse objects (not just names) so UI can show description, tags, model, etc.
+ * Get agents that a given orchestrator CAN delegate to (from its team roster).
+ * The delegation.team list IS the access control — no more scope/visibility filtering.
+ * Returns AgentResponse objects so UI can show model, phase, etc.
  */
 export function getDelegationTargetsFor(callerName: string, callerNs: string): import('../types').AgentResponse[] {
   const agents = agentList();
   if (!agents) return [];
 
+  // Find the caller's delegation spec to get their team roster
+  const caller = agents.find((a) => a.name === callerName && a.namespace === callerNs);
+  const team = caller?.delegation?.team ?? [];
+  if (team.length === 0) return [];
+
+  const teamSet = new Set(team);
+
   return agents.filter((a) => {
-    // Don't include self
-    if (a.name === callerName && a.namespace === callerNs) return false;
     // Only include agents in the same namespace
     if (a.namespace !== callerNs) return false;
-
-    const scope = a.discovery?.scope || 'namespace';
-    switch (scope) {
-      case 'hidden':
-        return false;
-      case 'explicit':
-        return (a.discovery?.allowedCallers ?? []).includes(callerName);
-      default: // 'namespace' or unset
-        return true;
-    }
+    // Only include agents on the team roster
+    return teamSet.has(a.name);
   });
 }

@@ -10,7 +10,7 @@ import NeuralTrace from '../shared/NeuralTrace';
 import Spinner from '../shared/Spinner';
 import Markdown from '../shared/Markdown';
 import { phaseVariant, formatDateTime, relativeTime, formatTokens, formatCost } from '../../lib/format';
-import type { AgentCRD, AgentResourceBinding, AgentRunResponse, AgentDiscovery, AgentMemoryConfig, AgentResourceRef, AgentResourceRequirements, AgentStorageConfig } from '../../types';
+import type { AgentCRD, AgentResourceBinding, AgentRunResponse, AgentMemoryConfig, AgentResourceRef, AgentResourceRequirements, AgentStorageConfig } from '../../types';
 
 interface AgentInspectorProps {
   class?: string;
@@ -133,11 +133,6 @@ export default function AgentInspector(props: AgentInspectorProps) {
 
             return (
               <div class="px-6 py-5 space-y-6">
-
-                {/* ── Discovery ── */}
-                <Show when={spec().discovery}>
-                  <DiscoverySection discovery={spec().discovery!} />
-                </Show>
 
                 {/* ── Run Activity ── */}
                 <div class="space-y-3">
@@ -559,67 +554,6 @@ function SystemPromptSection(props: { prompt: string }) {
           <div class="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-surface-2 to-transparent rounded-b-xl" />
         </Show>
       </div>
-    </div>
-  );
-}
-
-function DiscoverySection(props: { discovery: AgentDiscovery }) {
-  const d = () => props.discovery;
-  const scopeLabel = () => {
-    switch (d().scope) {
-      case 'namespace': return 'Namespace';
-      case 'explicit': return 'Explicit';
-      case 'hidden': return 'Hidden';
-      default: return d().scope || 'Namespace';
-    }
-  };
-  const scopeColor = () => {
-    switch (d().scope) {
-      case 'hidden': return 'bg-error/8 border-error/12 text-error';
-      case 'explicit': return 'bg-warning/8 border-warning/12 text-warning';
-      default: return 'bg-success/8 border-success/12 text-success';
-    }
-  };
-
-  return (
-    <div class="space-y-3">
-      <div class="flex items-center gap-2">
-        <h3 class="text-[11px] font-semibold text-text-muted uppercase tracking-wider">Discovery</h3>
-        <span class={`inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-medium border ${scopeColor()}`}>
-          {scopeLabel()}
-        </span>
-      </div>
-
-      <Show when={d().description}>
-        <div class="rounded-xl bg-surface-2 border border-border-subtle p-3.5">
-          <p class="text-xs text-text-secondary leading-relaxed">{d().description}</p>
-        </div>
-      </Show>
-
-      <Show when={d().tags?.length}>
-        <div class="flex flex-wrap gap-1.5">
-          <For each={d().tags}>
-            {(tag) => (
-              <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-surface-3 border border-border-subtle text-text-muted">
-                {tag}
-              </span>
-            )}
-          </For>
-        </div>
-      </Show>
-
-      <Show when={d().scope === 'explicit' && d().allowedCallers?.length}>
-        <div class="flex items-center gap-2 flex-wrap text-[11px]">
-          <span class="text-text-muted">Callers:</span>
-          <For each={d().allowedCallers}>
-            {(caller) => (
-              <span class="font-mono text-text-secondary bg-surface-2 px-1.5 py-0.5 rounded border border-border-subtle">
-                {caller}
-              </span>
-            )}
-          </For>
-        </div>
-      </Show>
     </div>
   );
 }

@@ -48,23 +48,21 @@ func (h *Handlers) ListAgents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	type discoveryResponse struct {
-		Description    string   `json:"description,omitempty"`
-		Tags           []string `json:"tags,omitempty"`
-		Scope          string   `json:"scope,omitempty"`
-		AllowedCallers []string `json:"allowedCallers,omitempty"`
+	type delegationResponse struct {
+		Team      []string `json:"team"`
+		MaxFanOut int      `json:"maxFanOut,omitempty"`
 	}
 
 	type agentResponse struct {
-		Name      string             `json:"name"`
-		Namespace string             `json:"namespace"`
-		Mode      string             `json:"mode"`
-		Model     string             `json:"model"`
-		Image     string             `json:"image"`
-		Phase     string             `json:"phase"`
-		Ready     int32              `json:"readyReplicas"`
-		Schedule  string             `json:"schedule,omitempty"`
-		Discovery *discoveryResponse `json:"discovery,omitempty"`
+		Name       string              `json:"name"`
+		Namespace  string              `json:"namespace"`
+		Mode       string              `json:"mode"`
+		Model      string              `json:"model"`
+		Image      string              `json:"image"`
+		Phase      string              `json:"phase"`
+		Ready      int32               `json:"readyReplicas"`
+		Schedule   string              `json:"schedule,omitempty"`
+		Delegation *delegationResponse `json:"delegation,omitempty"`
 	}
 
 	resp := make([]agentResponse, 0, len(agents.Items))
@@ -79,12 +77,10 @@ func (h *Handlers) ListAgents(w http.ResponseWriter, r *http.Request) {
 			Ready:     a.Status.ReadyReplicas,
 			Schedule:  a.Spec.Schedule,
 		}
-		if a.Spec.Discovery != nil {
-			ar.Discovery = &discoveryResponse{
-				Description:    a.Spec.Discovery.Description,
-				Tags:           a.Spec.Discovery.Tags,
-				Scope:          string(a.Spec.Discovery.Scope),
-				AllowedCallers: a.Spec.Discovery.AllowedCallers,
+		if a.Spec.Delegation != nil {
+			ar.Delegation = &delegationResponse{
+				Team:      a.Spec.Delegation.Team,
+				MaxFanOut: a.Spec.Delegation.MaxFanOut,
 			}
 		}
 		resp = append(resp, ar)

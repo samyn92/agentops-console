@@ -5,8 +5,13 @@ go 1.26.0
 require (
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/go-chi/cors v1.2.2
-	github.com/samyn92/agentops-core v0.8.1
+	github.com/samyn92/agentops-core v0.9.0
 	k8s.io/api v0.35.0
+)
+
+replace github.com/samyn92/agentops-core => ../agentops-core
+
+require (
 	k8s.io/apimachinery v0.35.0
 	k8s.io/client-go v0.35.0
 	sigs.k8s.io/controller-runtime v0.21.0

@@ -2,13 +2,6 @@
 
 // ---- Agent CR ----
 
-export interface AgentDiscovery {
-  description?: string
-  tags?: string[]
-  scope?: 'namespace' | 'explicit' | 'hidden'
-  allowedCallers?: string[]
-}
-
 export interface AgentMemoryConfig {
   serverRef: string
   project?: string
@@ -35,8 +28,7 @@ export interface AgentResourceRequirements {
 }
 
 export interface AgentDelegation {
-  strategy: 'proactive' | 'conservative' | 'manual'
-  preferParallel?: boolean
+  team: string[]
   maxFanOut?: number
 }
 
@@ -76,7 +68,6 @@ export interface AgentSpec {
   resources?: AgentResourceRequirements
   serviceAccountName?: string
   timeout?: string
-  discovery?: AgentDiscovery
   delegation?: AgentDelegation
   memory?: AgentMemoryConfig
   resourceBindings?: AgentResourceRef[]
@@ -106,7 +97,7 @@ export interface AgentResponse {
   phase: string
   readyReplicas: number
   schedule?: string
-  discovery?: AgentDiscovery
+  delegation?: AgentDelegation
 }
 
 /** Full CRD shape returned by GET /agents/:ns/:name (raw K8s object). */

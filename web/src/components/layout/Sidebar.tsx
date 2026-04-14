@@ -55,15 +55,18 @@ export default function Sidebar(props: SidebarProps) {
     const chBound = channelBoundAgents();
     const byName = (a: AgentResponse, b: AgentResponse) => a.name.localeCompare(b.name);
 
-    // Orchestrators: all daemon agents
-    const orchestrators = agents.filter((a) => a.mode === 'daemon').sort(byName);
+    // Orchestrators: daemon agents WITH a delegation spec (not all daemons)
+    const orchestrators = agents.filter((a) => a.mode === 'daemon' && a.delegation).sort(byName);
+
+    // Standalone daemons: daemon agents WITHOUT delegation (shown separately)
+    const standaloneDaemons = agents.filter((a) => a.mode === 'daemon' && !a.delegation).sort(byName);
 
     // Channels: task agents with channel bindings OR a schedule (cron = trigger)
     const channels = agents.filter(
       (a) => a.mode === 'task' && (chBound.has(a.name) || a.schedule),
     ).sort(byName);
 
-    return { orchestrators, channels };
+    return { orchestrators, standaloneDaemons, channels };
   });
 
   // ── Sidebar width resize handler ──
@@ -313,7 +316,31 @@ export default function Sidebar(props: SidebarProps) {
                     </div>
                   </Show>
 
-                  {/* ── 2. Channels (task agents with channel bindings or schedule triggers) ── */}
+                  {/* ── 2. Standalone daemons (daemon agents without delegation) ── */}
+                  <Show when={agentTree().standaloneDaemons.length > 0}>
+                    <div class="section-header">
+                      <span class="section-label">Daemons</span>
+                    </div>
+                    <div class="flex flex-col gap-0.5 px-2">
+                      <For each={agentTree().standaloneDaemons}>
+                        {(agent) => {
+                          const isSelected = () => {
+                            const sel = selectedAgent();
+                            return sel?.namespace === agent.namespace && sel?.name === agent.name;
+                          };
+                          return (
+                            <AgentCard
+                              agent={agent}
+                              selected={isSelected()}
+                              onSelect={() => { clearRunSelection(); selectAgent(agent.namespace, agent.name); }}
+                            />
+                          );
+                        }}
+                      </For>
+                    </div>
+                  </Show>
+
+                  {/* ── 3. Channels (task agents with channel bindings or schedule triggers) ── */}
                   <Show when={agentTree().channels.length > 0}>
                     <div class="section-header">
                       <span class="section-label">Channels</span>

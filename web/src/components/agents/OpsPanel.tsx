@@ -136,7 +136,7 @@ export default function OpsPanel() {
             <Show when={workerNames().length === 0 && targets().length === 0}>
               <div class="flex flex-col items-center justify-center py-8 text-center">
                 <p class="text-sm text-text-muted">No delegation targets discovered.</p>
-                <p class="text-xs text-text-muted/70 mt-1">Configure discovery scope on worker agents to make them visible.</p>
+                <p class="text-xs text-text-muted/70 mt-1">Add agents to this orchestrator's team roster to enable delegation.</p>
               </div>
             </Show>
           </div>
@@ -497,13 +497,6 @@ function AgentDetailCard(props: {
       class="mx-2 mb-2 rounded-lg bg-surface-2 border border-border-subtle overflow-hidden"
       style={{ 'margin-left': `${8 + indent()}px` }}
     >
-      {/* Description */}
-      <Show when={props.agentInfo.discovery?.description}>
-        <div class="px-3 py-2.5 border-b border-border-subtle">
-          <p class="text-[11px] text-text-secondary leading-relaxed">{props.agentInfo.discovery!.description}</p>
-        </div>
-      </Show>
-
       {/* Stats grid */}
       <div class="grid grid-cols-4 gap-px bg-border-subtle">
         <MiniStat label="Messages" value={rs()?.messages ?? '\u2014'} />
@@ -528,19 +521,6 @@ function AgentDetailCard(props: {
             </span>
           </Show>
           <span>{tokenStats().runCount} runs</span>
-        </div>
-      </Show>
-
-      {/* Tags */}
-      <Show when={props.agentInfo.discovery?.tags?.length}>
-        <div class="flex flex-wrap gap-1.5 px-3 py-2 border-t border-border-subtle">
-          <For each={props.agentInfo.discovery!.tags!.slice(0, 6)}>
-            {(tag) => (
-              <span class="px-1.5 py-0.5 rounded text-[9px] font-medium bg-surface-3 text-text-muted border border-border-subtle">
-                {tag}
-              </span>
-            )}
-          </For>
         </div>
       </Show>
 
@@ -675,9 +655,6 @@ function StandbyNode(props: { agent: AgentResponse }) {
       <div class="w-2.5 h-2.5 rounded-full bg-text-muted/30 flex-shrink-0" />
       <span class="text-text-secondary font-medium truncate">{a().name}</span>
       <span class="text-[9px] px-1.5 py-0.5 rounded bg-surface-3 text-text-muted border border-border-subtle flex-shrink-0">{a().mode}</span>
-      <Show when={a().discovery?.description}>
-        <span class="text-[10px] text-text-muted truncate flex-1">{a().discovery!.description!.slice(0, 60)}</span>
-      </Show>
       <Show when={a().model}>
         <span class="text-[9px] font-mono text-text-muted flex-shrink-0">{a().model!.split('/').pop()}</span>
       </Show>

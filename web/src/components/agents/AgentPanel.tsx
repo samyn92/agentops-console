@@ -44,7 +44,7 @@ import Spinner from '../shared/Spinner';
 import Markdown from '../shared/Markdown';
 import RunPhaseIcon from '../shared/RunPhaseIcon';
 import { ForgeIcon, ForgeWatermark, SourceIcon, GitBranchIcon, MonitorIcon, DelegationIcon, BrainIcon, SearchIcon, SparklesIcon, CloseIcon } from '../shared/Icons';
-import type { AgentCRD, AgentRunResponse, AgentResponse, AgentResourceBinding, AgentDiscovery, AgentMemoryConfig, AgentResourceRef, AgentResourceRequirements, AgentStorageConfig, RuntimeStatus, MemoryObservation, MemorySearchResult } from '../../types';
+import type { AgentCRD, AgentRunResponse, AgentResponse, AgentResourceBinding, AgentMemoryConfig, AgentResourceRef, AgentResourceRequirements, AgentStorageConfig, RuntimeStatus, MemoryObservation, MemorySearchResult } from '../../types';
 
 // ── Main Component ──
 
@@ -136,14 +136,7 @@ export default function AgentPanel() {
             />
 
             {/* ═══════════════════════════════════════════════════
-                2. DISCOVERY — description, scope badge, tags
-                ═══════════════════════════════════════════════════ */}
-            <Show when={spec()?.discovery}>
-              <DiscoverySection discovery={spec()!.discovery!} />
-            </Show>
-
-            {/* ═══════════════════════════════════════════════════
-                3. DELEGATION — strategy, workers, targets, run feed
+                2. DELEGATION — team, workers, targets, run feed
                 ═══════════════════════════════════════════════════ */}
             <Show when={spec()?.delegation || workerNames().length > 0 || delegatedRuns().length > 0}>
               <DelegationSection
@@ -327,66 +320,8 @@ function StatCard(props: { value: string; label: string; variant?: 'accent' | 's
 }
 
 // ═══════════════════════════════════════════════════
-// SECTION 2: Discovery
+// SECTION 2: Delegation
 // ═══════════════════════════════════════════════════
-
-function DiscoverySection(props: { discovery: AgentDiscovery }) {
-  const d = () => props.discovery;
-  const scopeColor = () => {
-    switch (d().scope) {
-      case 'hidden': return 'bg-error/8 border-error/12 text-error';
-      case 'explicit': return 'bg-warning/8 border-warning/12 text-warning';
-      default: return 'bg-success/8 border-success/12 text-success';
-    }
-  };
-  const scopeLabel = () => {
-    switch (d().scope) {
-      case 'namespace': return 'Namespace';
-      case 'explicit': return 'Explicit';
-      case 'hidden': return 'Hidden';
-      default: return d().scope || 'Namespace';
-    }
-  };
-
-  return (
-    <div class="space-y-3">
-      <div class="flex items-center gap-2">
-        <h3 class="text-[11px] font-semibold text-text-muted uppercase tracking-wider">Discovery</h3>
-        <span class={`inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-medium border ${scopeColor()}`}>
-          {scopeLabel()}
-        </span>
-      </div>
-      <Show when={d().description}>
-        <div class="rounded-xl bg-surface-2 border border-border-subtle p-3.5">
-          <p class="text-xs text-text-secondary leading-relaxed">{d().description}</p>
-        </div>
-      </Show>
-      <Show when={d().tags?.length}>
-        <div class="flex flex-wrap gap-1.5">
-          <For each={d().tags}>
-            {(tag) => (
-              <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-surface-3 border border-border-subtle text-text-muted">
-                {tag}
-              </span>
-            )}
-          </For>
-        </div>
-      </Show>
-      <Show when={d().scope === 'explicit' && d().allowedCallers?.length}>
-        <div class="flex items-center gap-2 flex-wrap text-[11px]">
-          <span class="text-text-muted">Callers:</span>
-          <For each={d().allowedCallers}>
-            {(caller) => (
-              <span class="font-mono text-text-secondary bg-surface-2 px-1.5 py-0.5 rounded border border-border-subtle">
-                {caller}
-              </span>
-            )}
-          </For>
-        </div>
-      </Show>
-    </div>
-  );
-}
 
 // ═══════════════════════════════════════════════════
 // SECTION 3: Delegation
@@ -1063,18 +998,6 @@ function WorkerDetail(props: { name: string; onClose: () => void }) {
         </button>
       </div>
       <div class="px-3.5 py-3 space-y-2.5">
-        <Show when={workerCrd()?.spec?.discovery?.description}>
-          <p class="text-[11px] text-text-secondary leading-relaxed">{workerCrd()!.spec.discovery!.description}</p>
-        </Show>
-        <Show when={workerCrd()?.spec?.discovery?.tags?.length}>
-          <div class="flex flex-wrap gap-1">
-            <For each={workerCrd()!.spec.discovery!.tags}>
-              {(tag) => (
-                <span class="px-1.5 py-0.5 rounded-md text-[9px] font-medium bg-surface-3 border border-border-subtle text-text-muted">{tag}</span>
-              )}
-            </For>
-          </div>
-        </Show>
         <Show when={workerCrd()}>
           <div class="flex flex-wrap gap-x-5 gap-y-1 text-[11px]">
             <Show when={workerCrd()!.spec.model}>
@@ -1140,18 +1063,8 @@ function DelegationTargetCard(props: { agent: AgentResponse; orchestratorName: s
           }`}>{successRate()}%</span>
         </Show>
       </div>
-      <Show when={a().discovery?.description}>
-        <p class="text-[10px] text-text-secondary leading-relaxed mb-1.5 line-clamp-2">{a().discovery!.description}</p>
-      </Show>
       <div class="flex items-center gap-1.5 flex-wrap">
         <span class="text-[9px] font-mono text-text-muted/60">{a().model}</span>
-        <Show when={a().discovery?.tags?.length}>
-          <For each={a().discovery!.tags!.slice(0, 3)}>
-            {(tag) => (
-              <span class="px-1 py-px rounded text-[8px] font-medium bg-surface-3 text-text-muted">{tag}</span>
-            )}
-          </For>
-        </Show>
         <span class="flex-1" />
         <Show when={!hasDelegated()}>
           <span class="text-[8px] text-text-muted/40 italic">unused</span>
