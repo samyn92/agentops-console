@@ -247,7 +247,8 @@ export type AgentResourceKind =
   | 'gitlab-group'
   | 'git-repo'
   | 's3-bucket'
-  | 'documentation';
+  | 'documentation'
+  | 'kubernetes-cluster';
 
 export interface AgentResourceBinding {
   name: string
@@ -288,7 +289,7 @@ export function isBrowsableResource(kind: AgentResourceKind): boolean {
 }
 
 /** Get the display icon type for a resource kind */
-export function resourceKindIcon(kind: AgentResourceKind): 'github' | 'gitlab' | 'git' | 's3' | 'docs' {
+export function resourceKindIcon(kind: AgentResourceKind): 'github' | 'gitlab' | 'git' | 's3' | 'docs' | 'kubernetes' {
   switch (kind) {
     case 'github-repo':
     case 'github-org':
@@ -302,6 +303,8 @@ export function resourceKindIcon(kind: AgentResourceKind): 'github' | 'gitlab' |
       return 's3';
     case 'documentation':
       return 'docs';
+    case 'kubernetes-cluster':
+      return 'kubernetes';
   }
 }
 

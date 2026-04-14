@@ -62,7 +62,7 @@ export default function OpsPanel() {
     let totalCost = 0;
     for (const r of delegatedRuns()) {
       if (r.status?.tokensUsed) totalTokens += r.status.tokensUsed;
-      if (r.status?.cost) totalCost += r.status.cost;
+      if (r.status?.cost) totalCost += parseFloat(r.status.cost);
     }
     return { totalTokens, totalCost };
   });
@@ -521,7 +521,7 @@ function AgentDetailCard(props: {
     let totalCost = 0;
     for (const r of props.recentRuns) {
       if (r.status?.tokensUsed) totalTokens += r.status.tokensUsed;
-      if (r.status?.cost) totalCost += r.status.cost;
+      if (r.status?.cost) totalCost += parseFloat(r.status.cost);
     }
     return { totalTokens, totalCost, runCount: props.recentRuns.length };
   });

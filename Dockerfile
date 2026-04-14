@@ -13,7 +13,7 @@ RUN npm run build
 FROM golang:1.26-alpine AS backend
 WORKDIR /app
 COPY go.mod go.sum ./
-RUN go mod download
+RUN go mod edit -dropreplace github.com/samyn92/agentops-core && go mod tidy && go mod download
 COPY cmd/ ./cmd/
 COPY internal/ ./internal/
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o console ./cmd/console/
