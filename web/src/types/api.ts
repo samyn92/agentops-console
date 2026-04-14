@@ -13,7 +13,6 @@ export interface AgentMemoryConfig {
   serverRef: string
   project?: string
   contextLimit?: number
-  windowSize?: number
   autoSummarize?: boolean
   autoSave?: boolean
   autoSearch?: boolean
@@ -33,6 +32,12 @@ export interface AgentResourceRef {
 export interface AgentResourceRequirements {
   requests?: { cpu?: string; memory?: string }
   limits?: { cpu?: string; memory?: string }
+}
+
+export interface AgentDelegation {
+  strategy: 'proactive' | 'conservative' | 'manual'
+  preferParallel?: boolean
+  maxFanOut?: number
 }
 
 export interface AgentSpec {
@@ -72,6 +77,7 @@ export interface AgentSpec {
   serviceAccountName?: string
   timeout?: string
   discovery?: AgentDiscovery
+  delegation?: AgentDelegation
   memory?: AgentMemoryConfig
   resourceBindings?: AgentResourceRef[]
 }
@@ -100,6 +106,7 @@ export interface AgentResponse {
   phase: string
   readyReplicas: number
   schedule?: string
+  discovery?: AgentDiscovery
 }
 
 /** Full CRD shape returned by GET /agents/:ns/:name (raw K8s object). */
@@ -113,6 +120,36 @@ export interface AgentCRD {
   }
   spec: AgentSpec
   status?: AgentStatus
+}
+
+/** Operator-generated runtime config from GET /agents/:ns/:name/config. */
+export interface AgentConfig {
+  name: string
+  namespace: string
+  model: string
+  systemPrompt: string
+  platformProtocol: string
+  memory?: {
+    serverURL: string
+    project: string
+    contextLimit: number
+    autoSummarize: boolean
+    autoSave: boolean
+    autoSearch: boolean
+  }
+  delegation?: {
+    strategy: string
+    preferParallel: boolean
+    maxFanOut: number
+  }
+  resources?: Array<{
+    name: string
+    url: string
+    type: string
+    defaultBranch: string
+    readOnly: boolean
+    autoContext: boolean
+  }>
 }
 
 // ---- AgentRun CR ----
@@ -386,7 +423,7 @@ export function resourceContextKey(ctx: ResourceContext): string {
   }
 }
 
-// ---- Session (legacy — types kept for potential future use with Engram memory) ----
+// ---- Session (runtime token usage tracking) ----
 
 export interface SessionUsage {
   input_tokens: number
@@ -631,7 +668,7 @@ export interface RuntimeStatus {
   memory_enabled?: boolean
 }
 
-// ---- Memory (Engram) ----
+// ---- Memory (agentops-memory) ----
 
 export interface MemoryEnabledResponse {
   enabled: boolean
@@ -647,7 +684,7 @@ export type MemoryObservationType =
   | 'discovery'
   | 'learning'
   | 'preference'
-  | string  // Engram allows custom types
+  | string  // Custom types allowed
 
 export interface MemoryObservation {
   id: number
@@ -655,16 +692,17 @@ export interface MemoryObservation {
   type: MemoryObservationType
   title: string
   content: string
-  tool_name?: string
-  project?: string
-  scope?: 'project' | 'personal'
+  tags?: string[]
+  project: string
+  scope: string
   topic_key?: string
-  revision_count?: number
-  duplicate_count?: number
+  normalized_hash?: string
+  revision_count: number
+  duplicate_count: number
   last_seen_at?: string
+  promoted_to?: string
   created_at: string
   updated_at: string
-  deleted_at?: string | null
 }
 
 export interface MemorySearchResult {
@@ -673,45 +711,33 @@ export interface MemorySearchResult {
   title: string
   content: string
   rank: number
-  project?: string
-  created_at?: string
+  topic_key?: string
 }
 
 export interface MemorySession {
   id: string
   project: string
-  directory?: string
   started_at: string
   ended_at?: string
   summary?: string
-  status: 'active' | 'completed'
+  message_count: number
 }
 
 export interface MemoryContext {
   recent_observations: Array<{
-    id?: number
     type: string
     title: string
     content: string
   }>
   recent_sessions: Array<{
-    id?: string
     summary: string
-    started_at?: string
-    ended_at?: string
-  }>
-  recent_prompts?: Array<{
-    content: string
-    created_at: string
   }>
 }
 
 export interface MemoryStats {
   total_sessions: number
   total_observations: number
-  total_prompts: number
-  total_projects: number
-  active_sessions?: number
+  projects: string[]
 }
 
 // ---- Tempo Trace Types ----

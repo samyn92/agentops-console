@@ -4,6 +4,8 @@
 // Memory/Tools/Resources tabs in the right sidebar.
 import { createSignal, createMemo, Show, For } from 'solid-js';
 import { showTraceDetail } from '../../stores/view';
+import { CloseIcon } from '../shared/Icons';
+import Tip from '../shared/Tip';
 import type { TraceSpan, TraceProcess } from '../../types';
 
 interface SpanDetailPanelProps {
@@ -171,15 +173,14 @@ export default function SpanDetailPanel(props: SpanDetailPanelProps) {
             {isVirtual() ? 'reconstructed from events' : props.span.spanID.slice(0, 16)}
           </div>
         </div>
-        <button
-          class="p-1 rounded hover:bg-surface-hover text-text-muted hover:text-text transition-colors flex-shrink-0"
-          onClick={props.onClose}
-          title="Close span detail"
-        >
-          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
+        <Tip content="Close span detail">
+          <button
+            class="p-1 rounded hover:bg-surface-hover text-text-muted hover:text-text transition-colors flex-shrink-0"
+            onClick={props.onClose}
+          >
+            <CloseIcon class="w-3.5 h-3.5" />
+          </button>
+        </Tip>
       </div>
 
       {/* Scrollable content */}

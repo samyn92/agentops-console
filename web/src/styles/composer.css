@@ -1,0 +1,64 @@
+/* ===== Input composer focus glow ===== */
+.composer-input {
+  transition: box-shadow var(--transition-default) ease,
+              border-color var(--transition-default) ease,
+              background-color var(--transition-default) ease;
+}
+
+.composer-input:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border-subtle));
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent) 10%, transparent),
+    0 2px 8px 0 rgba(0, 0, 0, 0.04);
+}
+
+/* ===== Composer Processing Glow — ambient breathing border + shadow ===== */
+/* A unified 2.4s breathing rhythm creates a calm "alive" feel when the agent
+   is processing. The border color and outer glow pulse in sync. */
+.composer-input.composer-processing {
+  animation: composer-border-breathe 2.4s ease-in-out infinite;
+}
+
+@keyframes composer-border-breathe {
+  0%, 100% {
+    border-color: color-mix(in srgb, var(--accent) 25%, var(--border-main));
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--accent) 6%, transparent),
+      0 0 8px 0 color-mix(in srgb, var(--accent) 4%, transparent),
+      0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  }
+  50% {
+    border-color: color-mix(in srgb, var(--accent) 55%, var(--border-main));
+    box-shadow:
+      0 0 0 2px color-mix(in srgb, var(--accent) 12%, transparent),
+      0 0 20px 2px color-mix(in srgb, var(--accent) 10%, transparent),
+      0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  }
+}
+
+:root.dark .composer-input.composer-processing {
+  animation: composer-border-breathe-dark 2.4s ease-in-out infinite;
+}
+
+@keyframes composer-border-breathe-dark {
+  0%, 100% {
+    border-color: color-mix(in srgb, var(--accent) 30%, var(--border-main));
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--accent) 8%, transparent),
+      0 0 10px 0 color-mix(in srgb, var(--accent) 6%, transparent),
+      0 1px 2px 0 rgba(0, 0, 0, 0.15);
+  }
+  50% {
+    border-color: color-mix(in srgb, var(--accent) 60%, var(--border-main));
+    box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent),
+      0 0 24px 4px color-mix(in srgb, var(--accent) 12%, transparent),
+      0 1px 2px 0 rgba(0, 0, 0, 0.15);
+  }
+}
+
+/* Override focus-within when processing — let the breathing animation drive styles */
+.composer-input.composer-processing:focus-within {
+  box-shadow: inherit;
+  border-color: inherit;
+}

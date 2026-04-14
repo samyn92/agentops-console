@@ -1,6 +1,7 @@
 // TaskAgentView — central view for task agents.
 // Shows a rich run timeline with git workspace details, replacing the empty ChatView.
 import { For, Show, createSignal, createMemo, createResource } from 'solid-js';
+import { Collapsible } from '@ark-ui/solid/collapsible';
 import { selectedAgent, agentList } from '../../stores/agents';
 import { contextualRuns, getRunSource, type RunSource } from '../../stores/runs';
 import { agents as agentsAPI } from '../../lib/api';
@@ -130,7 +131,9 @@ function RunCard(props: { run: AgentRunResponse }) {
   const hasGit = () => !!run().status?.branch || !!run().spec.git;
 
   return (
-    <div
+    <Collapsible.Root
+      open={expanded()}
+      onOpenChange={(details) => setExpanded(details.open)}
       class={`run-card rounded-xl border transition-all ${
         expanded()
           ? 'border-border-hover bg-surface shadow-md'
@@ -138,9 +141,8 @@ function RunCard(props: { run: AgentRunResponse }) {
       } ${isActive() ? 'run-card--active' : ''}`}
     >
       {/* Header row — clickable */}
-      <button
+      <Collapsible.Trigger
         class="w-full text-left px-4 py-3"
-        onClick={() => setExpanded(!expanded())}
       >
         <div class="flex items-center gap-2.5 mb-1.5">
           <SourceIcon source={source()} />
@@ -214,7 +216,7 @@ function RunCard(props: { run: AgentRunResponse }) {
             {run().spec.prompt}
           </p>
         </Show>
-      </button>
+      </Collapsible.Trigger>
 
       {/* Active run neural trace */}
       <Show when={isActive()}>
@@ -222,7 +224,7 @@ function RunCard(props: { run: AgentRunResponse }) {
       </Show>
 
       {/* Expanded details */}
-      <Show when={expanded()}>
+      <Collapsible.Content class="overflow-hidden">
         <div class="px-4 pb-4 pt-0 border-t border-border-subtle space-y-3">
           {/* Prompt */}
           <div>
@@ -310,8 +312,8 @@ function RunCard(props: { run: AgentRunResponse }) {
             </div>
           </Show>
         </div>
-      </Show>
-    </div>
+      </Collapsible.Content>
+    </Collapsible.Root>
   );
 }
 

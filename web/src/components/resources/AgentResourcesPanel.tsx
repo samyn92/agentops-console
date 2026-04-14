@@ -11,6 +11,7 @@ import { resourceKindIcon } from '../../types/api';
 import type { AgentResourceBinding } from '../../types';
 import ResourceBrowser from './ResourceBrowser';
 import KubernetesBrowser from './KubernetesBrowser';
+import Tip from '../shared/Tip';
 
 // ── Types ──
 
@@ -189,28 +190,30 @@ export default function AgentResourcesPanel() {
       {/* Drill-in sub-header (only when not on the list view) */}
       <Show when={view().type !== 'list'}>
         <div class="flex items-center gap-2 px-3 py-2 border-b border-border bg-surface-2/80 flex-shrink-0">
-          <button
-            class="p-0.5 text-text-muted hover:text-text rounded transition-colors"
-            onClick={() => setView({ type: 'list' })}
-            title="Back to resources"
-          >
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
+          <Tip content="Back to resources">
+            <button
+              class="p-0.5 text-text-muted hover:text-text rounded transition-colors"
+              onClick={() => setView({ type: 'list' })}
+            >
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+          </Tip>
           {headerIcon()}
           <span class="text-xs font-semibold text-text uppercase tracking-wide">{headerTitle()}</span>
           <Show when={ctxCount() > 0}>
             <span class="text-[10px] font-medium bg-accent text-white px-1.5 py-0.5 rounded-full leading-none">
               {ctxCount()}
             </span>
-            <button
-              class="text-[10px] text-text-muted hover:text-error transition-colors ml-auto"
-              onClick={() => clearContextItems()}
-              title="Clear all selections"
-            >
-              Clear
-            </button>
+            <Tip content="Clear all selections">
+              <button
+                class="text-[10px] text-text-muted hover:text-error transition-colors ml-auto"
+                onClick={() => clearContextItems()}
+              >
+                Clear
+              </button>
+            </Tip>
           </Show>
         </div>
       </Show>

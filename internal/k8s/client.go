@@ -424,6 +424,14 @@ func (c *Client) ListIngresses(ctx context.Context, namespace string) (*networki
 	return list, nil
 }
 
+func (c *Client) GetConfigMap(ctx context.Context, namespace, name string) (*corev1.ConfigMap, error) {
+	cm := &corev1.ConfigMap{}
+	if err := c.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, cm); err != nil {
+		return nil, err
+	}
+	return cm, nil
+}
+
 func (c *Client) ListConfigMaps(ctx context.Context, namespace string) (*corev1.ConfigMapList, error) {
 	list := &corev1.ConfigMapList{}
 	if err := c.client.List(ctx, list, &client.ListOptions{Namespace: namespace}); err != nil {

@@ -48,20 +48,28 @@ func (h *Handlers) ListAgents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	type discoveryResponse struct {
+		Description    string   `json:"description,omitempty"`
+		Tags           []string `json:"tags,omitempty"`
+		Scope          string   `json:"scope,omitempty"`
+		AllowedCallers []string `json:"allowedCallers,omitempty"`
+	}
+
 	type agentResponse struct {
-		Name      string `json:"name"`
-		Namespace string `json:"namespace"`
-		Mode      string `json:"mode"`
-		Model     string `json:"model"`
-		Image     string `json:"image"`
-		Phase     string `json:"phase"`
-		Ready     int32  `json:"readyReplicas"`
-		Schedule  string `json:"schedule,omitempty"`
+		Name      string             `json:"name"`
+		Namespace string             `json:"namespace"`
+		Mode      string             `json:"mode"`
+		Model     string             `json:"model"`
+		Image     string             `json:"image"`
+		Phase     string             `json:"phase"`
+		Ready     int32              `json:"readyReplicas"`
+		Schedule  string             `json:"schedule,omitempty"`
+		Discovery *discoveryResponse `json:"discovery,omitempty"`
 	}
 
 	resp := make([]agentResponse, 0, len(agents.Items))
 	for _, a := range agents.Items {
-		resp = append(resp, agentResponse{
+		ar := agentResponse{
 			Name:      a.Name,
 			Namespace: a.Namespace,
 			Mode:      string(a.Spec.Mode),
@@ -70,7 +78,16 @@ func (h *Handlers) ListAgents(w http.ResponseWriter, r *http.Request) {
 			Phase:     string(a.Status.Phase),
 			Ready:     a.Status.ReadyReplicas,
 			Schedule:  a.Spec.Schedule,
-		})
+		}
+		if a.Spec.Discovery != nil {
+			ar.Discovery = &discoveryResponse{
+				Description:    a.Spec.Discovery.Description,
+				Tags:           a.Spec.Discovery.Tags,
+				Scope:          string(a.Spec.Discovery.Scope),
+				AllowedCallers: a.Spec.Discovery.AllowedCallers,
+			}
+		}
+		resp = append(resp, ar)
 	}
 
 	writeJSON(w, http.StatusOK, resp)
@@ -87,6 +104,31 @@ func (h *Handlers) GetAgent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, agent)
+}
+
+// GetAgentConfig returns the operator-generated runtime config (from the agent's ConfigMap).
+// This includes the platformProtocol field that is not stored on the CRD itself.
+func (h *Handlers) GetAgentConfig(w http.ResponseWriter, r *http.Request) {
+	ns := chi.URLParam(r, "ns")
+	name := chi.URLParam(r, "name")
+
+	cmName := name + "-config"
+	cm, err := h.k8s.GetConfigMap(r.Context(), ns, cmName)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "agent config not found: %s", err)
+		return
+	}
+
+	raw, ok := cm.Data["config.json"]
+	if !ok {
+		writeError(w, http.StatusNotFound, "config.json key not found in ConfigMap %s", cmName)
+		return
+	}
+
+	// Return the raw JSON directly (it's already valid JSON from the operator)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprint(w, raw)
 }
 
 func (h *Handlers) GetAgentStatus(w http.ResponseWriter, r *http.Request) {
@@ -409,7 +451,7 @@ func (h *Handlers) WatchResources(w http.ResponseWriter, r *http.Request) {
 	<-r.Context().Done()
 }
 
-// ── Memory (Engram) endpoints ──
+// ── Memory (agentops-memory) endpoints ──
 
 // MemoryEnabled checks if an agent has memory configured.
 func (h *Handlers) MemoryEnabled(w http.ResponseWriter, r *http.Request) {
@@ -434,7 +476,7 @@ func (h *Handlers) MemoryEnabled(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// ListMemoryObservations returns recent observations for an agent from Engram.
+// ListMemoryObservations returns recent observations for an agent from agentops-memory.
 func (h *Handlers) ListMemoryObservations(w http.ResponseWriter, r *http.Request) {
 	ns := chi.URLParam(r, "ns")
 	name := chi.URLParam(r, "name")
@@ -456,16 +498,16 @@ func (h *Handlers) ListMemoryObservations(w http.ResponseWriter, r *http.Request
 		extra["scope"] = scope
 	}
 
-	resp, err := proxyToEngram(r.Context(), h.k8s, agent, "GET", "/observations/recent", nil, extra)
+	resp, err := proxyToMemory(r.Context(), h.k8s, agent, "GET", "/observations/recent", nil, extra)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "engram unreachable: %s", err)
+		writeError(w, http.StatusBadGateway, "memory service unreachable: %s", err)
 		return
 	}
 	defer resp.Body.Close()
 	proxyResponse(w, resp)
 }
 
-// GetMemoryObservation returns a single observation by ID from Engram.
+// GetMemoryObservation returns a single observation by ID from agentops-memory.
 func (h *Handlers) GetMemoryObservation(w http.ResponseWriter, r *http.Request) {
 	ns := chi.URLParam(r, "ns")
 	name := chi.URLParam(r, "name")
@@ -482,16 +524,16 @@ func (h *Handlers) GetMemoryObservation(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	resp, err := proxyToEngram(r.Context(), h.k8s, agent, "GET", fmt.Sprintf("/observations/%s", obsID), nil, nil)
+	resp, err := proxyToMemory(r.Context(), h.k8s, agent, "GET", fmt.Sprintf("/observations/%s", obsID), nil, nil)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "engram unreachable: %s", err)
+		writeError(w, http.StatusBadGateway, "memory service unreachable: %s", err)
 		return
 	}
 	defer resp.Body.Close()
 	proxyResponse(w, resp)
 }
 
-// CreateMemoryObservation creates a new observation in Engram for an agent.
+// CreateMemoryObservation creates a new observation in agentops-memory for an agent.
 // The request body should contain: { type, title, content, tags?, scope?, topic_key? }
 // session_id and project are injected automatically.
 func (h *Handlers) CreateMemoryObservation(w http.ResponseWriter, r *http.Request) {
@@ -524,7 +566,7 @@ func (h *Handlers) CreateMemoryObservation(w http.ResponseWriter, r *http.Reques
 	}
 	obs["project"] = project
 
-	// Engram enforces a FK from observations → sessions, so the session must exist.
+	// agentops-memory enforces a FK from observations -> sessions, so the session must exist.
 	// For user-created observations from the console ("Remember this", "Extract from
 	// conversation"), we use a synthetic console session and ensure it exists.
 	if _, ok := obs["session_id"]; !ok {
@@ -536,7 +578,7 @@ func (h *Handlers) CreateMemoryObservation(w http.ResponseWriter, r *http.Reques
 			"id":      sessionID,
 			"project": project,
 		})
-		resp, err := proxyToEngram(r.Context(), h.k8s, agent, "POST", "/sessions", strings.NewReader(string(sessionBody)), nil)
+		resp, err := proxyToMemory(r.Context(), h.k8s, agent, "POST", "/sessions", strings.NewReader(string(sessionBody)), nil)
 		if err != nil {
 			slog.Debug("failed to ensure console session", "error", err)
 		} else {
@@ -546,16 +588,16 @@ func (h *Handlers) CreateMemoryObservation(w http.ResponseWriter, r *http.Reques
 
 	encoded, _ := json.Marshal(obs)
 
-	resp, err := proxyToEngram(r.Context(), h.k8s, agent, "POST", "/observations", strings.NewReader(string(encoded)), nil)
+	resp, err := proxyToMemory(r.Context(), h.k8s, agent, "POST", "/observations", strings.NewReader(string(encoded)), nil)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "engram unreachable: %s", err)
+		writeError(w, http.StatusBadGateway, "memory service unreachable: %s", err)
 		return
 	}
 	defer resp.Body.Close()
 	proxyResponse(w, resp)
 }
 
-// UpdateMemoryObservation updates an observation by ID in Engram.
+// UpdateMemoryObservation updates an observation by ID in agentops-memory.
 func (h *Handlers) UpdateMemoryObservation(w http.ResponseWriter, r *http.Request) {
 	ns := chi.URLParam(r, "ns")
 	name := chi.URLParam(r, "name")
@@ -572,16 +614,16 @@ func (h *Handlers) UpdateMemoryObservation(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	resp, err := proxyToEngram(r.Context(), h.k8s, agent, "PATCH", fmt.Sprintf("/observations/%s", obsID), r.Body, nil)
+	resp, err := proxyToMemory(r.Context(), h.k8s, agent, "PATCH", fmt.Sprintf("/observations/%s", obsID), r.Body, nil)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "engram unreachable: %s", err)
+		writeError(w, http.StatusBadGateway, "memory service unreachable: %s", err)
 		return
 	}
 	defer resp.Body.Close()
 	proxyResponse(w, resp)
 }
 
-// DeleteMemoryObservation deletes an observation by ID from Engram.
+// DeleteMemoryObservation deletes an observation by ID from agentops-memory.
 func (h *Handlers) DeleteMemoryObservation(w http.ResponseWriter, r *http.Request) {
 	ns := chi.URLParam(r, "ns")
 	name := chi.URLParam(r, "name")
@@ -603,16 +645,16 @@ func (h *Handlers) DeleteMemoryObservation(w http.ResponseWriter, r *http.Reques
 		extra["hard"] = "true"
 	}
 
-	resp, err := proxyToEngram(r.Context(), h.k8s, agent, "DELETE", fmt.Sprintf("/observations/%s", obsID), nil, extra)
+	resp, err := proxyToMemory(r.Context(), h.k8s, agent, "DELETE", fmt.Sprintf("/observations/%s", obsID), nil, extra)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "engram unreachable: %s", err)
+		writeError(w, http.StatusBadGateway, "memory service unreachable: %s", err)
 		return
 	}
 	defer resp.Body.Close()
 	proxyResponse(w, resp)
 }
 
-// SearchMemory searches observations in Engram for an agent.
+// SearchMemory searches observations in agentops-memory for an agent.
 func (h *Handlers) SearchMemory(w http.ResponseWriter, r *http.Request) {
 	ns := chi.URLParam(r, "ns")
 	name := chi.URLParam(r, "name")
@@ -637,16 +679,16 @@ func (h *Handlers) SearchMemory(w http.ResponseWriter, r *http.Request) {
 		extra["scope"] = scope
 	}
 
-	resp, err := proxyToEngram(r.Context(), h.k8s, agent, "GET", "/search", nil, extra)
+	resp, err := proxyToMemory(r.Context(), h.k8s, agent, "GET", "/search", nil, extra)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "engram unreachable: %s", err)
+		writeError(w, http.StatusBadGateway, "memory service unreachable: %s", err)
 		return
 	}
 	defer resp.Body.Close()
 	proxyResponse(w, resp)
 }
 
-// GetMemoryContext returns the recent memory context for an agent from Engram.
+// GetMemoryContext returns the recent memory context for an agent from agentops-memory.
 func (h *Handlers) GetMemoryContext(w http.ResponseWriter, r *http.Request) {
 	ns := chi.URLParam(r, "ns")
 	name := chi.URLParam(r, "name")
@@ -662,16 +704,16 @@ func (h *Handlers) GetMemoryContext(w http.ResponseWriter, r *http.Request) {
 		extra["scope"] = scope
 	}
 
-	resp, err := proxyToEngram(r.Context(), h.k8s, agent, "GET", "/context", nil, extra)
+	resp, err := proxyToMemory(r.Context(), h.k8s, agent, "GET", "/context", nil, extra)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "engram unreachable: %s", err)
+		writeError(w, http.StatusBadGateway, "memory service unreachable: %s", err)
 		return
 	}
 	defer resp.Body.Close()
 	proxyResponse(w, resp)
 }
 
-// GetMemoryStats returns memory statistics from Engram.
+// GetMemoryStats returns memory statistics from agentops-memory.
 func (h *Handlers) GetMemoryStats(w http.ResponseWriter, r *http.Request) {
 	ns := chi.URLParam(r, "ns")
 	name := chi.URLParam(r, "name")
@@ -682,16 +724,16 @@ func (h *Handlers) GetMemoryStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := proxyToEngram(r.Context(), h.k8s, agent, "GET", "/stats", nil, nil)
+	resp, err := proxyToMemory(r.Context(), h.k8s, agent, "GET", "/stats", nil, nil)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "engram unreachable: %s", err)
+		writeError(w, http.StatusBadGateway, "memory service unreachable: %s", err)
 		return
 	}
 	defer resp.Body.Close()
 	proxyResponse(w, resp)
 }
 
-// ListMemorySessions returns recent Engram sessions (work periods) for an agent.
+// ListMemorySessions returns recent sessions (work periods) for an agent.
 func (h *Handlers) ListMemorySessions(w http.ResponseWriter, r *http.Request) {
 	ns := chi.URLParam(r, "ns")
 	name := chi.URLParam(r, "name")
@@ -707,9 +749,9 @@ func (h *Handlers) ListMemorySessions(w http.ResponseWriter, r *http.Request) {
 		extra["limit"] = limit
 	}
 
-	resp, err := proxyToEngram(r.Context(), h.k8s, agent, "GET", "/sessions/recent", nil, extra)
+	resp, err := proxyToMemory(r.Context(), h.k8s, agent, "GET", "/sessions/recent", nil, extra)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "engram unreachable: %s", err)
+		writeError(w, http.StatusBadGateway, "memory service unreachable: %s", err)
 		return
 	}
 	defer resp.Body.Close()
@@ -738,9 +780,9 @@ func (h *Handlers) GetMemoryTimeline(w http.ResponseWriter, r *http.Request) {
 		extra["after"] = after
 	}
 
-	resp, err := proxyToEngram(r.Context(), h.k8s, agent, "GET", "/timeline", nil, extra)
+	resp, err := proxyToMemory(r.Context(), h.k8s, agent, "GET", "/timeline", nil, extra)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "engram unreachable: %s", err)
+		writeError(w, http.StatusBadGateway, "memory service unreachable: %s", err)
 		return
 	}
 	defer resp.Body.Close()
@@ -785,40 +827,52 @@ func (h *Handlers) proxyToAgent(w http.ResponseWriter, r *http.Request, method, 
 // ── SSE scanner ──
 
 type sseScanner struct {
-	body io.ReadCloser
-	buf  []byte
-	data string
+	body    io.ReadCloser
+	buf     []byte
+	readBuf []byte // reusable read buffer
+	data    string
 }
 
 func newSSEScanner(body io.ReadCloser) *sseScanner {
-	return &sseScanner{body: body}
+	return &sseScanner{body: body, readBuf: make([]byte, 32*1024)}
 }
 
 func (s *sseScanner) Scan() bool {
-	buf := make([]byte, 32*1024)
 	for {
-		n, err := s.body.Read(buf)
+		n, err := s.body.Read(s.readBuf)
 		if n > 0 {
-			s.buf = append(s.buf, buf[:n]...)
-			// Look for complete SSE frames
-			for {
-				idx := bytes.Index(s.buf, []byte("\n\n"))
-				if idx < 0 {
-					break
-				}
-				frame := string(s.buf[:idx])
-				s.buf = s.buf[idx+2:]
+			s.buf = append(s.buf, s.readBuf[:n]...)
+		}
+		// Look for complete SSE frames (always check, even after EOF)
+		for {
+			idx := bytes.Index(s.buf, []byte("\n\n"))
+			if idx < 0 {
+				break
+			}
+			frame := string(s.buf[:idx])
+			s.buf = s.buf[idx+2:]
 
-				// Extract data line
-				for _, line := range strings.Split(frame, "\n") {
+			// Extract data line
+			for _, line := range strings.Split(frame, "\n") {
+				if len(line) > 6 && line[:6] == "data: " {
+					s.data = line[6:]
+					return true
+				}
+			}
+		}
+		if err != nil {
+			// On EOF, try to parse any remaining buffer as a final frame.
+			// The upstream may close without a trailing \n\n.
+			if len(s.buf) > 0 {
+				frame := string(s.buf)
+				s.buf = nil
+				for _, line := range strings.Split(strings.TrimRight(frame, "\n"), "\n") {
 					if len(line) > 6 && line[:6] == "data: " {
 						s.data = line[6:]
 						return true
 					}
 				}
 			}
-		}
-		if err != nil {
 			return false
 		}
 	}

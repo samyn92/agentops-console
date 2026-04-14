@@ -50,10 +50,18 @@ export default function ToolBrowser(props: ToolBrowserProps) {
     }
   );
 
-  const [expandedTool, setExpandedTool] = createSignal<string | null>(null);
+  const [collapsedTools, setCollapsedTools] = createSignal<Set<string>>(new Set());
 
   function toggleExpand(name: string) {
-    setExpandedTool((prev) => (prev === name ? null : name));
+    setCollapsedTools((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) {
+        next.delete(name);
+      } else {
+        next.add(name);
+      }
+      return next;
+    });
   }
 
   function phaseVariant(phase: string | undefined): 'success' | 'warning' | 'error' | 'muted' {
@@ -119,7 +127,7 @@ export default function ToolBrowser(props: ToolBrowserProps) {
               <div class="divide-y divide-border-subtle">
                 <For each={toolList()}>
                   {(tool: AgentToolResponse) => {
-                    const isExpanded = () => expandedTool() === tool.metadata.name;
+                    const isExpanded = () => !collapsedTools().has(tool.metadata.name);
                     const srcType = () => tool.status?.sourceType;
 
                     return (

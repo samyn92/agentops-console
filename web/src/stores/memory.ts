@@ -1,4 +1,4 @@
-// Memory store — manages Engram memory state for the currently selected agent.
+// Memory store — manages agentops-memory state for the currently selected agent.
 // Fetches observations, search results, stats, and sessions from the BFF.
 import { createSignal, createResource, createEffect } from 'solid-js';
 import { memory as memoryAPI } from '../lib/api';
@@ -212,8 +212,7 @@ export async function updateObservation(id: number, updates: {
   title?: string;
   content?: string;
   type?: string;
-  scope?: string;
-  topic_key?: string;
+  tags?: string[];
 }): Promise<boolean> {
   const agent = selectedAgent();
   if (!agent) return false;

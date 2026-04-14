@@ -171,3 +171,33 @@ export function selectAgent(ns: string, name: string) {
   clearCenterOverlay();
   setSelectedAgent({ namespace: ns, name });
 }
+
+/**
+ * Get agents that a given orchestrator CAN delegate to (prospective).
+ * Mirrors the runtime's isAgentVisible() logic:
+ *  - scope "namespace" (or unset): visible to all agents in the namespace
+ *  - scope "explicit": visible only if callerName is in allowedCallers
+ *  - scope "hidden": invisible
+ * Returns AgentResponse objects (not just names) so UI can show description, tags, model, etc.
+ */
+export function getDelegationTargetsFor(callerName: string, callerNs: string): import('../types').AgentResponse[] {
+  const agents = agentList();
+  if (!agents) return [];
+
+  return agents.filter((a) => {
+    // Don't include self
+    if (a.name === callerName && a.namespace === callerNs) return false;
+    // Only include agents in the same namespace
+    if (a.namespace !== callerNs) return false;
+
+    const scope = a.discovery?.scope || 'namespace';
+    switch (scope) {
+      case 'hidden':
+        return false;
+      case 'explicit':
+        return (a.discovery?.allowedCallers ?? []).includes(callerName);
+      default: // 'namespace' or unset
+        return true;
+    }
+  });
+}

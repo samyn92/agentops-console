@@ -1,5 +1,6 @@
 // DiffCard — edit results with rich unified diff view (line numbers, hunk headers, collapsible)
 import { createSignal, Show, For, createMemo } from 'solid-js';
+import { Collapsible } from '@ark-ui/solid/collapsible';
 import Badge from '../shared/Badge';
 import type { ToolMetadata } from '../../types';
 
@@ -83,99 +84,103 @@ export default function DiffCard(props: DiffCardProps) {
 
   // Content body — shared between headerless and full modes
   const Body = () => (
-    <>
-      <Show when={expanded() && diff().lines.length > 0}>
-        <div class="bg-surface max-h-[400px] overflow-y-auto overflow-x-auto">
-          <table class="w-full text-[11px] font-mono border-collapse leading-[18px]">
-            <tbody>
-              <For each={diff().lines}>
-                {(line) => (
-                  <Show
-                    when={line.type !== 'header'}
-                    fallback={
-                      <tr class="bg-surface-2/50">
-                        <td
-                          colspan={hasLineNumbers() ? 3 : 2}
-                          class="px-2 py-0 text-text-muted/60 text-[10px] select-none"
-                        >
-                          {line.content}
-                        </td>
-                      </tr>
-                    }
-                  >
-                    <tr
-                      class={
-                        line.type === 'add'
-                          ? 'bg-success/8'
-                          : line.type === 'remove'
-                          ? 'bg-error/8'
-                          : ''
+    <Collapsible.Root
+      open={expanded()}
+      onOpenChange={(details) => setExpanded(details.open)}
+    >
+      <Show when={diff().lines.length > 0}>
+        <Collapsible.Content class="overflow-hidden">
+          <div class="bg-surface max-h-[400px] overflow-y-auto overflow-x-auto">
+            <table class="w-full text-[11px] font-mono border-collapse leading-[18px]">
+              <tbody>
+                <For each={diff().lines}>
+                  {(line) => (
+                    <Show
+                      when={line.type !== 'header'}
+                      fallback={
+                        <tr class="bg-surface-2/50">
+                          <td
+                            colspan={hasLineNumbers() ? 3 : 2}
+                            class="px-2 py-0 text-text-muted/60 text-[10px] select-none"
+                          >
+                            {line.content}
+                          </td>
+                        </tr>
                       }
                     >
-                      {/* Line numbers */}
-                      <Show when={hasLineNumbers()}>
-                        <td class="w-[1px] px-1 py-0 text-right text-text-muted/40 select-none whitespace-nowrap border-r border-border-subtle tabular-nums">
-                          {line.oldLineNo ?? ''}
-                        </td>
-                        <td class="w-[1px] px-1 py-0 text-right text-text-muted/40 select-none whitespace-nowrap border-r border-border-subtle tabular-nums">
-                          {line.newLineNo ?? ''}
-                        </td>
-                      </Show>
-                      <td class="px-1.5 py-0 whitespace-pre-wrap break-all">
-                        <span
-                          class={
-                            line.type === 'add'
-                              ? 'text-success'
-                              : line.type === 'remove'
-                              ? 'text-error'
-                              : 'text-text-secondary'
-                          }
-                        >
-                          <span class="select-none text-text-muted/40 mr-1">
-                            {line.type === 'add' ? '+' : line.type === 'remove' ? '-' : ' '}
+                      <tr
+                        class={
+                          line.type === 'add'
+                            ? 'bg-success/8'
+                            : line.type === 'remove'
+                            ? 'bg-error/8'
+                            : ''
+                        }
+                      >
+                        {/* Line numbers */}
+                        <Show when={hasLineNumbers()}>
+                          <td class="w-[1px] px-1 py-0 text-right text-text-muted/40 select-none whitespace-nowrap border-r border-border-subtle tabular-nums">
+                            {line.oldLineNo ?? ''}
+                          </td>
+                          <td class="w-[1px] px-1 py-0 text-right text-text-muted/40 select-none whitespace-nowrap border-r border-border-subtle tabular-nums">
+                            {line.newLineNo ?? ''}
+                          </td>
+                        </Show>
+                        <td class="px-1.5 py-0 whitespace-pre-wrap break-all">
+                          <span
+                            class={
+                              line.type === 'add'
+                                ? 'text-success'
+                                : line.type === 'remove'
+                                ? 'text-error'
+                                : 'text-text-secondary'
+                            }
+                          >
+                            <span class="select-none text-text-muted/40 mr-1">
+                              {line.type === 'add' ? '+' : line.type === 'remove' ? '-' : ' '}
+                            </span>
+                            {line.content}
                           </span>
-                          {line.content}
-                        </span>
-                      </td>
-                    </tr>
-                  </Show>
-                )}
-              </For>
-            </tbody>
-          </table>
-        </div>
-      </Show>
+                        </td>
+                      </tr>
+                    </Show>
+                  )}
+                </For>
+              </tbody>
+            </table>
+          </div>
+        </Collapsible.Content>
 
-      <Show when={!expanded() && diff().lines.length > 0}>
-        {/* Collapsed preview: show first few diff lines */}
-        <div class="bg-surface-2/30">
-          <For each={diff().lines.filter((l) => l.type !== 'header').slice(0, 4)}>
-            {(line) => (
-              <div
-                class={`px-2 py-0 font-mono text-[11px] leading-[18px] whitespace-pre truncate ${
-                  line.type === 'add'
-                    ? 'bg-success/8 text-success'
-                    : line.type === 'remove'
-                    ? 'bg-error/8 text-error'
-                    : 'text-text-secondary'
-                }`}
-              >
-                <span class="select-none text-text-muted/40 mr-1">
-                  {line.type === 'add' ? '+' : line.type === 'remove' ? '-' : ' '}
-                </span>
-                {line.content}
-              </div>
-            )}
-          </For>
-          <button
-            class="w-full px-3 py-1 text-xs text-accent hover:bg-surface-hover text-left"
-            onClick={() => setExpanded(true)}
-          >
-            Show full diff ({diff().lines.length} lines)
-          </button>
-        </div>
+        <Show when={!expanded()}>
+          {/* Collapsed preview: show first few diff lines */}
+          <div class="bg-surface-2/30">
+            <For each={diff().lines.filter((l) => l.type !== 'header').slice(0, 4)}>
+              {(line) => (
+                <div
+                  class={`px-2 py-0 font-mono text-[11px] leading-[18px] whitespace-pre truncate ${
+                    line.type === 'add'
+                      ? 'bg-success/8 text-success'
+                      : line.type === 'remove'
+                      ? 'bg-error/8 text-error'
+                      : 'text-text-secondary'
+                  }`}
+                >
+                  <span class="select-none text-text-muted/40 mr-1">
+                    {line.type === 'add' ? '+' : line.type === 'remove' ? '-' : ' '}
+                  </span>
+                  {line.content}
+                </div>
+              )}
+            </For>
+            <Collapsible.Trigger
+              class="w-full px-3 py-1 text-xs text-accent hover:bg-surface-hover text-left"
+            >
+              Show full diff ({diff().lines.length} lines)
+            </Collapsible.Trigger>
+          </div>
+        </Show>
       </Show>
-    </>
+    </Collapsible.Root>
   );
 
   if (props.headerless) {

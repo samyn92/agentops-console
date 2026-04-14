@@ -5,6 +5,7 @@ import type { SchemeVariant } from '../lib/theme';
 
 export type ThemeMode = 'dark' | 'light' | 'system';
 export type ThemeStyle = 'vercel' | 'material';
+export type ThinkingStyle = 'orbital' | 'waveform' | 'helix';
 export type { SchemeVariant } from '../lib/theme';
 
 // ── State ──
@@ -81,6 +82,11 @@ const [showThinkingBlocks, setShowThinkingBlocks] = createSignal(
   stored?.getItem('show-thinking-blocks') !== 'false',
 );
 
+// Thinking indicator animation style
+const [thinkingStyle, setThinkingStyle] = createSignal<ThinkingStyle>(
+  (stored?.getItem('thinking-style') as ThinkingStyle) || 'orbital',
+);
+
 // ── Persist changes ──
 
 createEffect(() => stored?.setItem('theme-mode', themeMode()));
@@ -92,6 +98,7 @@ createEffect(() => stored?.setItem('collapsed-tools', String(collapsedTools())))
 createEffect(() => stored?.setItem('tool-expansion-defaults', JSON.stringify(toolExpansionDefaults())));
 createEffect(() => stored?.setItem('show-system-prompts', String(showSystemPrompts())));
 createEffect(() => stored?.setItem('show-thinking-blocks', String(showThinkingBlocks())));
+createEffect(() => stored?.setItem('thinking-style', thinkingStyle()));
 
 // ── Resolve effective dark/light mode ──
 
@@ -149,6 +156,7 @@ export {
   isToolCollapsed,
   showSystemPrompts, setShowSystemPrompts,
   showThinkingBlocks, setShowThinkingBlocks,
+  thinkingStyle, setThinkingStyle,
 };
 
 /** All known built-in tool names for the settings UI */

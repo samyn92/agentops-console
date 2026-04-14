@@ -57,10 +57,11 @@ func New(cfg Config, k8sClient *k8s.Client, mux *multiplexer.Multiplexer) *Serve
 	h := handlers.New(k8sClient, mux)
 
 	r.Route("/api/v1", func(r chi.Router) {
-		// Global SSE (no timeout — long-lived connection)
+		// SSE / streaming endpoints (no timeout — long-lived connections)
 		r.Group(func(r chi.Router) {
 			r.Get("/events", mux.ServeGlobalSSE)
 			r.Get("/watch", h.WatchResources)
+			r.Post("/agents/{ns}/{name}/stream", h.AgentPromptStream)
 		})
 
 		// REST endpoints (with timeout)
@@ -70,11 +71,11 @@ func New(cfg Config, k8sClient *k8s.Client, mux *multiplexer.Multiplexer) *Serve
 			// Agents
 			r.Get("/agents", h.ListAgents)
 			r.Get("/agents/{ns}/{name}", h.GetAgent)
+			r.Get("/agents/{ns}/{name}/config", h.GetAgentConfig)
 			r.Get("/agents/{ns}/{name}/status", h.GetAgentStatus)
 
 			// Agent conversation (proxied to agent runtime — sessionless)
 			r.Post("/agents/{ns}/{name}/prompt", h.AgentPrompt)
-			r.Post("/agents/{ns}/{name}/stream", h.AgentPromptStream)
 			r.Post("/agents/{ns}/{name}/steer", h.AgentSteer)
 			r.Delete("/agents/{ns}/{name}/abort", h.AgentAbort)
 
@@ -86,7 +87,7 @@ func New(cfg Config, k8sClient *k8s.Client, mux *multiplexer.Multiplexer) *Serve
 			r.Post("/agents/{ns}/{name}/permission/{pid}/reply", h.ReplyToPermission)
 			r.Post("/agents/{ns}/{name}/question/{qid}/reply", h.ReplyToQuestion)
 
-			// Agent memory (proxied to Engram)
+			// Agent memory (proxied to agentops-memory)
 			r.Get("/agents/{ns}/{name}/memory/enabled", h.MemoryEnabled)
 			r.Get("/agents/{ns}/{name}/memory/observations", h.ListMemoryObservations)
 			r.Get("/agents/{ns}/{name}/memory/observations/{obsId}", h.GetMemoryObservation)

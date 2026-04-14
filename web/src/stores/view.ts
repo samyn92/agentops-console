@@ -151,14 +151,14 @@ export function setLeftPanelTab(tab: LeftPanelTab) {
 
 // ── Right panel tab (agent context: memory, tools, skills) ──
 
-export type RightPanelTab = 'memory' | 'tools' | 'resources';
+export type RightPanelTab = 'memory' | 'tools';
 
 const TAB_KEY = 'agentops:rightPanelTab';
 
 function loadRightTabState(): RightPanelTab {
   try {
     const raw = localStorage.getItem(TAB_KEY);
-    if (raw === 'memory' || raw === 'tools' || raw === 'resources') return raw;
+    if (raw === 'memory' || raw === 'tools') return raw;
   } catch { /* ignore */ }
   return 'memory';
 }

@@ -11,6 +11,7 @@ import type {
   K8sSecret, K8sEvent, K8sResourceKind, ResourceContext,
 } from '../../types';
 import Spinner from '../shared/Spinner';
+import Tip from '../shared/Tip';
 
 // ── Constants ──
 
@@ -714,15 +715,16 @@ export default function KubernetesBrowser(props: KubernetesBrowserProps) {
         <div class="flex items-center justify-between px-3 py-2 border-b border-border bg-surface-2/80">
           <div class="flex items-center gap-2">
             <Show when={!showNsPicker() && selectedNamespace()}>
-              <button
-                class="p-0.5 text-text-muted hover:text-text rounded transition-colors"
-                onClick={goBackToNamespaces}
-                title="Back to namespaces"
-              >
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
-                </svg>
-              </button>
+              <Tip content="Back to namespaces">
+                <button
+                  class="p-0.5 text-text-muted hover:text-text rounded transition-colors"
+                  onClick={goBackToNamespaces}
+                >
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                  </svg>
+                </button>
+              </Tip>
             </Show>
             <KubernetesIcon class="w-4 h-4 text-[#326CE5]" />
             <span class="text-xs font-semibold text-text uppercase tracking-wide">Kubernetes</span>
@@ -739,13 +741,14 @@ export default function KubernetesBrowser(props: KubernetesBrowserProps) {
           </div>
           <div class="flex items-center gap-2">
             <Show when={ctxCount() > 0}>
-              <button
-                class="text-[10px] text-text-muted hover:text-error transition-colors"
-                onClick={() => clearContextItems()}
-                title="Clear all selections"
-              >
-                Clear
-              </button>
+              <Tip content="Clear all selections">
+                <button
+                  class="text-[10px] text-text-muted hover:text-error transition-colors"
+                  onClick={() => clearContextItems()}
+                >
+                  Clear
+                </button>
+              </Tip>
             </Show>
             <button
               class="p-1 text-text-muted hover:text-text rounded transition-colors"
@@ -762,15 +765,16 @@ export default function KubernetesBrowser(props: KubernetesBrowserProps) {
         {/* Embedded sub-header: back + namespace badge when drilled in */}
         <Show when={props.embedded && !showNsPicker() && selectedNamespace()}>
           <div class="flex items-center gap-2 px-3 py-1.5 border-b border-border-subtle bg-surface-2/50">
-            <button
-              class="p-0.5 text-text-muted hover:text-text rounded transition-colors"
-              onClick={goBackToNamespaces}
-              title="Back to namespaces"
-            >
-              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
-              </svg>
-            </button>
+            <Tip content="Back to namespaces">
+              <button
+                class="p-0.5 text-text-muted hover:text-text rounded transition-colors"
+                onClick={goBackToNamespaces}
+              >
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+            </Tip>
             <span class="text-[10px] font-mono text-[#326CE5] bg-[#326CE5]/10 px-1.5 py-0.5 rounded">
               {selectedNamespace()}
             </span>

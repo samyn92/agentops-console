@@ -4,6 +4,7 @@ import type {
   AgentEventEnvelope,
   AgentResponse,
   AgentCRD,
+  AgentConfig,
   AgentRunResponse,
   ChannelResponse,
   AgentToolResponse,
@@ -93,6 +94,7 @@ async function patch<T>(path: string, body?: unknown): Promise<T> {
 export const agents = {
   list: () => get<AgentResponse[]>('/agents'),
   get: (ns: string, name: string) => get<AgentCRD>(`/agents/${ns}/${name}`),
+  config: (ns: string, name: string) => get<AgentConfig>(`/agents/${ns}/${name}/config`),
   status: (ns: string, name: string) => get<Record<string, unknown>>(`/agents/${ns}/${name}/status`),
 };
 
@@ -151,7 +153,11 @@ export async function streamPrompt(
 
   while (true) {
     const { done, value } = await reader.read();
-    if (done) break;
+    if (done) {
+      // Flush any remaining bytes from the TextDecoder
+      buffer += decoder.decode();
+      break;
+    }
 
     buffer += decoder.decode(value, { stream: true });
 
@@ -160,6 +166,24 @@ export async function streamPrompt(
     buffer = lines.pop() || '';
 
     for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        const data = line.slice(6);
+        if (data) {
+          try {
+            const event = JSON.parse(data) as FEPEvent;
+            onEvent(event);
+          } catch {
+            // Skip malformed frames
+          }
+        }
+      }
+    }
+  }
+
+  // Flush any remaining data in the buffer (e.g. final agent_finish event).
+  // The buffer may contain one or more SSE frames without a trailing newline.
+  if (buffer.length > 0) {
+    for (const line of buffer.split('\n')) {
       if (line.startsWith('data: ')) {
         const data = line.slice(6);
         if (data) {
@@ -292,7 +316,7 @@ export const control = {
     post<{ ok: boolean }>(`/agents/${ns}/${name}/question/${qId}/reply`, { answers }),
 };
 
-// ── Memory (Engram) ──
+// ── Memory (agentops-memory) ──
 
 export const memory = {
   /** Check if memory is enabled for an agent */
@@ -328,8 +352,7 @@ export const memory = {
     title?: string;
     content?: string;
     type?: string;
-    scope?: string;
-    topic_key?: string;
+    tags?: string[];
   }) => patch<MemoryObservation>(`/agents/${ns}/${name}/memory/observations/${id}`, updates),
 
   /** Delete an observation */
@@ -352,7 +375,7 @@ export const memory = {
   stats: (ns: string, name: string) =>
     get<MemoryStats>(`/agents/${ns}/${name}/memory/stats`),
 
-  /** List recent Engram sessions (work periods) */
+  /** List recent sessions (work periods) */
   sessions: (ns: string, name: string, limit?: number) => {
     const qs = limit ? `?limit=${limit}` : '';
     return get<MemorySession[]>(`/agents/${ns}/${name}/memory/sessions${qs}`);

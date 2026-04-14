@@ -1,4 +1,4 @@
-// MemoryPanel — Engram memory browser for the selected agent.
+// MemoryPanel — agentops-memory browser for the selected agent.
 // Flat layout: section header + inline search + observation list.
 // No tabs — search filters the list in-place.
 // Detail and Extract views overlay the list when active.
@@ -34,6 +34,9 @@ import {
   type MemoryView,
 } from '../../stores/memory';
 import { selectedAgent, getAgentRuntimeStatus } from '../../stores/agents';
+import { BrainIcon, SearchIcon, CloseIcon, SparklesIcon, BackArrowIcon, EditIcon, TrashIcon, CheckCircleIcon, ExclamationCircleIcon } from '../shared/Icons';
+import DetailRow from '../shared/DetailRow';
+import Tip from '../shared/Tip';
 import Spinner from '../shared/Spinner';
 import { relativeTime } from '../../lib/format';
 import type { MemoryObservation, MemorySearchResult } from '../../types';
@@ -107,9 +110,7 @@ export default function MemoryPanel() {
   if (!memoryEnabled()) {
     return (
       <div class="flex flex-col items-center justify-center py-8 px-4 text-center h-full">
-        <svg class="w-8 h-8 text-text-muted mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19 14.5M14.25 3.104c.251.023.501.05.75.082M19 14.5l-2.47 2.47a3.375 3.375 0 01-2.386.988H9.856a3.375 3.375 0 01-2.386-.988L5 14.5" />
-        </svg>
+        <BrainIcon class="w-8 h-8 text-text-muted mb-2" />
         <p class="text-xs text-text-muted">
           <Show when={agent()} fallback="Select an agent to view memory.">
             Memory not enabled for {agent()!.name}.
@@ -134,9 +135,7 @@ export default function MemoryPanel() {
         {/* Inline search input — always visible */}
         <div class="px-2 py-1.5">
           <div class="flex items-center gap-2 px-2.5 py-1.5 bg-surface-2 rounded-lg border border-border-subtle focus-within:border-border-hover transition-colors">
-            <svg class="w-3.5 h-3.5 text-text-muted flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
-            </svg>
+            <SearchIcon class="w-3.5 h-3.5 text-text-muted flex-shrink-0" />
             <input
               type="text"
               class="flex-1 bg-transparent text-xs text-text placeholder:text-text-muted outline-none"
@@ -149,15 +148,14 @@ export default function MemoryPanel() {
               <Spinner size="sm" />
             </Show>
             <Show when={isSearching() && !searchLoading()}>
-              <button
-                class="p-0.5 rounded hover:bg-surface-hover text-text-muted hover:text-text transition-colors"
-                onClick={() => { setLocalQuery(''); setSearchQuery(''); }}
-                title="Clear search"
-              >
-                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
+              <Tip content="Clear search">
+                <button
+                  class="p-0.5 rounded hover:bg-surface-hover text-text-muted hover:text-text transition-colors"
+                  onClick={() => { setLocalQuery(''); setSearchQuery(''); }}
+                >
+                  <CloseIcon class="w-3 h-3" />
+                </button>
+              </Tip>
             </Show>
           </div>
           {/* Stats line */}
@@ -226,9 +224,7 @@ export default function MemoryPanel() {
               class="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 text-[11px] text-accent hover:text-accent/80 bg-accent/5 hover:bg-accent/10 rounded-lg transition-colors border border-accent/20"
               onClick={() => setMemoryView('extract')}
             >
-              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z" />
-              </svg>
+              <SparklesIcon class="w-3.5 h-3.5" />
               Extract from conversation
             </button>
           </div>
@@ -286,6 +282,22 @@ function ObservationItem(props: { obs: MemoryObservation }) {
       <p class="text-[11px] text-text-secondary/70 mt-1 truncate">
         {props.obs.content.slice(0, 120)}
       </p>
+
+      {/* Row 4: Tags */}
+      <Show when={props.obs.tags && props.obs.tags.length > 0}>
+        <div class="flex flex-wrap gap-0.5 mt-1">
+          <For each={props.obs.tags!.slice(0, 3)}>
+            {(tag) => (
+              <span class="px-1 py-0 text-[9px] bg-surface-hover text-text-muted rounded border border-border-subtle">
+                {tag}
+              </span>
+            )}
+          </For>
+          <Show when={props.obs.tags!.length > 3}>
+            <span class="text-[9px] text-text-muted/50">+{props.obs.tags!.length - 3}</span>
+          </Show>
+        </div>
+      </Show>
     </button>
   );
 }
@@ -307,14 +319,14 @@ function SearchResultItem(props: { result: MemorySearchResult }) {
           {props.result.title}
         </span>
         <span class="text-[10px] text-text-muted/50 flex-shrink-0">
-          #{props.result.rank.toFixed(1)}
+          #{Math.abs(props.result.rank).toFixed(1)}
         </span>
       </div>
       <p class="text-[11px] text-text-secondary/70 mt-0.5 line-clamp-2">
         {props.result.content.slice(0, 160)}
       </p>
-      <Show when={props.result.created_at}>
-        <span class="text-[10px] text-text-muted mt-0.5 block">{relativeTime(props.result.created_at)}</span>
+      <Show when={props.result.topic_key}>
+        <span class="text-[10px] font-mono text-text-muted mt-0.5 block">{props.result.topic_key}</span>
       </Show>
     </button>
   );
@@ -366,46 +378,43 @@ function DetailView() {
     <div class="flex flex-col h-full">
       {/* Back button */}
       <div class="flex items-center gap-2 px-3 py-2 border-b border-border">
-        <button
-          class="p-1 rounded-lg hover:bg-surface-hover text-text-secondary hover:text-text transition-colors"
-          onClick={() => {
-            setSelectedObservation(null);
-            setMemoryView('observations');
-            setEditing(false);
-            setConfirmDelete(false);
-          }}
-          title="Back to list"
-        >
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
-          </svg>
-        </button>
+        <Tip content="Back to list">
+          <button
+            class="p-1 rounded-lg hover:bg-surface-hover text-text-secondary hover:text-text transition-colors"
+            onClick={() => {
+              setSelectedObservation(null);
+              setMemoryView('observations');
+              setEditing(false);
+              setConfirmDelete(false);
+            }}
+          >
+            <BackArrowIcon class="w-4 h-4" />
+          </button>
+        </Tip>
         <span class="text-xs text-text-muted flex-1 truncate">Observation</span>
 
         {/* Action buttons */}
         <Show when={!editing()}>
-          <button
-            class="p-1 rounded-lg hover:bg-surface-hover text-text-muted hover:text-text transition-colors"
-            onClick={startEdit}
-            title="Edit"
-          >
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
-            </svg>
-          </button>
-          <button
-            class={`p-1 rounded-lg transition-colors ${
-              confirmDelete()
-                ? 'bg-error/20 text-error hover:bg-error/30'
-                : 'hover:bg-surface-hover text-text-muted hover:text-error'
-            }`}
-            onClick={handleDelete}
-            title={confirmDelete() ? 'Click again to confirm' : 'Delete'}
-          >
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-            </svg>
-          </button>
+          <Tip content="Edit">
+            <button
+              class="p-1 rounded-lg hover:bg-surface-hover text-text-muted hover:text-text transition-colors"
+              onClick={startEdit}
+            >
+              <EditIcon class="w-3.5 h-3.5" />
+            </button>
+          </Tip>
+          <Tip content={confirmDelete() ? 'Click again to confirm' : 'Delete'}>
+            <button
+              class={`p-1 rounded-lg transition-colors ${
+                confirmDelete()
+                  ? 'bg-error/20 text-error hover:bg-error/30'
+                  : 'hover:bg-surface-hover text-text-muted hover:text-error'
+              }`}
+              onClick={handleDelete}
+            >
+              <TrashIcon class="w-3.5 h-3.5" />
+            </button>
+          </Tip>
         </Show>
       </div>
 
@@ -445,6 +454,19 @@ function DetailView() {
                   </div>
                 </div>
 
+                {/* Tags */}
+                <Show when={o().tags && o().tags!.length > 0}>
+                  <div class="flex flex-wrap gap-1">
+                    <For each={o().tags!}>
+                      {(tag) => (
+                        <span class="px-1.5 py-0.5 text-[10px] bg-surface-hover text-text-secondary rounded-md border border-border-subtle">
+                          {tag}
+                        </span>
+                      )}
+                    </For>
+                  </div>
+                </Show>
+
                 {/* Content */}
                 <div>
                   <span class="text-[10px] text-text-muted block mb-1">Content</span>
@@ -459,18 +481,13 @@ function DetailView() {
                   <DetailRow label="Session" value={o().session_id?.slice(0, 8) || '\u2014'} />
                   <DetailRow label="Created" value={relativeTime(o().created_at)} />
                   <DetailRow label="Updated" value={relativeTime(o().updated_at)} />
-                  <Show when={o().revision_count && o().revision_count! > 0}>
+                  <Show when={o().revision_count > 1}>
                     <DetailRow label="Revisions" value={String(o().revision_count)} />
                   </Show>
-                  <Show when={o().duplicate_count && o().duplicate_count! > 0}>
+                  <Show when={o().duplicate_count > 1}>
                     <DetailRow label="Dupes" value={String(o().duplicate_count)} />
                   </Show>
-                  <Show when={o().tool_name}>
-                    <DetailRow label="Tool" value={o().tool_name!} />
-                  </Show>
-                  <Show when={o().project}>
-                    <DetailRow label="Project" value={o().project!} />
-                  </Show>
+                  <DetailRow label="Project" value={o().project} />
                 </div>
               </div>
             </Show>
@@ -594,18 +611,15 @@ function ExtractView() {
     <div class="flex flex-col h-full">
       {/* Header */}
       <div class="flex items-center gap-2 px-3 py-2 border-b border-border">
-        <button
-          class="p-1 rounded-lg hover:bg-surface-hover text-text-secondary hover:text-text transition-colors"
-          onClick={handleBack}
-          title="Back"
-        >
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
-          </svg>
-        </button>
-        <svg class="w-3.5 h-3.5 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z" />
-        </svg>
+        <Tip content="Back">
+          <button
+            class="p-1 rounded-lg hover:bg-surface-hover text-text-secondary hover:text-text transition-colors"
+            onClick={handleBack}
+          >
+            <BackArrowIcon class="w-4 h-4" />
+          </button>
+        </Tip>
+        <SparklesIcon class="w-3.5 h-3.5 text-accent" />
         <span class="text-xs text-text-muted flex-1">Extract from conversation</span>
         <span class="text-[10px] text-text-muted/60">{msgCount()} msgs</span>
       </div>
@@ -659,9 +673,7 @@ function ExtractView() {
               onClick={handleExtract}
               disabled={msgCount() === 0}
             >
-              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z" />
-              </svg>
+              <SparklesIcon class="w-3.5 h-3.5" />
               Extract knowledge
             </button>
             <Show when={msgCount() === 0}>
@@ -683,9 +695,7 @@ function ExtractView() {
         <Show when={extractionError() && !extracting()}>
           <div class="px-3 py-3 space-y-3">
             <div class="flex items-start gap-2 p-2.5 bg-error/10 rounded-lg border border-error/20">
-              <svg class="w-4 h-4 text-error flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
-              </svg>
+              <ExclamationCircleIcon class="w-4 h-4 text-error flex-shrink-0 mt-0.5" />
               <div>
                 <p class="text-xs text-error font-medium">Extraction failed</p>
                 <p class="text-[10px] text-error/80 mt-0.5">{extractionError()}</p>
@@ -712,9 +722,7 @@ function ExtractView() {
         <Show when={hasResult() && !extracting()}>
           <div class="px-3 py-3 space-y-3">
             <div class="flex items-center gap-1.5 text-[10px] text-success">
-              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
+              <CheckCircleIcon class="w-3.5 h-3.5" />
               Review and edit before saving
             </div>
             <div>
@@ -815,22 +823,4 @@ function TypeDot(props: { type: string }) {
   );
 }
 
-function DetailRow(props: { label: string; value: string }) {
-  return (
-    <div class="flex items-center gap-2 text-[11px]">
-      <span class="text-text-muted w-16 flex-shrink-0">{props.label}</span>
-      <span class="text-text-secondary font-mono truncate">{props.value}</span>
-    </div>
-  );
-}
 
-function BrainIcon(props: { class?: string }) {
-  return (
-    <svg class={props.class || 'w-4 h-4'} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19 14.5M14.25 3.104c.251.023.501.05.75.082M19 14.5l-2.47 2.47a3.375 3.375 0 01-2.386.988H9.856a3.375 3.375 0 01-2.386-.988L5 14.5m14 0l.228-.303a3 3 0 00.547-1.992 3.368 3.368 0 00-.21-1.143L19 9.5m0 5l.341-.455a3.003 3.003 0 00.434-2.785L19 9.5m0 0l-.597-.334A3 3 0 0016 6.42V4.5" />
-    </svg>
-  );
-}
-
-// ── Exported for use in "Remember this" feature ──
-export { BrainIcon };

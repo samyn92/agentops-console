@@ -1,0 +1,251 @@
+/* ===== Agent Thinking — configurable indicator styles =====
+   Five variants: orbital, waveform, helix, constellation, morph.
+   All share the entry animation and reduced-motion handling. */
+
+/* ── Shared entry ── */
+
+.agent-thinking {
+  animation: agent-thinking-enter 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes agent-thinking-enter {
+  from { opacity: 0; transform: scale(0.7); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   1. Orbital Trace — compact version
+   3 dots orbiting a circular path, trailing comet effect.
+   ═══════════════════════════════════════════════════════════ */
+
+.agent-thinking--orbital {
+  position: relative;
+  width: 28px;
+  height: 28px;
+}
+
+.agent-thinking--orbital__track {
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  border: 1px solid var(--accent);
+  opacity: 0.08;
+}
+
+.agent-thinking--orbital__dot {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  top: 50%;
+  left: 50%;
+  margin: -2.5px 0 0 -2.5px;
+  animation: orbital-spin 2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  box-shadow: 0 0 5px 1px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+.agent-thinking--orbital__dot--1 {
+  animation-delay: 0s;
+  opacity: 1;
+  width: 6px;
+  height: 6px;
+  margin: -3px 0 0 -3px;
+}
+
+.agent-thinking--orbital__dot--2 {
+  animation-delay: -0.65s;
+  opacity: 0.6;
+  width: 4.5px;
+  height: 4.5px;
+  margin: -2.25px 0 0 -2.25px;
+}
+
+.agent-thinking--orbital__dot--3 {
+  animation-delay: -1.3s;
+  opacity: 0.3;
+  width: 3.5px;
+  height: 3.5px;
+  margin: -1.75px 0 0 -1.75px;
+}
+
+@keyframes orbital-spin {
+  0%   { transform: rotate(0deg)   translateX(10px) rotate(0deg); }
+  100% { transform: rotate(360deg) translateX(10px) rotate(-360deg); }
+}
+
+.agent-thinking--orbital__core {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 3px;
+  height: 3px;
+  margin: -1.5px 0 0 -1.5px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: orbital-core-breathe 2.4s ease-in-out infinite;
+}
+
+@keyframes orbital-core-breathe {
+  0%, 100% { opacity: 0.2; transform: scale(1); }
+  50%      { opacity: 0.6; transform: scale(1.4); }
+}
+
+:root.dark .agent-thinking--orbital__dot {
+  box-shadow: 0 0 7px 2px color-mix(in srgb, var(--accent) 50%, transparent);
+}
+
+:root.dark .agent-thinking--orbital__track {
+  opacity: 0.12;
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   2. Waveform — audio equalizer bars
+   4 bars oscillating at staggered phases, smooth sinusoidal.
+   ═══════════════════════════════════════════════════════════ */
+
+.agent-thinking--waveform {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 20px;
+}
+
+.agent-thinking--waveform__bar {
+  width: 3px;
+  border-radius: 1.5px;
+  background: var(--accent);
+  animation: waveform-bounce 1.2s ease-in-out infinite;
+  transform-origin: center bottom;
+}
+
+.agent-thinking--waveform__bar--1 {
+  height: 20px;
+  animation-delay: 0s;
+}
+
+.agent-thinking--waveform__bar--2 {
+  height: 20px;
+  animation-delay: -0.3s;
+}
+
+.agent-thinking--waveform__bar--3 {
+  height: 20px;
+  animation-delay: -0.6s;
+}
+
+.agent-thinking--waveform__bar--4 {
+  height: 20px;
+  animation-delay: -0.9s;
+}
+
+@keyframes waveform-bounce {
+  0%, 100% {
+    transform: scaleY(0.25);
+    opacity: 0.4;
+  }
+  50% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+
+:root.dark .agent-thinking--waveform__bar {
+  box-shadow: 0 0 4px 0 color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   3. DNA Helix — two intertwined strands in pseudo-3D
+   8 dots (4 per strand) oscillate vertically with sinusoidal
+   Z-depth faked via scale + opacity. Strands are 180deg out
+   of phase so they cross over each other.
+   ═══════════════════════════════════════════════════════════ */
+
+.agent-thinking--helix {
+  position: relative;
+  width: 36px;
+  height: 20px;
+}
+
+.agent-thinking--helix__dot {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+  top: 50%;
+  margin-top: -2px;
+  animation-duration: 1.6s;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+}
+
+/* Strand A — front-to-back cycle */
+.agent-thinking--helix__dot-a1 { left: 2px;  animation-name: helix-strand-a; animation-delay: 0s; }
+.agent-thinking--helix__dot-a2 { left: 10px; animation-name: helix-strand-a; animation-delay: -0.4s; }
+.agent-thinking--helix__dot-a3 { left: 18px; animation-name: helix-strand-a; animation-delay: -0.8s; }
+.agent-thinking--helix__dot-a4 { left: 26px; animation-name: helix-strand-a; animation-delay: -1.2s; }
+
+/* Strand B — opposite phase */
+.agent-thinking--helix__dot-b1 { left: 2px;  animation-name: helix-strand-b; animation-delay: 0s; }
+.agent-thinking--helix__dot-b2 { left: 10px; animation-name: helix-strand-b; animation-delay: -0.4s; }
+.agent-thinking--helix__dot-b3 { left: 18px; animation-name: helix-strand-b; animation-delay: -0.8s; }
+.agent-thinking--helix__dot-b4 { left: 26px; animation-name: helix-strand-b; animation-delay: -1.2s; }
+
+/* Strand A: move up when "front", down when "back" */
+@keyframes helix-strand-a {
+  0%   { transform: translateY(-7px) scale(1.1); opacity: 1; z-index: 2; }
+  25%  { transform: translateY(0px)  scale(0.85); opacity: 0.5; z-index: 1; }
+  50%  { transform: translateY(7px)  scale(0.6); opacity: 0.3; z-index: 0; }
+  75%  { transform: translateY(0px)  scale(0.85); opacity: 0.5; z-index: 1; }
+  100% { transform: translateY(-7px) scale(1.1); opacity: 1; z-index: 2; }
+}
+
+/* Strand B: exactly opposite — down when A is up */
+@keyframes helix-strand-b {
+  0%   { transform: translateY(7px)  scale(0.6); opacity: 0.3; z-index: 0; }
+  25%  { transform: translateY(0px)  scale(0.85); opacity: 0.5; z-index: 1; }
+  50%  { transform: translateY(-7px) scale(1.1); opacity: 1; z-index: 2; }
+  75%  { transform: translateY(0px)  scale(0.85); opacity: 0.5; z-index: 1; }
+  100% { transform: translateY(7px)  scale(0.6); opacity: 0.3; z-index: 0; }
+}
+
+:root.dark .agent-thinking--helix__dot {
+  box-shadow: 0 0 5px 1px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   Reduced motion: static fallbacks for all variants
+   ═══════════════════════════════════════════════════════════ */
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-thinking { animation: none !important; }
+
+  /* Orbital */
+  .agent-thinking--orbital__dot { animation: none !important; }
+  .agent-thinking--orbital__dot--1 { transform: translateX(10px); opacity: 0.8; }
+  .agent-thinking--orbital__dot--2 { transform: translateY(-10px); opacity: 0.5; }
+  .agent-thinking--orbital__dot--3 { transform: translateX(-10px); opacity: 0.3; }
+  .agent-thinking--orbital__core { animation: none !important; opacity: 0.4; }
+
+  /* Waveform */
+  .agent-thinking--waveform__bar { animation: none !important; }
+  .agent-thinking--waveform__bar--1 { transform: scaleY(0.3); opacity: 0.5; }
+  .agent-thinking--waveform__bar--2 { transform: scaleY(0.7); opacity: 0.7; }
+  .agent-thinking--waveform__bar--3 { transform: scaleY(1.0); opacity: 0.9; }
+  .agent-thinking--waveform__bar--4 { transform: scaleY(0.5); opacity: 0.6; }
+
+  /* Helix */
+  .agent-thinking--helix__dot { animation: none !important; }
+  .agent-thinking--helix__dot-a1 { transform: translateY(-6px); opacity: 0.9; }
+  .agent-thinking--helix__dot-a2 { transform: translateY(-3px); opacity: 0.7; }
+  .agent-thinking--helix__dot-a3 { transform: translateY(3px); opacity: 0.5; }
+  .agent-thinking--helix__dot-a4 { transform: translateY(6px); opacity: 0.3; }
+  .agent-thinking--helix__dot-b1 { transform: translateY(6px); opacity: 0.3; }
+  .agent-thinking--helix__dot-b2 { transform: translateY(3px); opacity: 0.5; }
+  .agent-thinking--helix__dot-b3 { transform: translateY(-3px); opacity: 0.7; }
+  .agent-thinking--helix__dot-b4 { transform: translateY(-6px); opacity: 0.9; }
+}

@@ -1,6 +1,7 @@
 // WebFetchCard — fetch results (URL, status, content preview)
 import { createSignal, Show } from 'solid-js';
 import Badge from '../shared/Badge';
+import Tip from '../shared/Tip';
 import type { ToolMetadata } from '../../types';
 import { formatBytes } from '../../lib/format';
 
@@ -104,15 +105,16 @@ export default function WebFetchCard(props: WebFetchCardProps) {
       <div class="flex items-center gap-2 px-3 py-1.5 bg-surface-2 border-b border-border-subtle">
         <span class="text-xs font-medium text-[#4285F4]">Fetch</span>
         <div class="flex items-center gap-1.5 min-w-0 flex-1">
-          <a
-            href={url()}
-            target="_blank"
-            rel="noopener noreferrer"
-            class="text-xs text-accent hover:underline truncate font-mono"
-            title={url()}
-          >
-            {displayUrl()}
-          </a>
+          <Tip content={url()}>
+            <a
+              href={url()}
+              target="_blank"
+              rel="noopener noreferrer"
+              class="text-xs text-accent hover:underline truncate font-mono"
+            >
+              {displayUrl()}
+            </a>
+          </Tip>
         </div>
         <div class="flex items-center gap-1.5 ml-auto flex-shrink-0">
           <Show when={contentType()}>

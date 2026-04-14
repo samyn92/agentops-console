@@ -654,9 +654,6 @@ function MemorySection(props: { memory: AgentMemoryConfig }) {
         <Show when={m().contextLimit !== undefined}>
           <ConfigRow label="Context Limit" value={`${m().contextLimit} entries`} />
         </Show>
-        <Show when={m().windowSize !== undefined}>
-          <ConfigRow label="Window Size" value={`${m().windowSize} messages`} />
-        </Show>
       </div>
 
       <div class="flex flex-wrap gap-1.5">

@@ -8,6 +8,7 @@ import { browsableResources, toggleContextItem, isContextItemSelected, selectedC
 import type { AgentResourceBinding, GitFile, GitCommit, GitBranch, GitMergeRequest, GitIssue, ResourceContext } from '../../types';
 import { isBrowsableResource, resourceKindIcon } from '../../types/api';
 import Badge from '../shared/Badge';
+import Tip from '../shared/Tip';
 import Spinner from '../shared/Spinner';
 import { relativeTime } from '../../lib/format';
 
@@ -583,18 +584,19 @@ function MergeRequestBrowser(props: { resource: AgentResourceBinding }) {
                       </Show>
                     </div>
                     {/* External link (still clickable separately) */}
-                    <a
-                      href={getUrl(mr)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      class="flex-shrink-0 p-0.5 text-text-muted/40 hover:text-accent transition-colors opacity-0 group-hover:opacity-100"
-                      onClick={(e) => e.stopPropagation()}
-                      title="Open in browser"
-                    >
-                      <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                      </svg>
-                    </a>
+                    <Tip content="Open in browser">
+                      <a
+                        href={getUrl(mr)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="flex-shrink-0 p-0.5 text-text-muted/40 hover:text-accent transition-colors opacity-0 group-hover:opacity-100"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                        </svg>
+                      </a>
+                    </Tip>
                   </div>
                 </div>
               );
@@ -726,18 +728,19 @@ function IssueBrowser(props: { resource: AgentResourceBinding }) {
                       </Show>
                     </div>
                     {/* External link */}
-                    <a
-                      href={getUrl(issue)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      class="flex-shrink-0 p-0.5 text-text-muted/40 hover:text-accent transition-colors opacity-0 group-hover:opacity-100"
-                      onClick={(e) => e.stopPropagation()}
-                      title="Open in browser"
-                    >
-                      <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                      </svg>
-                    </a>
+                    <Tip content="Open in browser">
+                      <a
+                        href={getUrl(issue)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="flex-shrink-0 p-0.5 text-text-muted/40 hover:text-accent transition-colors opacity-0 group-hover:opacity-100"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                        </svg>
+                      </a>
+                    </Tip>
                   </div>
                 </div>
               );
@@ -831,13 +834,14 @@ export default function ResourceBrowser(props: ResourceBrowserProps) {
           <div class="flex items-center gap-2">
             {/* Clear selection button */}
             <Show when={ctxCount() > 0}>
-              <button
-                class="text-[10px] text-text-muted hover:text-error transition-colors"
-                onClick={() => clearContextItems()}
-                title="Clear all selections"
-              >
-                Clear
-              </button>
+              <Tip content="Clear all selections">
+                <button
+                  class="text-[10px] text-text-muted hover:text-error transition-colors"
+                  onClick={() => clearContextItems()}
+                >
+                  Clear
+                </button>
+              </Tip>
             </Show>
             {/* Current ref indicator */}
             <Show when={currentRef()}>

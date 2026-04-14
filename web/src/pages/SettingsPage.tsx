@@ -1,6 +1,9 @@
 // SettingsPage — Material You theme park + Vercel-style preferences
 import { For, Show, createMemo } from 'solid-js';
-import { A } from '@solidjs/router';
+import { useNavigate } from '@solidjs/router';
+import { Switch as ArkSwitch } from '@ark-ui/solid/switch';
+import { BackArrowIcon, PlusIcon } from '../components/shared/Icons';
+import Tip from '../components/shared/Tip';
 import {
   themeMode, setThemeMode,
   themeStyle, setThemeStyle,
@@ -11,9 +14,10 @@ import {
   toolExpansionDefaults, setToolExpansionDefault, setAllToolExpansionDefaults,
   showSystemPrompts, setShowSystemPrompts,
   showThinkingBlocks, setShowThinkingBlocks,
+  thinkingStyle, setThinkingStyle,
   KNOWN_TOOLS,
 } from '../stores/settings';
-import type { ThemeMode, ThemeStyle, SchemeVariant } from '../stores/settings';
+import type { ThemeMode, ThemeStyle, ThinkingStyle, SchemeVariant } from '../stores/settings';
 import { getToolDisplayName } from '../lib/capability-themes';
 import { SCHEME_VARIANTS, generatePreviewPalette } from '../lib/theme';
 
@@ -89,24 +93,28 @@ function SelectButton(props: { options: { value: string; label: string }[]; valu
 
 function Toggle(props: { checked: boolean; onChange: (v: boolean) => void }) {
   return (
-    <button
-      class={`relative w-11 h-6 rounded-full transition-colors duration-200 ${
-        props.checked
-          ? 'bg-accent'
-          : 'bg-surface-2 border border-border'
-      }`}
-      onClick={() => props.onChange(!props.checked)}
-      role="switch"
-      aria-checked={props.checked}
+    <ArkSwitch.Root
+      checked={props.checked}
+      onCheckedChange={(details) => props.onChange(details.checked)}
+      class="inline-flex"
     >
-      <span
-        class={`absolute top-0.5 w-5 h-5 rounded-full shadow-sm transition-all duration-200 ${
+      <ArkSwitch.Control
+        class={`relative w-11 h-6 rounded-full transition-colors duration-200 cursor-pointer ${
           props.checked
-            ? 'left-[22px] bg-white'
-            : 'left-0.5 bg-text-muted'
+            ? 'bg-accent'
+            : 'bg-surface-2 border border-border'
         }`}
-      />
-    </button>
+      >
+        <ArkSwitch.Thumb
+          class={`absolute top-0.5 w-5 h-5 rounded-full shadow-sm transition-all duration-200 ${
+            props.checked
+              ? 'left-[22px] bg-white'
+              : 'left-0.5 bg-text-muted'
+          }`}
+        />
+      </ArkSwitch.Control>
+      <ArkSwitch.HiddenInput />
+    </ArkSwitch.Root>
   );
 }
 
@@ -151,20 +159,19 @@ function AccentColorPicker(props: { isMaterial: boolean }) {
           }}
         </For>
         {/* Custom color input */}
-        <label
-          class="w-8 h-8 rounded-full border-2 border-dashed border-border-hover flex items-center justify-center cursor-pointer hover:border-accent transition-colors group"
-          title="Custom color"
-        >
-          <svg class="w-3.5 h-3.5 text-text-muted group-hover:text-accent transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-          </svg>
-          <input
-            type="color"
-            class="sr-only"
-            value={accentColor()}
-            onInput={(e) => setAccentColor(e.currentTarget.value)}
+        <Tip content="Custom color">
+          <label
+            class="w-8 h-8 rounded-full border-2 border-dashed border-border-hover flex items-center justify-center cursor-pointer hover:border-accent transition-colors group"
+          >
+            <PlusIcon class="w-3.5 h-3.5 text-text-muted group-hover:text-accent transition-colors" />
+            <input
+              type="color"
+              class="sr-only"
+              value={accentColor()}
+              onInput={(e) => setAccentColor(e.currentTarget.value)}
           />
-        </label>
+          </label>
+        </Tip>
       </div>
     </div>
   );
@@ -247,19 +254,20 @@ function ToolExpansionRow(props: { tool: string; last?: boolean }) {
   return (
     <div class={`flex items-center justify-between py-2.5 px-4 hover:bg-surface-hover/50 transition-colors ${props.last ? '' : 'border-b border-border-subtle'}`}>
       <span class="text-xs text-text-secondary font-mono">{getToolDisplayName(props.tool)}</span>
-      <button
-        class={`text-[10px] font-medium px-2.5 py-1 rounded-full transition-colors ${
-          state() === 'expanded'
-            ? 'bg-success/15 text-success'
-            : state() === 'collapsed'
-            ? 'bg-warning/15 text-warning'
-            : 'bg-surface-2 text-text-muted'
-        }`}
-        onClick={cycle}
-        title="Click to cycle: default -> expanded -> collapsed"
-      >
-        {state() === 'expanded' ? 'Expanded' : state() === 'collapsed' ? 'Collapsed' : 'Default'}
-      </button>
+      <Tip content="Click to cycle: default -> expanded -> collapsed">
+        <button
+          class={`text-[10px] font-medium px-2.5 py-1 rounded-full transition-colors ${
+            state() === 'expanded'
+              ? 'bg-success/15 text-success'
+              : state() === 'collapsed'
+              ? 'bg-warning/15 text-warning'
+              : 'bg-surface-2 text-text-muted'
+          }`}
+          onClick={cycle}
+        >
+          {state() === 'expanded' ? 'Expanded' : state() === 'collapsed' ? 'Collapsed' : 'Default'}
+        </button>
+      </Tip>
     </div>
   );
 }
@@ -267,6 +275,7 @@ function ToolExpansionRow(props: { tool: string; last?: boolean }) {
 // ── Main settings page ──
 
 export default function SettingsPage() {
+  const navigate = useNavigate();
   const isMaterial = () => themeStyle() === 'material';
   const toolsList = [...KNOWN_TOOLS];
 
@@ -274,11 +283,9 @@ export default function SettingsPage() {
     <div class="min-h-screen bg-background text-text">
       {/* Header */}
       <div class="border-b border-border px-4 py-3 flex items-center gap-3">
-        <A href="/" class="text-text-secondary hover:text-text transition-colors p-1 -ml-1 rounded-lg hover:bg-surface-hover">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-          </svg>
-        </A>
+        <button onClick={() => navigate('/', { replace: true })} class="text-text-secondary hover:text-text transition-colors p-1 -ml-1 rounded-lg hover:bg-surface-hover">
+          <BackArrowIcon class="w-5 h-5" />
+        </button>
         <h1 class="text-lg font-semibold">Settings</h1>
       </div>
 
@@ -352,10 +359,22 @@ export default function SettingsPage() {
             />
           </SettingRow>
 
-          <SettingRow label="Show Thinking Blocks" description="Display LLM reasoning/thinking blocks in chat" last>
+          <SettingRow label="Show Thinking Blocks" description="Display LLM reasoning/thinking blocks in chat">
             <Toggle
               checked={showThinkingBlocks()}
               onChange={setShowThinkingBlocks}
+            />
+          </SettingRow>
+
+          <SettingRow label="Thinking Indicator" description="Animation style while the agent is processing" last>
+            <SelectButton
+              options={[
+                { value: 'orbital', label: 'Orbital' },
+                { value: 'waveform', label: 'Waveform' },
+                { value: 'helix', label: 'Helix' },
+              ]}
+              value={thinkingStyle()}
+              onChange={(v) => setThinkingStyle(v as ThinkingStyle)}
             />
           </SettingRow>
         </SettingSection>

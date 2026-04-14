@@ -342,9 +342,8 @@ All endpoints are prefixed with `/api/v1`.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/agents/{ns}/{name}/working-memory` | Get sliding window messages |
+| `GET` | `/agents/{ns}/{name}/working-memory` | Get working memory messages |
 | `DELETE` | `/agents/{ns}/{name}/working-memory` | Clear conversation window |
-| `PATCH` | `/agents/{ns}/{name}/config/window-size` | Set window size |
 
 ### AgentRuns, Channels, Tools
 

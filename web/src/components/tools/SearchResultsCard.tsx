@@ -1,5 +1,6 @@
 // SearchResultsCard — grep results (matches with file grouping and line highlights)
 import { createSignal, For, Show, createMemo } from 'solid-js';
+import { Collapsible } from '@ark-ui/solid/collapsible';
 import Badge from '../shared/Badge';
 import type { ToolMetadata } from '../../types';
 
@@ -53,22 +54,27 @@ function FileGroup(props: { group: MatchGroup }) {
   const [expanded, setExpanded] = createSignal(true);
 
   return (
-    <div class="border-b border-border-subtle last:border-b-0">
-      <button
+    <Collapsible.Root
+      open={expanded()}
+      onOpenChange={(details) => setExpanded(details.open)}
+      class="border-b border-border-subtle last:border-b-0"
+    >
+      <Collapsible.Trigger
         class="flex items-center gap-2 w-full px-3 py-1.5 text-left hover:bg-surface-hover transition-colors"
-        onClick={() => setExpanded(!expanded())}
       >
-        <span class="text-text-muted text-xs select-none w-3">
-          {expanded() ? '▾' : '▸'}
-        </span>
+        <Collapsible.Indicator>
+          <span class="text-text-muted text-xs select-none w-3 inline-block transition-transform data-[state=open]:rotate-0 data-[state=closed]:-rotate-90">
+            ▾
+          </span>
+        </Collapsible.Indicator>
         <span class="text-xs font-mono text-text-secondary truncate flex-1">
           {props.group.file}
         </span>
         <span class="text-xs text-text-muted">
           {props.group.matches.length} match{props.group.matches.length !== 1 ? 'es' : ''}
         </span>
-      </button>
-      <Show when={expanded()}>
+      </Collapsible.Trigger>
+      <Collapsible.Content class="overflow-hidden">
         <div class="pl-3 pr-3 pb-1">
           <For each={props.group.matches}>
             {(m) => (
@@ -81,8 +87,8 @@ function FileGroup(props: { group: MatchGroup }) {
             )}
           </For>
         </div>
-      </Show>
-    </div>
+      </Collapsible.Content>
+    </Collapsible.Root>
   );
 }
 

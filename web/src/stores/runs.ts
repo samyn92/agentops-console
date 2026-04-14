@@ -1,7 +1,7 @@
 // Runs store — reactive AgentRun state with global sorting, delegation map, and per-agent context.
 import { createSignal, createResource, createMemo } from 'solid-js';
 import { agentRuns } from '../lib/api';
-import { selectedAgent } from './agents';
+import { selectedAgent, agentList as agentListRef } from './agents';
 import { onResourceChanged } from './events';
 import type { AgentRunResponse } from '../types';
 
@@ -56,8 +56,10 @@ export function stopRunPolling() {
 
 // ── Derived state ──
 
-/** Runs for the currently selected agent (agentRef OR sourceRef matches).
- *  Used for the center stage TaskAgentView / context display.
+/** Runs for the currently selected agent.
+ *  For daemon (orchestrator) agents: only runs targeting this agent (agentRef match).
+ *    Delegated worker runs live in the Delegation tab, not the sidebar.
+ *  For task agents: runs targeting OR sourced from this agent (agentRef OR sourceRef).
  *  Always sorted newest-first for consistent ordering.
  */
 const contextualRuns = createMemo<AgentRunResponse[]>(() => {
@@ -65,6 +67,18 @@ const contextualRuns = createMemo<AgentRunResponse[]>(() => {
   const agent = selectedAgent();
 
   if (!agent) return sortNewestFirst(runs);
+
+  // Look up agent mode from the agent list
+  const agentInfo = agentListRef()?.find(
+    (a) => a.namespace === agent.namespace && a.name === agent.name,
+  );
+  const isDaemon = agentInfo?.mode === 'daemon';
+
+  if (isDaemon) {
+    // Orchestrators: only their own runs (not delegated worker runs)
+    return sortNewestFirst(runs.filter((r) => r.spec.agentRef === agent.name));
+  }
+  // Task/channel agents: runs targeting or sourced from this agent
   return sortNewestFirst(runs.filter(
     (r) => r.spec.agentRef === agent.name || r.spec.sourceRef === agent.name,
   ));
@@ -276,4 +290,22 @@ export function clearRunSelection() {
 /** Force refresh the run list. */
 export function refreshRuns() {
   setRefetchTrigger((n) => n + 1);
+}
+
+/** Get all runs delegated BY a specific orchestrator (source=agent, sourceRef=orchestratorName). */
+export function getRunsDelegatedBy(orchestratorName: string): AgentRunResponse[] {
+  const runs = allRuns() ?? [];
+  return sortNewestFirst(
+    runs.filter((r) => r.spec.source === 'agent' && r.spec.sourceRef === orchestratorName)
+  );
+}
+
+/** Get delegation groups created by a specific orchestrator. */
+export function getDelegationGroupsBy(orchestratorName: string): DelegationGroupInfo[] {
+  return delegationGroups().filter((g) => g.sourceAgent === orchestratorName);
+}
+
+/** Get worker agent names used by a specific orchestrator (from delegation map). */
+export function getWorkerAgentsFor(orchestratorName: string): string[] {
+  return delegationMap()[orchestratorName] ?? [];
 }

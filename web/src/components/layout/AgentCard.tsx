@@ -5,6 +5,7 @@ import { Show, For, createMemo } from 'solid-js';
 import { getAgentStatus } from '../../stores/agents';
 import { getAgentConcurrency, getAgentRuns } from '../../stores/runs';
 import { getChannelsForAgent } from '../../stores/channels';
+import { LightningBoltFilledIcon, ClockIcon } from '../shared/Icons';
 import type { AgentResponse } from '../../types';
 
 interface AgentCardProps {
@@ -26,10 +27,10 @@ export default function AgentCard(props: AgentCardProps) {
   const hasChannelBindings = () => channels().length > 0;
   const hasSchedule = () => !!props.agent.schedule;
 
-  // Recent runs for the history queue (reversed: oldest first → newest last)
+  // Recent runs for the history queue (newest first → latest is leftmost)
   const recentRuns = createMemo(() => {
     const runs = getAgentRuns(props.agent.name, 16);
-    return [...runs].reverse();
+    return runs;
   });
 
   return (
@@ -65,7 +66,7 @@ export default function AgentCard(props: AgentCardProps) {
       </div>
 
        {/* Row 2: Run pipeline + indicator badges */}
-      <div class={`flex items-center gap-1.5 ${isCompact() ? 'text-[10px]' : 'text-[11px]'} leading-[16px]`}>
+      <div class={`flex items-center gap-1.5 min-w-0 ${isCompact() ? 'text-[10px]' : 'text-[11px]'} leading-[16px]`}>
         {/* Run history pipeline */}
         <Show
           when={recentRuns().length > 0}
@@ -73,7 +74,7 @@ export default function AgentCard(props: AgentCardProps) {
             <span class="text-text-muted/40 text-[10px]">no runs</span>
           }
         >
-          <div class="flex items-center flex-shrink min-w-0 gap-[3px] ml-4">
+          <div class="flex items-center flex-shrink min-w-0 overflow-hidden gap-[3px] ml-4">
             <For each={recentRuns()}>
               {(run, i) => {
                 const phase = run.status?.phase;
@@ -159,9 +160,7 @@ export default function AgentCard(props: AgentCardProps) {
             class="sidebar-indicator-badge sidebar-indicator-badge--channel"
             title={`${channels().length} channel${channels().length > 1 ? 's' : ''}: ${channels().map(c => c.metadata.name).join(', ')}`}
           >
-            <svg class="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M13 3L4 14h7l-2 7 9-11h-7l2-7z" />
-            </svg>
+            <LightningBoltFilledIcon class="w-2.5 h-2.5" />
             <Show when={!isCompact()}>
               <span>{channels().length}</span>
             </Show>
@@ -171,9 +170,7 @@ export default function AgentCard(props: AgentCardProps) {
         {/* Schedule indicator — icon only, hover reveals cron expression */}
         <Show when={hasSchedule()}>
           <span class="sidebar-schedule-icon group relative">
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
+            <ClockIcon class="w-3.5 h-3.5" />
             <span class="sidebar-schedule-tooltip">
               {props.agent.schedule}
             </span>

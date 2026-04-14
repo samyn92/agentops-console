@@ -53,8 +53,8 @@ export default defineConfig({
       workbox: {
         runtimeCaching: [
           {
-            // Traces and SSE endpoints — always network, never cache
-            urlPattern: /\/api\/v1\/(traces|agents\/events|watch)/i,
+            // SSE, streaming, and trace endpoints — always network, never cache
+            urlPattern: /\/api\/v1\/(traces|events|watch|agents\/.*\/(stream|events))/i,
             handler: 'NetworkOnly',
           },
           {
@@ -81,15 +81,37 @@ export default defineConfig({
             },
           },
         ],
-        navigateFallbackDenylist: [/\/api\/v1\/agents\/events/],
+        navigateFallbackDenylist: [/\/api\/v1\/(events|agents\/.*\/(stream|events))/],
       },
     }),
   ],
   server: {
     proxy: {
+      // SSE / streaming endpoints — disable proxy buffering
+      '/api/v1/events': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
+      '/api/v1/watch': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
+      // All other API requests
       '/api/v1': {
         target: 'http://localhost:8080',
         changeOrigin: true,
+        configure: (proxy) => {
+          // Disable buffering for SSE/streaming responses so events flush immediately
+          proxy.on('proxyRes', (proxyRes, req, res) => {
+            const ct = proxyRes.headers['content-type'] || '';
+            if (ct.includes('text/event-stream')) {
+              // Ensure no buffering or compression interferes
+              res.setHeader('X-Accel-Buffering', 'no');
+              res.setHeader('Cache-Control', 'no-cache');
+              res.setHeader('Connection', 'keep-alive');
+            }
+          });
+        },
       },
     },
   },

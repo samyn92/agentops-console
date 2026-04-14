@@ -1,0 +1,166 @@
+/* ===== Composing Agent — Neural Handoff Animation ===== */
+/* The run_agent composing state: a sleek orchestration indicator
+   with indigo/purple gradients, agent name badge, and streaming prompt. */
+
+.composing-agent {
+  position: relative;
+  margin: 6px 0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+/* Neural trace variant for composing — indigo themed */
+.neural-trace--composing {
+  --neural-color: #818cf8; /* indigo-400 */
+  height: 2px;
+  border-radius: 8px 8px 0 0;
+}
+
+.composing-agent__body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 14px;
+  background: linear-gradient(135deg,
+    rgba(99, 102, 241, 0.06) 0%,
+    rgba(139, 92, 246, 0.04) 50%,
+    rgba(6, 182, 212, 0.02) 100%
+  );
+  border: 1px solid rgba(99, 102, 241, 0.12);
+  border-top: none;
+  border-radius: 0 0 8px 8px;
+}
+
+:root.dark .composing-agent__body {
+  background: linear-gradient(135deg,
+    rgba(99, 102, 241, 0.08) 0%,
+    rgba(139, 92, 246, 0.05) 50%,
+    rgba(6, 182, 212, 0.03) 100%
+  );
+  border-color: rgba(99, 102, 241, 0.15);
+}
+
+.composing-agent__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.composing-agent__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: rgba(99, 102, 241, 0.12);
+  color: #818cf8;
+  animation: icon-breathe 2s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+@keyframes icon-breathe {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.2); }
+  50% { box-shadow: 0 0 8px 2px rgba(99, 102, 241, 0.15); }
+}
+
+.composing-agent__label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  background: linear-gradient(90deg, #a5b4fc, #c4b5fd);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.composing-agent__name {
+  font-size: 11px;
+  font-weight: 500;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  padding: 1px 8px;
+  border-radius: 10px;
+  background: rgba(99, 102, 241, 0.12);
+  color: #a5b4fc;
+  border: 1px solid rgba(99, 102, 241, 0.15);
+  animation: name-materialize 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes name-materialize {
+  from {
+    opacity: 0;
+    transform: translateX(-4px) scale(0.95);
+    filter: blur(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+.composing-agent__dots {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.composing-agent__prompt {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+  padding-left: 30px; /* align with text after icon */
+  max-height: 3.6em;
+  overflow: hidden;
+  animation: prompt-reveal 0.2s ease-out;
+}
+
+@keyframes prompt-reveal {
+  from { opacity: 0; max-height: 0; }
+  to { opacity: 1; max-height: 3.6em; }
+}
+
+.composing-agent__prompt-text {
+  display: inline;
+  word-break: break-word;
+}
+
+/* ===== Composing Default — Compact Inline Preview ===== */
+/* For bash, file ops, search, etc. — a minimal single-line indicator. */
+
+.composing-default {
+  margin: 4px 0;
+}
+
+.composing-default__indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  font-size: 13px;
+}
+
+.composing-default__label {
+  font-size: 11px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.composing-default__dots {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.composing-default__value {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  color: var(--text-main);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 320px;
+}

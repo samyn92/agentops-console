@@ -1,5 +1,5 @@
-// Engram memory proxy — resolves per-agent Engram URL from the Agent CR and proxies
-// HTTP requests to the Engram REST API.
+// Memory proxy — resolves per-agent agentops-memory URL from the Agent CR and proxies
+// HTTP requests to the agentops-memory REST API.
 package handlers
 
 import (
@@ -18,17 +18,17 @@ import (
 	"github.com/samyn92/agentops-console/internal/k8s"
 )
 
-// engramDefaultPort is the default port Engram serves on.
-const engramDefaultPort = 7437
+// memoryDefaultPort is the default port agentops-memory serves on.
+const memoryDefaultPort = 7437
 
-// resolveEngramURL determines the Engram HTTP URL for an agent by reading spec.memory.serverRef.
+// resolveMemoryURL determines the agentops-memory HTTP URL for an agent by reading spec.memory.serverRef.
 // Resolution order:
-//  1. ENGRAM_URL_OVERRIDE env var (dev mode)
+//  1. MEMORY_URL_OVERRIDE env var (dev mode) — also checks legacy ENGRAM_URL_OVERRIDE
 //  2. Look up AgentTool CR by serverRef name → use status.serviceURL if available
-//  3. Fallback: http://{serverRef}.{ns}.svc:7437 (for manually deployed Engram)
+//  3. Fallback: http://{serverRef}.{ns}.svc:7437 (for manually deployed agentops-memory)
 //
 // Returns ("", "") if the agent has no memory configured.
-func resolveEngramURL(ctx context.Context, k8sClient *k8s.Client, agent *agentsv1alpha1.Agent) (engramURL string, project string) {
+func resolveMemoryURL(ctx context.Context, k8sClient *k8s.Client, agent *agentsv1alpha1.Agent) (memoryURL string, project string) {
 	if agent.Spec.Memory == nil || agent.Spec.Memory.ServerRef == "" {
 		return "", ""
 	}
@@ -41,7 +41,10 @@ func resolveEngramURL(ctx context.Context, k8sClient *k8s.Client, agent *agentsv
 		project = agent.Name
 	}
 
-	// Dev override
+	// Dev override (check new name first, then legacy)
+	if override := os.Getenv("MEMORY_URL_OVERRIDE"); override != "" {
+		return override, project
+	}
 	if override := os.Getenv("ENGRAM_URL_OVERRIDE"); override != "" {
 		return override, project
 	}
@@ -49,7 +52,7 @@ func resolveEngramURL(ctx context.Context, k8sClient *k8s.Client, agent *agentsv
 	// Try AgentTool CR lookup
 	tool, err := k8sClient.GetAgentTool(ctx, ns, serverRef)
 	if err == nil && tool != nil && tool.Status.ServiceURL != "" {
-		slog.Debug("resolved engram URL from AgentTool CR", "serverRef", serverRef, "url", tool.Status.ServiceURL)
+		slog.Debug("resolved memory URL from AgentTool CR", "serverRef", serverRef, "url", tool.Status.ServiceURL)
 		return tool.Status.ServiceURL, project
 	}
 
@@ -57,45 +60,45 @@ func resolveEngramURL(ctx context.Context, k8sClient *k8s.Client, agent *agentsv
 	if ns != "agents" {
 		tool, err = k8sClient.GetAgentTool(ctx, "agents", serverRef)
 		if err == nil && tool != nil && tool.Status.ServiceURL != "" {
-			slog.Debug("resolved engram URL from AgentTool CR (agents namespace)", "serverRef", serverRef, "url", tool.Status.ServiceURL)
+			slog.Debug("resolved memory URL from AgentTool CR (agents namespace)", "serverRef", serverRef, "url", tool.Status.ServiceURL)
 			return tool.Status.ServiceURL, project
 		}
 	}
 
 	// Fallback: assume manually deployed service
-	url := fmt.Sprintf("http://%s.%s.svc:%d", serverRef, ns, engramDefaultPort)
-	slog.Debug("resolved engram URL via fallback", "serverRef", serverRef, "url", url)
+	url := fmt.Sprintf("http://%s.%s.svc:%d", serverRef, ns, memoryDefaultPort)
+	slog.Debug("resolved memory URL via fallback", "serverRef", serverRef, "url", url)
 	return url, project
 }
 
-// engramClient is a reusable HTTP client for Engram requests.
-var engramClient = &http.Client{Timeout: 15 * time.Second}
+// memoryClient is a reusable HTTP client for agentops-memory requests.
+var memoryClient = &http.Client{Timeout: 15 * time.Second}
 
-// proxyToEngram proxies a request to the Engram REST API for a specific agent.
-// It resolves the Engram URL, adds the project query parameter, and forwards the request.
-func proxyToEngram(
+// proxyToMemory proxies a request to the agentops-memory REST API for a specific agent.
+// It resolves the memory URL, adds the project query parameter, and forwards the request.
+func proxyToMemory(
 	ctx context.Context,
 	k8sClient *k8s.Client,
 	agent *agentsv1alpha1.Agent,
 	method string,
-	engramPath string,
+	memoryPath string,
 	body io.Reader,
 	extraQuery map[string]string,
 ) (*http.Response, error) {
-	engramURL, project := resolveEngramURL(ctx, k8sClient, agent)
-	if engramURL == "" {
+	memoryURL, project := resolveMemoryURL(ctx, k8sClient, agent)
+	if memoryURL == "" {
 		return nil, fmt.Errorf("agent %s/%s has no memory configured", agent.Namespace, agent.Name)
 	}
 
 	// Build URL with query parameters
-	targetURL := engramURL + engramPath
+	targetURL := memoryURL + memoryPath
 
 	qp := url.Values{}
 	// Add project param for endpoints that scope by project
-	needsProject := strings.HasSuffix(engramPath, "/recent") ||
-		engramPath == "/search" ||
-		engramPath == "/context" ||
-		engramPath == "/stats"
+	needsProject := strings.HasSuffix(memoryPath, "/recent") ||
+		memoryPath == "/search" ||
+		memoryPath == "/context" ||
+		memoryPath == "/stats"
 	if needsProject && project != "" {
 		qp.Set("project", project)
 	}
@@ -114,6 +117,6 @@ func proxyToEngram(
 		req.Header.Set("Content-Type", "application/json")
 	}
 
-	slog.Debug("proxying to engram", "method", method, "url", targetURL)
-	return engramClient.Do(req)
+	slog.Debug("proxying to agentops-memory", "method", method, "url", targetURL)
+	return memoryClient.Do(req)
 }

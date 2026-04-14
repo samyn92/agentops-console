@@ -2,6 +2,7 @@
 import { Show } from 'solid-js';
 import type { Usage } from '../../types';
 import { formatTokens } from '../../lib/format';
+import Tip from './Tip';
 
 interface CostDisplayProps {
   usage: Usage;
@@ -28,28 +29,36 @@ export default function CostDisplay(props: CostDisplayProps) {
         <span class="text-border-hover">|</span>
       </Show>
 
-      <span title="Input tokens">
-        <span class="text-text-secondary">{formatTokens(usage().input_tokens)}</span>
-        {' in'}
-      </span>
+      <Tip content="Input tokens">
+        <span>
+          <span class="text-text-secondary">{formatTokens(usage().input_tokens)}</span>
+          {' in'}
+        </span>
+      </Tip>
 
-      <span title="Output tokens">
-        <span class="text-text-secondary">{formatTokens(usage().output_tokens)}</span>
-        {' out'}
-      </span>
+      <Tip content="Output tokens">
+        <span>
+          <span class="text-text-secondary">{formatTokens(usage().output_tokens)}</span>
+          {' out'}
+        </span>
+      </Tip>
 
       <Show when={usage().reasoning_tokens > 0}>
-        <span title="Reasoning tokens">
-          <span class="text-text-secondary">{formatTokens(usage().reasoning_tokens)}</span>
-          {' reasoning'}
-        </span>
+        <Tip content="Reasoning tokens">
+          <span>
+            <span class="text-text-secondary">{formatTokens(usage().reasoning_tokens)}</span>
+            {' reasoning'}
+          </span>
+        </Tip>
       </Show>
 
       <Show when={usage().cache_read_tokens > 0}>
-        <span title="Cache read tokens">
-          <span class="text-text-secondary">{formatTokens(usage().cache_read_tokens)}</span>
-          {' cached'}
-        </span>
+        <Tip content="Cache read tokens">
+          <span>
+            <span class="text-text-secondary">{formatTokens(usage().cache_read_tokens)}</span>
+            {' cached'}
+          </span>
+        </Tip>
       </Show>
 
       <span class="text-border-hover">|</span>

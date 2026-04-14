@@ -8,6 +8,8 @@ import { showTraceDetail, selectedTraceForDetail } from '../../stores/view';
 import { onResourceChanged } from '../../stores/events';
 import type { TraceSearchResult } from '../../types';
 import Spinner from '../shared/Spinner';
+import { MonitorIcon, RefreshIcon, TreeConnectorIcon, ArrowUpIcon } from '../shared/Icons';
+import Tip from '../shared/Tip';
 import { relativeTime } from '../../lib/format';
 
 // ── Tree node type ──
@@ -112,19 +114,16 @@ export default function TracesPanel() {
     <div class="flex flex-col h-full">
       {/* Header */}
       <div class="flex items-center gap-2 px-4 py-2.5 border-b border-border flex-shrink-0">
-        <svg class="w-3.5 h-3.5 text-text-muted flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5" />
-        </svg>
+        <MonitorIcon class="w-3.5 h-3.5 text-text-muted flex-shrink-0" />
         <span class="text-[11px] font-semibold tracking-wide uppercase text-text-muted flex-1">Traces</span>
-        <button
-          class="p-1 rounded-md hover:bg-surface-hover text-text-muted hover:text-text transition-colors"
-          onClick={() => { setRefetchTrigger((n) => n + 1); }}
-          title="Refresh traces"
-        >
-          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-          </svg>
-        </button>
+        <Tip content="Refresh traces">
+          <button
+            class="p-1 rounded-md hover:bg-surface-hover text-text-muted hover:text-text transition-colors"
+            onClick={() => { setRefetchTrigger((n) => n + 1); }}
+          >
+            <RefreshIcon class="w-3.5 h-3.5" />
+          </button>
+        </Tip>
       </div>
 
       {/* Content */}
@@ -140,9 +139,7 @@ export default function TracesPanel() {
             when={traceTree().length > 0}
             fallback={
               <div class="flex flex-col items-center justify-center py-16 px-6 text-center">
-                <svg class="w-7 h-7 text-text-muted/20 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5" />
-                </svg>
+                <MonitorIcon class="w-7 h-7 text-text-muted/20 mb-3" />
                 <p class="text-[11px] text-text-muted leading-relaxed">
                   No traces yet. Traces appear after agents process their first prompts.
                 </p>
@@ -249,9 +246,7 @@ function TraceListItem(props: {
       <div class="flex items-center gap-2 min-w-0">
         {/* Tree connector for child nodes */}
         <Show when={isChild()}>
-          <svg class="w-3 h-3 text-text-muted/25 flex-shrink-0 -ml-0.5" viewBox="0 0 12 12">
-            <path d="M3 0 L3 6 L10 6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
-          </svg>
+          <TreeConnectorIcon class="w-3 h-3 text-text-muted/25 flex-shrink-0 -ml-0.5" />
         </Show>
 
         {/* Status dot */}
@@ -308,9 +303,7 @@ function TraceListItem(props: {
       {/* Parent agent attribution for orphaned delegated traces */}
       <Show when={isDelegated() && props.trace.parentAgent && !isChild()}>
         <div class="flex items-center gap-1.5 mt-0.5" style={{ "margin-left": '14px' }}>
-          <svg class="w-2.5 h-2.5 text-text-muted/30" viewBox="0 0 10 10" fill="none" stroke="currentColor">
-            <path d="M5 8 L5 2 M2.5 4.5 L5 2 L7.5 4.5" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
-          </svg>
+          <ArrowUpIcon class="w-2.5 h-2.5 text-text-muted/30" />
           <span class="text-[11px] text-text-muted/40 font-mono">{props.trace.parentAgent}</span>
         </div>
       </Show>

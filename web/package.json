@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@ark-ui/solid": "^5.36.0",
     "@material/material-color-utilities": "^0.4.0",
     "@solidjs/router": "^0.15.4",
     "@tailwindcss/vite": "^4.2.2",

@@ -1,14 +1,16 @@
 // RightPanel — collapsible right sidebar with context-aware content.
-// Default mode: Memory, Tools, Resources tabs (agent context).
+// Default mode: Memory, Tools tabs (agent context).
 // Trace mode: Shows SpanDetailPanel when a span is selected in the waterfall.
 // Switching back to an agent view restores the agent context tabs.
 import { Show, createSignal } from 'solid-js';
+import { Tabs } from '@ark-ui/solid/tabs';
+import { HamburgerIcon, CursorClickIcon } from '../shared/Icons';
+import Tip from '../shared/Tip';
 import { rightPanelState, toggleRightPanel, rightPanelTab, setRightPanelTab, centerView, selectedSpanData, traceProcesses, clearSelectedSpan } from '../../stores/view';
 import type { RightPanelTab } from '../../stores/view';
 import { memoryEnabled } from '../../stores/memory';
 import MemoryPanel from './MemoryPanel';
 import ToolBrowser from '../resources/ToolBrowser';
-import AgentResourcesPanel from '../resources/AgentResourcesPanel';
 import SpanDetailPanel from '../traces/SpanDetailPanel';
 
 interface RightPanelProps {
@@ -62,17 +64,16 @@ export default function RightPanel(props: RightPanelProps) {
     >
       {/* ── Collapsed strip ── */}
       <Show when={!isExpanded()}>
-        <button
-          class="flex flex-col items-center gap-3 py-3 w-full h-full hover:bg-surface-hover transition-colors"
-          onClick={() => toggleRightPanel()}
-          title="Show panel (Ctrl+3)"
-        >
-          <div class="relative">
-            <svg class="w-5 h-5 text-text-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
-          </div>
-        </button>
+        <Tip content="Show panel (Ctrl+3)" placement="left">
+          <button
+            class="flex flex-col items-center gap-3 py-3 w-full h-full hover:bg-surface-hover transition-colors"
+            onClick={() => toggleRightPanel()}
+          >
+            <div class="relative">
+              <HamburgerIcon class="w-5 h-5" />
+            </div>
+          </button>
+        </Tip>
       </Show>
 
       {/* ── Expanded panel ── */}
@@ -95,46 +96,46 @@ export default function RightPanel(props: RightPanelProps) {
         {/* ── Trace view, no span selected — blank hint ── */}
         <Show when={isTraceView() && !showSpanDetail()}>
           <div class="flex items-center gap-2 px-3 h-12 border-b border-border flex-shrink-0">
-            <button
-              class="p-1 rounded-lg hover:bg-surface-hover text-text-secondary hover:text-text transition-colors"
-              onClick={() => toggleRightPanel()}
-              title="Collapse panel"
-            >
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-            </button>
+            <Tip content="Collapse panel">
+              <button
+                class="p-1 rounded-lg hover:bg-surface-hover text-text-secondary hover:text-text transition-colors"
+                onClick={() => toggleRightPanel()}
+              >
+                <HamburgerIcon class="w-5 h-5" />
+              </button>
+            </Tip>
             <span class="text-xs text-text-muted">Span Detail</span>
           </div>
           <div class="flex-1 flex flex-col items-center justify-center px-6 text-center">
-            <svg class="w-10 h-10 text-text-muted/30 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
-            </svg>
+            <CursorClickIcon class="w-10 h-10 text-text-muted/30 mb-3" />
             <p class="text-xs text-text-muted">
               Select a span in the waterfall to inspect its details.
             </p>
           </div>
         </Show>
 
-        {/* ── Agent context mode (default: Memory/Tools/Resources) ── */}
+        {/* ── Agent context mode (default: Memory/Tools) ── */}
         <Show when={!isTraceView()}>
           {/* Header with tabs */}
           <div class="flex items-center gap-2 px-3 h-12 border-b border-border flex-shrink-0">
-            <button
-              class="p-1 rounded-lg hover:bg-surface-hover text-text-secondary hover:text-text transition-colors"
-              onClick={() => toggleRightPanel()}
-              title="Collapse panel"
-            >
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-            </button>
+            <Tip content="Collapse panel">
+              <button
+                class="p-1 rounded-lg hover:bg-surface-hover text-text-secondary hover:text-text transition-colors"
+                onClick={() => toggleRightPanel()}
+              >
+                <HamburgerIcon class="w-5 h-5" />
+              </button>
+            </Tip>
 
-            <div class="flex gap-0.5 ml-1">
-              <TabButton tab="memory" current={rightPanelTab()} label="Memory" />
-              <TabButton tab="tools" current={rightPanelTab()} label="Tools" />
-              <TabButton tab="resources" current={rightPanelTab()} label="Resources" />
-            </div>
+            <Tabs.Root
+              value={rightPanelTab()}
+              onValueChange={(details) => setRightPanelTab(details.value as RightPanelTab)}
+            >
+              <Tabs.List class="flex gap-0.5 ml-1">
+                <Tabs.Trigger value="memory" class="relative px-2.5 py-1 text-[11px] rounded-lg transition-colors data-[selected]:bg-surface-hover data-[selected]:text-text data-[selected]:font-medium text-text-muted hover:text-text-secondary hover:bg-surface-hover/50">Memory</Tabs.Trigger>
+                <Tabs.Trigger value="tools" class="relative px-2.5 py-1 text-[11px] rounded-lg transition-colors data-[selected]:bg-surface-hover data-[selected]:text-text data-[selected]:font-medium text-text-muted hover:text-text-secondary hover:bg-surface-hover/50">Tools</Tabs.Trigger>
+              </Tabs.List>
+            </Tabs.Root>
           </div>
 
           {/* Content */}
@@ -152,9 +153,6 @@ export default function RightPanel(props: RightPanelProps) {
                 />
               </div>
             </Show>
-            <Show when={rightPanelTab() === 'resources'}>
-              <AgentResourcesPanel />
-            </Show>
           </div>
         </Show>
       </Show>
@@ -162,17 +160,4 @@ export default function RightPanel(props: RightPanelProps) {
   );
 }
 
-function TabButton(props: { tab: RightPanelTab; current: RightPanelTab; label: string }) {
-  return (
-    <button
-      class={`relative px-2.5 py-1 text-[11px] rounded-lg transition-colors ${
-        props.current === props.tab
-          ? 'bg-surface-hover text-text font-medium'
-          : 'text-text-muted hover:text-text-secondary hover:bg-surface-hover/50'
-      }`}
-      onClick={() => setRightPanelTab(props.tab)}
-    >
-      {props.label}
-    </button>
-  );
-}
+
