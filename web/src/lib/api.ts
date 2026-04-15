@@ -414,10 +414,11 @@ export const traces = {
   search: (opts?: { agentName?: string; limit?: number; start?: number; end?: number }) => {
     const params = new URLSearchParams();
     // Build a TraceQL query — always select agent.name and agent.mode so the sidebar can display them.
+    // Filter duration > 1ms to exclude health/status probe noise from Tempo results.
     if (opts?.agentName) {
-      params.set('q', `{ resource.agent.name = "${opts.agentName}" } | select(resource.agent.name, resource.agent.mode)`);
+      params.set('q', `{ resource.agent.name = "${opts.agentName}" && duration > 1ms } | select(resource.agent.name, resource.agent.mode)`);
     } else {
-      params.set('q', `{ resource.agent.name =~ ".+" } | select(resource.agent.name, resource.agent.mode)`);
+      params.set('q', `{ resource.agent.name =~ ".+" && duration > 1ms } | select(resource.agent.name, resource.agent.mode)`);
     }
     if (opts?.limit) params.set('limit', String(opts.limit));
     if (opts?.start) params.set('start', String(opts.start));

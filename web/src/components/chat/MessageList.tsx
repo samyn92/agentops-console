@@ -6,6 +6,7 @@ import {
   streaming,
   activeText,
   activeReasoning,
+  thinkingState,
 } from '../../stores/chat';
 import MessageBubble from './MessageBubble';
 import AgentThinking from './AgentThinking';
@@ -82,7 +83,7 @@ export default function MessageList(props: MessageListProps) {
   return (
     <div
       ref={listRef}
-      class={`flex-1 overflow-y-auto px-4 pt-6 pb-10 ${props.class || ''}`}
+      class={`flex-1 overflow-y-auto px-4 pt-6 ${props.class || ''}`}
       onScroll={onScroll}
     >
       <Show
@@ -117,10 +118,12 @@ export default function MessageList(props: MessageListProps) {
             }}
           </For>
 
-          {/* Synaptic Pulse — agent thinking indicator */}
-          <AgentThinking active={showThinking()} />
+          {/* Phase-aware thinking indicator */}
+          <AgentThinking active={showThinking()} thinkingState={thinkingState()} />
         </div>
       </Show>
+      {/* Scroll-end spacer — consistent visual breathing room above the composer */}
+      <div class="h-6" aria-hidden="true" />
       {/* Invisible scroll anchor — always at the very bottom of scroll content */}
       <div ref={anchorRef} class="h-0 w-0" aria-hidden="true" />
     </div>

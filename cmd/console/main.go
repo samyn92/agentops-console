@@ -104,6 +104,7 @@ func main() {
 	slog.Info("shutting down...")
 
 	// Graceful shutdown
+	mux.Stop()
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {

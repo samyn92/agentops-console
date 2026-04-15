@@ -7,7 +7,8 @@ import { createStore, produce, reconcile } from 'solid-js/store';
 import { streamPrompt, conversation as conversationAPI } from '../lib/api';
 import { selectedAgent, refreshAgentHealth, getAgentRuntimeStatus } from './agents';
 import { getSelectedContext, clearContextItems } from './resources';
-import { onFEPEvent } from './events';
+import { onFEPEvent, onFEPEventWithKey } from './events';
+import type { AgentKey } from './events';
 import type {
   FEPEvent,
   Usage,
@@ -27,6 +28,27 @@ import type {
   ToolPart,
   StepFinishPart,
 } from '../types';
+
+// ── Thinking phase — derived from FEP event flow ──
+// Visible in AgentThinking component between output gaps.
+// Each phase maps to a distinct label + animation character.
+
+export type ThinkingPhase =
+  | 'analyzing'   // agent_start received, waiting for first LLM response
+  | 'thinking'    // step_start received, LLM processing
+  | 'reasoning'   // reasoning_start received, deep chain-of-thought
+  | 'planning'    // reasoning_end received, transitioning to action
+  | 'executing'   // step_finish with tool-calls finish_reason
+  | 'delegating'  // delegation.fan_out received
+  | 'idle';       // not actively processing
+
+export interface ThinkingState {
+  phase: ThinkingPhase;
+  stepNumber: number;
+  stepCount: number;       // total steps completed so far
+  finishReason: string;    // last step's finish_reason
+  toolCallCount: number;   // tools called in last step
+}
 
 // ── Per-agent state ──
 
@@ -51,6 +73,7 @@ interface AgentChatState {
   pendingPermission: ReturnType<typeof createSignal<PendingPermissionState | null>>;
   pendingQuestion: ReturnType<typeof createSignal<PendingQuestionState | null>>;
   lastTraceID: ReturnType<typeof createSignal<string | null>>;
+  thinkingState: ReturnType<typeof createSignal<ThinkingState>>;
   // Non-reactive
   abortController: AbortController | null;
   // RAF batching for tool_input_delta
@@ -102,6 +125,13 @@ function getOrCreateState(key: string): AgentChatState {
       pendingPermission: createSignal<PendingPermissionState | null>(null),
       pendingQuestion: createSignal<PendingQuestionState | null>(null),
       lastTraceID: createSignal<string | null>(null),
+      thinkingState: createSignal<ThinkingState>({
+        phase: 'idle',
+        stepNumber: 0,
+        stepCount: 0,
+        finishReason: '',
+        toolCallCount: 0,
+      }),
       abortController: null,
       _deltaBuffer: new Map(),
       _deltaRafId: null,
@@ -146,6 +176,7 @@ export const activeToolInput = () => currentState()?.activeToolInput[0]() ?? nul
 export const pendingPermission = () => currentState()?.pendingPermission[0]() ?? null;
 export const pendingQuestion = () => currentState()?.pendingQuestion[0]() ?? null;
 export const lastTraceID = () => currentState()?.lastTraceID[0]() ?? null;
+export const thinkingState = () => currentState()?.thinkingState[0]() ?? { phase: 'idle' as ThinkingPhase, stepNumber: 0, stepCount: 0, finishReason: '', toolCallCount: 0 };
 
 export function setPendingPermission(val: PendingPermissionState | null) {
   const state = currentState();
@@ -225,6 +256,7 @@ export async function sendMessage(prompt: string) {
   const [, setATxt] = state.activeText;
   const [, setAReason] = state.activeReasoning;
   const [, setAToolIn] = state.activeToolInput;
+  const [, setThinkingSt] = state.thinkingState;
 
   // Add user message + placeholder assistant message
   const userMsg: ChatMessage = { role: 'user', content: prompt, timestamp: Date.now() };
@@ -237,6 +269,7 @@ export async function sendMessage(prompt: string) {
     setStr(true);
     setStep(0);
     setUsage(null);
+    setThinkingSt({ phase: 'analyzing', stepNumber: 0, stepCount: 0, finishReason: '', toolCallCount: 0 });
     setATxt(null);
     setAReason(null);
     setAToolIn(null);
@@ -272,6 +305,7 @@ export async function sendMessage(prompt: string) {
       finalizeActiveText(capturedState);
       finalizeActiveReasoning(capturedState);
       capturedState.activeToolInput[1](null);
+      capturedState.thinkingState[1]((prev) => ({ ...prev, phase: 'idle' }));
     });
     capturedState.abortController = null;
     markStreaming(capturedKey, false);
@@ -366,6 +400,7 @@ function handleFEPEvent(state: AgentChatState, key: string, event: FEPEvent) {
   const [, setPerm] = state.pendingPermission;
   const [, setQ] = state.pendingQuestion;
   const [, setTraceID] = state.lastTraceID;
+  const [, setThinking] = state.thinkingState;
 
   switch (event.type) {
     case 'agent_start':
@@ -377,6 +412,8 @@ function handleFEPEvent(state: AgentChatState, key: string, event: FEPEvent) {
       if (event.context_budget) {
         setBudget(event.context_budget);
       }
+      // Phase: analyzing the prompt
+      setThinking((prev) => ({ ...prev, phase: 'analyzing', stepNumber: 0, stepCount: 0, finishReason: '', toolCallCount: 0 }));
       // Use server timestamp (RFC3339 UTC) for the assistant message if available.
       if (event.timestamp) {
         const serverTs = new Date(event.timestamp).getTime();
@@ -395,16 +432,20 @@ function handleFEPEvent(state: AgentChatState, key: string, event: FEPEvent) {
       batch(() => {
         setUsage(event.total_usage);
         setModel(event.model || null);
+        setThinking((prev) => ({ ...prev, phase: 'idle' }));
       });
       break;
 
     case 'agent_error':
+      setThinking((prev) => ({ ...prev, phase: 'idle' }));
       appendPart(state, { type: 'error', error: event.error || 'Unknown error' });
       break;
 
     case 'step_start': {
       const stepNum = event.step_number || 0;
       setStep(stepNum);
+      // Phase: thinking (LLM processing)
+      setThinking((prev) => ({ ...prev, phase: 'thinking', stepNumber: stepNum }));
 
       // On step > 0, create a new assistant message so each step gets its own
       // bubble + TokenBadge.
@@ -432,6 +473,18 @@ function handleFEPEvent(state: AgentChatState, key: string, event: FEPEvent) {
           toolCallCount: event.tool_call_count || 0,
         });
       }
+      // Phase: executing (tools about to run) or idle (final answer)
+      {
+        const reason = event.finish_reason || 'unknown';
+        const toolCount = event.tool_call_count || 0;
+        setThinking((prev) => ({
+          ...prev,
+          phase: reason === 'tool-calls' ? 'executing' : 'idle',
+          stepCount: prev.stepCount + 1,
+          finishReason: reason,
+          toolCallCount: toolCount,
+        }));
+      }
       // Update context budget with actual token data
       if (event.context_budget) {
         setBudget(event.context_budget);
@@ -439,6 +492,7 @@ function handleFEPEvent(state: AgentChatState, key: string, event: FEPEvent) {
       break;
 
     case 'text_start':
+      setThinking((prev) => ({ ...prev, phase: 'idle' }));
       setATxt({ id: event.id || '', content: '' });
       break;
 
@@ -453,6 +507,7 @@ function handleFEPEvent(state: AgentChatState, key: string, event: FEPEvent) {
       break;
 
     case 'reasoning_start':
+      setThinking((prev) => ({ ...prev, phase: 'reasoning' }));
       setAReason({ id: event.id || '', content: '' });
       break;
 
@@ -463,6 +518,7 @@ function handleFEPEvent(state: AgentChatState, key: string, event: FEPEvent) {
       break;
 
     case 'reasoning_end':
+      setThinking((prev) => ({ ...prev, phase: 'planning' }));
       finalizeActiveReasoning(state);
       break;
 
@@ -600,6 +656,7 @@ function handleFEPEvent(state: AgentChatState, key: string, event: FEPEvent) {
     // ── Delegation events (update existing run_agents tool part in-place) ──
 
     case 'delegation.fan_out':
+      setThinking((prev) => ({ ...prev, phase: 'delegating' }));
       break;
 
     case 'delegation.run_completed':
@@ -887,29 +944,105 @@ async function hydrateFromWorkingMemory(ns: string, name: string) {
   }
 }
 
-// ── Global SSE delegation event subscription ──
-// Delegation events (run_completed, all_completed, timeout) may arrive
-// through the global SSE multiplexer after the parent agent's per-prompt
-// stream has already closed. Subscribe to the global SSE to catch them.
+// ── Global SSE event subscription ──
+// Handles two categories of events arriving via the global SSE multiplexer:
+//
+// 1. Delegation events (run_completed, all_completed, timeout) — arrive after
+//    the parent agent's per-prompt SSE stream has closed.
+//
+// 2. Async FEP events from NATS — when handleInternalPrompt runs a delegation
+//    callback, all FEP events (agent_start, text_*, step_*, tool_*, agent_finish,
+//    session_idle) flow through NATS → BFF → global SSE. The browser must create
+//    message bubbles and stream content in real-time even though no user-initiated
+//    stream is active.
 
-/** Start listening for delegation events on the global SSE. Call once at app mount. */
+/** Event types that are handled during a per-prompt SSE stream (user-initiated).
+ *  When these arrive via the global SSE while no stream is active, they indicate
+ *  an async internal prompt (delegation callback). */
+const ASYNC_FEP_EVENTS = new Set([
+  'agent_start', 'agent_finish', 'agent_error',
+  'step_start', 'step_finish',
+  'text_start', 'text_delta', 'text_end',
+  'reasoning_start', 'reasoning_delta', 'reasoning_end',
+  'tool_input_start', 'tool_input_delta', 'tool_input_end',
+  'tool_call', 'tool_result',
+  'source', 'warnings', 'stream_finish',
+  'permission_asked', 'question_asked',
+  'session_idle',
+]);
+
+/** Delegation event types that need broadcasting to all agent states. */
+const DELEGATION_EVENTS = new Set([
+  'delegation.run_completed',
+  'delegation.all_completed',
+  'delegation.timeout',
+  'delegation.fan_out',
+]);
+
+/** Start listening for async FEP and delegation events on the global SSE.
+ *  Call once at app mount. */
 export function startDelegationEventListener() {
-  // Subscribe to ALL agents (null key = all) for delegation event types
-  return onFEPEvent(null, (event: FEPEvent) => {
-    // Only handle delegation events
-    if (
-      event.type !== 'delegation.run_completed' &&
-      event.type !== 'delegation.all_completed' &&
-      event.type !== 'delegation.timeout'
-    ) {
+  return onFEPEventWithKey((agentKeyObj: AgentKey, event: FEPEvent) => {
+    const isDelegation = DELEGATION_EVENTS.has(event.type);
+    const isAsyncFEP = ASYNC_FEP_EVENTS.has(event.type);
+
+    if (!isDelegation && !isAsyncFEP) return;
+
+    if (isDelegation) {
+      // Delegation events: route to all agent states (parentAgent matching
+      // happens inside handleFEPEvent via tool part lookup).
+      for (const [key, state] of agentStates.entries()) {
+        handleFEPEvent(state, key, event);
+      }
       return;
     }
 
-    // Route to all agent states — delegation events carry the parentAgent
-    // field but we don't know the namespace. Search all states for matching
-    // delegation tool parts.
-    for (const [key, state] of agentStates.entries()) {
-      handleFEPEvent(state, key, event);
+    // Async FEP event — route to the specific agent identified by NATS subject.
+    const key = agentKey(agentKeyObj.namespace, agentKeyObj.name);
+    const state = getOrCreateState(key);
+
+    // If this agent is already streaming via a user-initiated prompt, the
+    // per-prompt SSE handler is driving the state machine — skip the global
+    // handler to avoid duplicate processing.
+    if (state.streaming[0]()) return;
+
+    // agent_start from an async source (delegation callback): set up message
+    // bubbles and mark as streaming so subsequent events have a target.
+    if (event.type === 'agent_start') {
+      const prompt = event.prompt || '[Delegation callback]';
+      const userMsg: ChatMessage = { role: 'user', content: prompt, timestamp: Date.now() };
+      const assistantMsg: ChatMessage = { role: 'assistant', parts: [], timestamp: Date.now() };
+
+      batch(() => {
+        setMsgs(state, (s) => {
+          s.list.push(userMsg, assistantMsg);
+        });
+        state.streaming[1](true);
+        state.currentStep[1](0);
+        state.totalUsage[1](null);
+        state.activeText[1](null);
+        state.activeReasoning[1](null);
+        state.activeToolInput[1](null);
+      });
+      markStreaming(key, true);
     }
+
+    // session_idle from an async source: finalize and clean up.
+    if (event.type === 'session_idle') {
+      batch(() => {
+        flushDeltaBuffer(state);
+        finalizeActiveText(state);
+        finalizeActiveReasoning(state);
+        state.activeToolInput[1](null);
+        state.streaming[1](false);
+        state.thinkingState[1]((prev) => ({ ...prev, phase: 'idle' }));
+      });
+      markStreaming(key, false);
+      refreshAgentHealth();
+      return; // Don't pass to handleFEPEvent — we've handled it fully
+    }
+
+    // Route through the normal FEP state machine
+    handleFEPEvent(state, key, event);
   });
 }

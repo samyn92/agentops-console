@@ -1,85 +1,300 @@
-/* ===== Agent Thinking — inline helix indicator =====
-   DNA Helix: two intertwined strands in pseudo-3D.
-   8 dots (4 per strand) oscillate vertically with sinusoidal
-   Z-depth faked via scale + opacity. */
+/* ===== Agent Thinking — Phase-Aware Indicator =====
+   Concentric ring animation with phase-specific speeds and behaviors.
+   Core dot + inner ring + outer ring create depth. Each phase modulates
+   rotation speed, scale pulse, and glow intensity.
 
-/* ── Shared entry ── */
+   Phases: analyzing, thinking, reasoning, planning, executing, delegating */
+
+/* ── Base layout ── */
 
 .agent-thinking {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  margin-top: 8px;
+  animation: fade-slide-in 0.15s ease-out;
+}
+
+/* ── Indicator container — holds rings + core ── */
+
+.agent-thinking__indicator {
+  position: relative;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+}
+
+/* ── Core dot — always visible, pulses with phase ── */
+
+.agent-thinking__core {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 6px;
+  height: 6px;
+  margin: -3px 0 0 -3px;
+  border-radius: 50%;
+  background: var(--accent);
+  z-index: 2;
+  animation: core-pulse 2s ease-in-out infinite;
+}
+
+@keyframes core-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.9; }
+  50% { transform: scale(1.3); opacity: 1; }
+}
+
+/* ── Rings — concentric orbits ── */
+
+.agent-thinking__ring {
+  position: absolute;
+  border-radius: 50%;
+  border-style: solid;
+  border-color: transparent;
+}
+
+.agent-thinking__ring--outer {
+  inset: 0;
+  border-width: 1.5px;
+  border-top-color: var(--accent);
+  border-right-color: color-mix(in srgb, var(--accent) 30%, transparent);
+  opacity: 0.7;
+  animation: ring-spin 3s linear infinite;
+}
+
+.agent-thinking__ring--inner {
+  inset: 4px;
+  border-width: 1.5px;
+  border-bottom-color: var(--accent);
+  border-left-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  opacity: 0.5;
+  animation: ring-spin 2s linear infinite reverse;
+}
+
+@keyframes ring-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* ── Phase label ── */
+
+.agent-thinking__label {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-muted);
+  font-weight: 500;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.agent-thinking__label--entering {
+  animation: label-swap 0.2s ease-out;
+}
+
+@keyframes label-swap {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ── Step badge ── */
+
+.agent-thinking__step {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  line-height: 14px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  padding: 1px 7px;
+  border-radius: 10px;
+  animation: fade-slide-in 0.15s ease-out;
+}
+
+.agent-thinking__reason {
+  color: var(--text-muted);
+  font-weight: 400;
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+.agent-thinking__reason::before {
+  content: '\00b7';
+  margin-right: 3px;
+}
+
+/* ── Elapsed timer ── */
+
+.agent-thinking__elapsed {
+  font-size: 10px;
+  line-height: 14px;
+  color: var(--text-muted);
+  opacity: 0.5;
+  font-variant-numeric: tabular-nums;
   animation: fade-slide-in 0.15s ease-out;
 }
 
 /* ═══════════════════════════════════════════════════════════
-   DNA Helix — two intertwined strands in pseudo-3D
+   Phase-Specific Modulations
+   Each phase adjusts animation speed, glow, and ring behavior.
    ═══════════════════════════════════════════════════════════ */
 
-.agent-thinking--helix {
-  position: relative;
-  width: 36px;
-  height: 20px;
-  flex-shrink: 0;
+/* ── Analyzing: slow orbit, gentle pulse — processing the prompt ── */
+
+.agent-thinking--phase-analyzing .agent-thinking__ring--outer {
+  animation-duration: 4s;
+  opacity: 0.5;
 }
 
-.agent-thinking--helix__dot {
-  position: absolute;
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: var(--accent);
-  top: 50%;
-  margin-top: -2px;
+.agent-thinking--phase-analyzing .agent-thinking__ring--inner {
+  animation-duration: 3s;
+  opacity: 0.3;
+}
+
+.agent-thinking--phase-analyzing .agent-thinking__core {
+  animation-duration: 2.4s;
+}
+
+/* ── Thinking: steady rhythm — LLM is generating ── */
+
+.agent-thinking--phase-thinking .agent-thinking__ring--outer {
+  animation-duration: 3s;
+  opacity: 0.7;
+}
+
+.agent-thinking--phase-thinking .agent-thinking__ring--inner {
+  animation-duration: 2s;
+  opacity: 0.5;
+}
+
+.agent-thinking--phase-thinking .agent-thinking__core {
+  animation-duration: 2s;
+}
+
+/* ── Reasoning: faster, more intense — deep chain-of-thought ── */
+
+.agent-thinking--phase-reasoning .agent-thinking__ring--outer {
+  animation-duration: 2s;
+  opacity: 0.9;
+  border-top-color: var(--accent);
+  border-right-color: color-mix(in srgb, var(--accent) 50%, transparent);
+}
+
+.agent-thinking--phase-reasoning .agent-thinking__ring--inner {
+  animation-duration: 1.4s;
+  opacity: 0.7;
+  border-bottom-color: var(--accent);
+  border-left-color: color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+.agent-thinking--phase-reasoning .agent-thinking__core {
+  animation-duration: 1.2s;
+  box-shadow: 0 0 8px 2px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+/* ── Planning: decelerating from reasoning, transitional feel ── */
+
+.agent-thinking--phase-planning .agent-thinking__ring--outer {
+  animation-duration: 2.5s;
+  opacity: 0.6;
+}
+
+.agent-thinking--phase-planning .agent-thinking__ring--inner {
+  animation-duration: 1.8s;
+  opacity: 0.4;
+}
+
+.agent-thinking--phase-planning .agent-thinking__core {
   animation-duration: 1.6s;
-  animation-timing-function: ease-in-out;
-  animation-iteration-count: infinite;
+  box-shadow: 0 0 6px 1px color-mix(in srgb, var(--accent) 20%, transparent);
 }
 
-/* Strand A — front-to-back cycle */
-.agent-thinking--helix__dot-a1 { left: 2px;  animation-name: helix-strand-a; animation-delay: 0s; }
-.agent-thinking--helix__dot-a2 { left: 10px; animation-name: helix-strand-a; animation-delay: -0.4s; }
-.agent-thinking--helix__dot-a3 { left: 18px; animation-name: helix-strand-a; animation-delay: -0.8s; }
-.agent-thinking--helix__dot-a4 { left: 26px; animation-name: helix-strand-a; animation-delay: -1.2s; }
+/* ── Executing: pulsing urgency — tools are running ── */
 
-/* Strand B — opposite phase */
-.agent-thinking--helix__dot-b1 { left: 2px;  animation-name: helix-strand-b; animation-delay: 0s; }
-.agent-thinking--helix__dot-b2 { left: 10px; animation-name: helix-strand-b; animation-delay: -0.4s; }
-.agent-thinking--helix__dot-b3 { left: 18px; animation-name: helix-strand-b; animation-delay: -0.8s; }
-.agent-thinking--helix__dot-b4 { left: 26px; animation-name: helix-strand-b; animation-delay: -1.2s; }
-
-/* Strand A: move up when "front", down when "back" */
-@keyframes helix-strand-a {
-  0%   { transform: translateY(-7px) scale(1.1); opacity: 1; z-index: 2; }
-  25%  { transform: translateY(0px)  scale(0.85); opacity: 0.5; z-index: 1; }
-  50%  { transform: translateY(7px)  scale(0.6); opacity: 0.3; z-index: 0; }
-  75%  { transform: translateY(0px)  scale(0.85); opacity: 0.5; z-index: 1; }
-  100% { transform: translateY(-7px) scale(1.1); opacity: 1; z-index: 2; }
+.agent-thinking--phase-executing .agent-thinking__ring--outer {
+  animation-duration: 1.6s;
+  opacity: 0.8;
+  border-top-color: var(--accent);
+  border-right-color: var(--accent);
+  border-bottom-color: transparent;
+  border-left-color: transparent;
 }
 
-/* Strand B: exactly opposite — down when A is up */
-@keyframes helix-strand-b {
-  0%   { transform: translateY(7px)  scale(0.6); opacity: 0.3; z-index: 0; }
-  25%  { transform: translateY(0px)  scale(0.85); opacity: 0.5; z-index: 1; }
-  50%  { transform: translateY(-7px) scale(1.1); opacity: 1; z-index: 2; }
-  75%  { transform: translateY(0px)  scale(0.85); opacity: 0.5; z-index: 1; }
-  100% { transform: translateY(7px)  scale(0.6); opacity: 0.3; z-index: 0; }
+.agent-thinking--phase-executing .agent-thinking__ring--inner {
+  animation-duration: 1.2s;
+  opacity: 0.6;
 }
 
-:root.dark .agent-thinking--helix__dot {
-  box-shadow: 0 0 5px 1px color-mix(in srgb, var(--accent) 40%, transparent);
+.agent-thinking--phase-executing .agent-thinking__core {
+  animation: core-pulse-fast 1s ease-in-out infinite;
+}
+
+@keyframes core-pulse-fast {
+  0%, 100% { transform: scale(1); opacity: 0.8; }
+  50% { transform: scale(1.5); opacity: 1; }
+}
+
+/* ── Delegating: wide orbit, expansive feel — spawning children ── */
+
+.agent-thinking--phase-delegating .agent-thinking__ring--outer {
+  animation-duration: 2.5s;
+  opacity: 0.9;
+  border-top-color: var(--accent);
+  border-right-color: color-mix(in srgb, var(--accent) 60%, transparent);
+  border-bottom-color: color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+.agent-thinking--phase-delegating .agent-thinking__ring--inner {
+  animation-duration: 1.8s;
+  opacity: 0.6;
+  border-bottom-color: var(--accent);
+  border-left-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  border-right-color: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+.agent-thinking--phase-delegating .agent-thinking__core {
+  animation-duration: 1.4s;
+  box-shadow: 0 0 10px 3px color-mix(in srgb, var(--accent) 25%, transparent);
 }
 
 /* ═══════════════════════════════════════════════════════════
-   Reduced motion
+   Dark mode — glow enhancements
+   ═══════════════════════════════════════════════════════════ */
+
+:root.dark .agent-thinking__core {
+  box-shadow: 0 0 6px 1px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+:root.dark .agent-thinking--phase-reasoning .agent-thinking__core {
+  box-shadow: 0 0 12px 3px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+:root.dark .agent-thinking--phase-executing .agent-thinking__core {
+  box-shadow: 0 0 10px 2px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+:root.dark .agent-thinking--phase-delegating .agent-thinking__core {
+  box-shadow: 0 0 14px 4px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Reduced motion — static indicators
    ═══════════════════════════════════════════════════════════ */
 
 @media (prefers-reduced-motion: reduce) {
   .agent-thinking { animation: none !important; }
-  .agent-thinking--helix__dot { animation: none !important; }
-  .agent-thinking--helix__dot-a1 { transform: translateY(-6px); opacity: 0.9; }
-  .agent-thinking--helix__dot-a2 { transform: translateY(-3px); opacity: 0.7; }
-  .agent-thinking--helix__dot-a3 { transform: translateY(3px); opacity: 0.5; }
-  .agent-thinking--helix__dot-a4 { transform: translateY(6px); opacity: 0.3; }
-  .agent-thinking--helix__dot-b1 { transform: translateY(6px); opacity: 0.3; }
-  .agent-thinking--helix__dot-b2 { transform: translateY(3px); opacity: 0.5; }
-  .agent-thinking--helix__dot-b3 { transform: translateY(-3px); opacity: 0.7; }
-  .agent-thinking--helix__dot-b4 { transform: translateY(-6px); opacity: 0.9; }
+  .agent-thinking__core { animation: none !important; opacity: 1; }
+  .agent-thinking__ring--outer { animation: none !important; transform: rotate(30deg); opacity: 0.6; }
+  .agent-thinking__ring--inner { animation: none !important; transform: rotate(-30deg); opacity: 0.4; }
+  .agent-thinking__label--entering { animation: none !important; }
+  .agent-thinking__step { animation: none !important; }
+  .agent-thinking__elapsed { animation: none !important; }
 }

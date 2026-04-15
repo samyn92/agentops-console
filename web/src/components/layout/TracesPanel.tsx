@@ -2,7 +2,7 @@
 // Shows recent traces across all agents, grouped into a delegation tree:
 // parent traces are top-level, child (delegated) traces are nested underneath.
 // Clicking a trace opens the full TraceDetailView in the center stage.
-import { createSignal, createResource, createMemo, Show, For, onMount, onCleanup } from 'solid-js';
+import { createSignal, createResource, createMemo, createEffect, Show, For, onMount, onCleanup } from 'solid-js';
 import { traces as tracesAPI } from '../../lib/api';
 import { showTraceDetail, selectedTraceForDetail } from '../../stores/view';
 import { onResourceChanged } from '../../stores/events';
@@ -21,11 +21,21 @@ interface TraceTreeNode {
 
 export default function TracesPanel() {
   const [refetchTrigger, setRefetchTrigger] = createSignal(0);
+  let scrollRef!: HTMLDivElement;
+
+  // Stable trace accumulator — merges new results into existing map.
+  // Traces are never removed, only added or updated. This prevents the list
+  // from shuffling when Tempo's search returns a different subset on each call
+  // (due to parallel block scanning and ingester flush timing).
+  const traceMap = new Map<string, TraceSearchResult>();
+  const [stableTraces, setStableTraces] = createSignal<TraceSearchResult[]>([]);
 
   // Fetch recent traces globally (no agent filter)
+  let savedScrollTop = 0;
   const [traceResults] = createResource(
     () => refetchTrigger(),
     async () => {
+      if (scrollRef) savedScrollTop = scrollRef.scrollTop;
       try {
         return await tracesAPI.search({ limit: 200 });
       } catch {
@@ -33,6 +43,41 @@ export default function TracesPanel() {
       }
     },
   );
+
+  // Merge fetched traces into stable map whenever results change
+  createEffect(() => {
+    const result = traceResults();
+    if (!result?.traces) return;
+
+    let changed = false;
+    for (const t of result.traces) {
+      const existing = traceMap.get(t.traceID);
+      if (!existing) {
+        traceMap.set(t.traceID, t);
+        changed = true;
+      } else {
+        // Update enrichment fields (delegation info may arrive later)
+        if (t.parentTraceID && !existing.parentTraceID) {
+          traceMap.set(t.traceID, { ...existing, ...t });
+          changed = true;
+        }
+      }
+    }
+
+    if (changed) {
+      setStableTraces(Array.from(traceMap.values()));
+    }
+  });
+
+  // Restore scroll position after render
+  createEffect(() => {
+    stableTraces();
+    if (scrollRef && savedScrollTop > 0) {
+      queueMicrotask(() => {
+        scrollRef.scrollTop = savedScrollTop;
+      });
+    }
+  });
 
   // Auto-refetch when K8s resources change (new AgentRuns = new traces)
   const unsubscribe = onResourceChanged(() => {
@@ -56,11 +101,11 @@ export default function TracesPanel() {
     }
   });
 
-  // Build delegation tree from flat trace list.
+  // Build delegation tree from stable trace list.
   // Traces with parentTraceID are nested under their parent.
   // Orphaned children (parent not in results) stay at root level.
   const traceTree = createMemo((): TraceTreeNode[] => {
-    const traces = traceResults()?.traces ?? [];
+    const traces = stableTraces();
     if (traces.length === 0) return [];
 
     // Index all traces by their traceID
@@ -119,7 +164,9 @@ export default function TracesPanel() {
         <Tip content="Refresh traces">
           <button
             class="p-1 rounded-md hover:bg-surface-hover text-text-muted hover:text-text transition-colors"
-            onClick={() => { setRefetchTrigger((n) => n + 1); }}
+            onClick={() => {
+              setRefetchTrigger((n) => n + 1);
+            }}
           >
             <RefreshIcon class="w-3.5 h-3.5" />
           </button>
@@ -127,14 +174,14 @@ export default function TracesPanel() {
       </div>
 
       {/* Content */}
-      <div class="flex-1 overflow-y-auto min-h-0">
-        <Show when={traceResults.loading}>
+      <div class="flex-1 overflow-y-auto min-h-0" ref={scrollRef}>
+        <Show when={traceResults.loading && stableTraces().length === 0}>
           <div class="flex items-center justify-center py-12">
             <Spinner size="sm" />
           </div>
         </Show>
 
-        <Show when={!traceResults.loading}>
+        <Show when={!traceResults.loading || stableTraces().length > 0}>
           <Show
             when={traceTree().length > 0}
             fallback={

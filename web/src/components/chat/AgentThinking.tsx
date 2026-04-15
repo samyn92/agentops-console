@@ -1,14 +1,31 @@
-// AgentThinking — inline thinking indicator.
-// Shows "Thinking..." text with a subtle pulse. After 3 seconds,
-// adds an elapsed timer. Sits inline within the message flow.
-import { Show, onCleanup, createSignal } from 'solid-js';
+// AgentThinking — phase-aware thinking indicator.
+// Displays context-sensitive labels derived from the FEP event flow:
+//   analyzing → thinking → reasoning → planning → executing → delegating
+// Each phase has a distinct animation character and label. Step number
+// is shown for multi-step interactions. Elapsed timer appears after 2s.
+import { Show, onCleanup, createSignal, createEffect, createMemo } from 'solid-js';
+import type { ThinkingPhase, ThinkingState } from '../../stores/chat';
 
 interface AgentThinkingProps {
   active: boolean;
+  thinkingState: ThinkingState;
 }
+
+/** Phase display configuration */
+const PHASE_CONFIG: Record<ThinkingPhase, { label: string; animClass: string }> = {
+  analyzing:  { label: 'Analyzing',  animClass: 'agent-thinking--phase-analyzing' },
+  thinking:   { label: 'Thinking',   animClass: 'agent-thinking--phase-thinking' },
+  reasoning:  { label: 'Reasoning',  animClass: 'agent-thinking--phase-reasoning' },
+  planning:   { label: 'Planning',   animClass: 'agent-thinking--phase-planning' },
+  executing:  { label: 'Executing',  animClass: 'agent-thinking--phase-executing' },
+  delegating: { label: 'Delegating', animClass: 'agent-thinking--phase-delegating' },
+  idle:       { label: 'Thinking',   animClass: 'agent-thinking--phase-thinking' },
+};
 
 export default function AgentThinking(props: AgentThinkingProps) {
   const [elapsed, setElapsed] = createSignal(0);
+  const [prevPhase, setPrevPhase] = createSignal<ThinkingPhase>('idle');
+  const [phaseChanged, setPhaseChanged] = createSignal(false);
   let interval: ReturnType<typeof setInterval> | null = null;
   let startTime = 0;
 
@@ -38,12 +55,22 @@ export default function AgentThinking(props: AgentThinkingProps) {
     }
   };
 
-  // Use a getter to reactively track props.active
-  // SolidJS will re-run this when active changes
   const isActive = () => {
     checkActive();
     return props.active;
   };
+
+  // Track phase transitions for label swap animation
+  createEffect(() => {
+    const phase = props.thinkingState.phase;
+    if (phase !== prevPhase()) {
+      setPrevPhase(phase);
+      setPhaseChanged(true);
+      // Clear the animation trigger after the CSS transition completes
+      const t = setTimeout(() => setPhaseChanged(false), 200);
+      onCleanup(() => clearTimeout(t));
+    }
+  });
 
   onCleanup(() => stopTimer());
 
@@ -52,22 +79,63 @@ export default function AgentThinking(props: AgentThinkingProps) {
     return `${Math.floor(s / 60)}m ${s % 60}s`;
   };
 
+  const phase = () => props.thinkingState.phase;
+  const config = createMemo(() => PHASE_CONFIG[phase()] || PHASE_CONFIG.thinking);
+  const stepNumber = () => props.thinkingState.stepNumber;
+  const stepCount = () => props.thinkingState.stepCount;
+
+  // Step context: "Step 2" shown when multi-step, with finish reason hint
+  const stepLabel = createMemo(() => {
+    const step = stepNumber();
+    const count = stepCount();
+    if (step === 0 && count === 0) return '';
+    // After first step completes, show step context
+    if (step > 0) return `Step ${step + 1}`;
+    if (count > 0) return `Step ${count + 1}`;
+    return '';
+  });
+
+  // Finish reason context for the step badge
+  const reasonHint = createMemo(() => {
+    const reason = props.thinkingState.finishReason;
+    const tools = props.thinkingState.toolCallCount;
+    if (!reason || reason === 'unknown') return '';
+    switch (reason) {
+      case 'tool-calls': return tools > 1 ? `${tools} tools` : '1 tool';
+      case 'length': return 'length limit';
+      case 'content-filter': return 'filtered';
+      default: return '';
+    }
+  });
+
   return (
     <Show when={isActive()}>
-      <div class="flex items-center gap-2.5 py-2 mt-2 fade-slide-in">
-        <div class="agent-thinking--helix">
-          <div class="agent-thinking--helix__dot agent-thinking--helix__dot-a1" />
-          <div class="agent-thinking--helix__dot agent-thinking--helix__dot-a2" />
-          <div class="agent-thinking--helix__dot agent-thinking--helix__dot-a3" />
-          <div class="agent-thinking--helix__dot agent-thinking--helix__dot-a4" />
-          <div class="agent-thinking--helix__dot agent-thinking--helix__dot-b1" />
-          <div class="agent-thinking--helix__dot agent-thinking--helix__dot-b2" />
-          <div class="agent-thinking--helix__dot agent-thinking--helix__dot-b3" />
-          <div class="agent-thinking--helix__dot agent-thinking--helix__dot-b4" />
+      <div class={`agent-thinking fade-slide-in ${config().animClass}`}>
+        {/* Phase-specific animation */}
+        <div class="agent-thinking__indicator">
+          <div class="agent-thinking__ring agent-thinking__ring--outer" />
+          <div class="agent-thinking__ring agent-thinking__ring--inner" />
+          <div class="agent-thinking__core" />
         </div>
-        <span class="text-xs text-text-muted">Thinking</span>
-        <Show when={elapsed() >= 3}>
-          <span class="text-[10px] text-text-muted/60 tabular-nums">{formatElapsed(elapsed())}</span>
+
+        {/* Phase label with swap animation */}
+        <span class={`agent-thinking__label ${phaseChanged() ? 'agent-thinking__label--entering' : ''}`}>
+          {config().label}
+        </span>
+
+        {/* Step badge */}
+        <Show when={stepLabel()}>
+          <span class="agent-thinking__step">
+            {stepLabel()}
+            <Show when={reasonHint()}>
+              <span class="agent-thinking__reason">{reasonHint()}</span>
+            </Show>
+          </span>
+        </Show>
+
+        {/* Elapsed timer — shows after 2s */}
+        <Show when={elapsed() >= 2}>
+          <span class="agent-thinking__elapsed">{formatElapsed(elapsed())}</span>
         </Show>
       </div>
     </Show>

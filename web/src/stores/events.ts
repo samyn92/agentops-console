@@ -84,6 +84,18 @@ export function onFEPEvent(
   return () => fepSubscribers.delete(fn);
 }
 
+/** Subscribe to FEP events with agent identity. Used by the global event
+ *  listener to route NATS-originated events to the correct agent state. */
+export function onFEPEventWithKey(
+  callback: (agentKey: AgentKey, event: FEPEvent) => void,
+): () => void {
+  const fn: FEPSubscriber = (key, event) => {
+    callback(key, event);
+  };
+  fepSubscribers.add(fn);
+  return () => fepSubscribers.delete(fn);
+}
+
 /** Subscribe to K8s resource change notifications (triggers refetch). */
 export function onResourceChanged(callback: ResourceSubscriber): () => void {
   resourceSubscribers.add(callback);

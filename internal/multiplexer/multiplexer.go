@@ -24,6 +24,7 @@ type Multiplexer struct {
 	agents  map[AgentKey]*AgentConn
 	clients map[string]chan EnvelopedEvent // clientId -> channel
 	nextID  int
+	natsSub *natsSubscriber // NATS FEP subscriber (nil if NATS_URL not set)
 }
 
 // New creates a new SSE multiplexer.
@@ -95,6 +96,19 @@ func (m *Multiplexer) Start(ctx context.Context) {
 	}()
 
 	slog.Info("multiplexer started")
+
+	// Start NATS subscriber for FEP events from agent runtimes.
+	// This provides a persistent event path for delegation callbacks and
+	// internal prompts where no browser SSE stream is active.
+	m.natsSub = startNATSSubscriber(m.eventC)
+}
+
+// Stop gracefully shuts down the multiplexer (NATS connection, etc.).
+func (m *Multiplexer) Stop() {
+	if m.natsSub != nil {
+		m.natsSub.close()
+		slog.Info("NATS FEP subscriber stopped")
+	}
 }
 
 // Subscribe adds a browser client and returns a channel + unsubscribe func.
