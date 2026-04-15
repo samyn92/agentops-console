@@ -16,7 +16,6 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 
-	"github.com/samyn92/agentops-console/internal/fep"
 	"github.com/samyn92/agentops-console/internal/k8s"
 	"github.com/samyn92/agentops-console/internal/multiplexer"
 )
@@ -184,7 +183,8 @@ func (h *Handlers) AgentMemoryExtract(w http.ResponseWriter, r *http.Request) {
 	h.proxyToAgent(w, r, "POST", "/memory/extract", r.Body)
 }
 
-// AgentPromptStream proxies a streaming prompt and relays FEP events to the multiplexer.
+// AgentPromptStream proxies a streaming prompt to the agent runtime.
+// FEP events are delivered globally via NATS; this handler only relays to the requesting client.
 func (h *Handlers) AgentPromptStream(w http.ResponseWriter, r *http.Request) {
 	ns := chi.URLParam(r, "ns")
 	name := chi.URLParam(r, "name")
@@ -241,10 +241,9 @@ func (h *Handlers) AgentPromptStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Relay SSE events: write to client AND fan out to multiplexer
-	agentKey := multiplexer.AgentKey{Namespace: ns, Name: name}
-	eventC := h.mux.GetEventChannel()
-
+	// Relay SSE events to the requesting client.
+	// Global delivery to other browser tabs is handled by the NATS subscriber
+	// in the multiplexer — no need to inject into eventC here.
 	scanner := newSSEScanner(resp.Body)
 	for scanner.Scan() {
 		data := scanner.Data()
@@ -252,23 +251,8 @@ func (h *Handlers) AgentPromptStream(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		// Write to the direct client
 		fmt.Fprintf(w, "data: %s\n\n", data)
 		flusher.Flush()
-
-		// Also relay to multiplexer for other global SSE clients
-		var fepEvt fep.Event
-		if json.Unmarshal([]byte(data), &fepEvt) == nil && fepEvt.Type != "" {
-			select {
-			case eventC <- multiplexer.EnvelopedEvent{
-				Agent:     agentKey,
-				EventType: "agent.event",
-				Event:     fepEvt,
-				RawEvent:  json.RawMessage(data), // preserve full JSON for delegation fields
-			}:
-			default:
-			}
-		}
 	}
 
 	resp.Body.Close()

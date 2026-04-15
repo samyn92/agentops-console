@@ -7,7 +7,7 @@ import { createStore, produce, reconcile } from 'solid-js/store';
 import { streamPrompt, conversation as conversationAPI } from '../lib/api';
 import { selectedAgent, refreshAgentHealth, getAgentRuntimeStatus } from './agents';
 import { getSelectedContext, clearContextItems } from './resources';
-import { onFEPEvent, onFEPEventWithKey } from './events';
+import { onFEPEventWithKey } from './events';
 import type { AgentKey } from './events';
 import type {
   FEPEvent,
@@ -165,17 +165,11 @@ function currentState(): AgentChatState | null {
 
 export const messages = () => currentState()?.msgStore[0].list ?? [];
 export const streaming = () => currentState()?.streaming[0]() ?? false;
-export const currentStep = () => currentState()?.currentStep[0]() ?? 0;
-export const totalUsage = () => currentState()?.totalUsage[0]() ?? null;
-export const lastStepUsage = () => currentState()?.lastStepUsage[0]() ?? null;
-export const activeModel = () => currentState()?.activeModel[0]() ?? null;
 export const contextBudget = () => currentState()?.contextBudget[0]() ?? null;
 export const activeText = () => currentState()?.activeText[0]() ?? null;
 export const activeReasoning = () => currentState()?.activeReasoning[0]() ?? null;
-export const activeToolInput = () => currentState()?.activeToolInput[0]() ?? null;
 export const pendingPermission = () => currentState()?.pendingPermission[0]() ?? null;
 export const pendingQuestion = () => currentState()?.pendingQuestion[0]() ?? null;
-export const lastTraceID = () => currentState()?.lastTraceID[0]() ?? null;
 export const thinkingState = () => currentState()?.thinkingState[0]() ?? { phase: 'idle' as ThinkingPhase, stepNumber: 0, stepCount: 0, finishReason: '', toolCallCount: 0 };
 
 export function setPendingPermission(val: PendingPermissionState | null) {

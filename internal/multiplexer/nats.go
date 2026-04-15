@@ -95,17 +95,14 @@ func (ns *natsSubscriber) handleMessage(msg *nats.Msg) {
 		return
 	}
 
-	// Build the enveloped event
+	// Build the enveloped event.
 	// We pass the raw JSON so all fields (including delegation-specific ones like
 	// groupId, runName, childAgent) survive without needing explicit struct fields.
 	agentKey := AgentKey{Namespace: namespace, Name: agentName}
 
-	// Determine the SSE event type for the global stream
-	sseEventType := "agent.event"
-
 	evt := EnvelopedEvent{
 		Agent:     agentKey,
-		EventType: sseEventType,
+		EventType: "agent.event",
 		Event:     fep.Event{Type: eventType},
 		RawEvent:  json.RawMessage(msg.Data),
 	}

@@ -1,4 +1,4 @@
-// SSE multiplexer: fans FEP events from all agent connections into browser clients.
+// SSE multiplexer: fans FEP events from NATS and agent health into browser clients.
 package multiplexer
 
 import (
@@ -12,7 +12,6 @@ import (
 
 	"github.com/samyn92/agentops-console/internal/fep"
 	"github.com/samyn92/agentops-console/internal/k8s"
-	agentsv1alpha1 "github.com/samyn92/agentops-core/api/v1alpha1"
 )
 
 // Multiplexer manages agent SSE connections and fans out events to browser clients.
@@ -48,13 +47,6 @@ func (m *Multiplexer) Start(ctx context.Context) {
 				m.ensureAgentConn(ctx, event.Namespace, event.Name)
 			case k8s.EventDeleted:
 				m.removeAgentConn(event.Namespace, event.Name)
-			}
-		case "AgentRun":
-			// Synthesize delegation events from AgentRun phase transitions.
-			// This ensures delegation progress reaches the browser even when
-			// the parent agent's per-prompt SSE stream has already closed.
-			if event.Type == k8s.EventModified {
-				m.handleAgentRunUpdate(event)
 			}
 		default:
 			// Forward other resource events to clients as resource.changed
@@ -97,9 +89,9 @@ func (m *Multiplexer) Start(ctx context.Context) {
 
 	slog.Info("multiplexer started")
 
-	// Start NATS subscriber for FEP events from agent runtimes.
-	// This provides a persistent event path for delegation callbacks and
-	// internal prompts where no browser SSE stream is active.
+	// Start NATS subscriber — the primary path for FEP events from agent runtimes.
+	// All runtime FEP events (prompt streams, delegation callbacks, internal prompts)
+	// are published to NATS and delivered to browser clients via this subscriber.
 	m.natsSub = startNATSSubscriber(m.eventC)
 }
 
@@ -131,11 +123,6 @@ func (m *Multiplexer) Subscribe() (string, <-chan EnvelopedEvent, func()) {
 	}
 }
 
-// GetEventChannel returns the central event channel for external producers (e.g., stream proxy).
-func (m *Multiplexer) GetEventChannel() chan<- EnvelopedEvent {
-	return m.eventC
-}
-
 func (m *Multiplexer) broadcast(evt EnvelopedEvent) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -160,76 +147,6 @@ func (m *Multiplexer) broadcastResourceEvent(event k8s.ResourceEvent) {
 		},
 	}
 	m.broadcast(evt)
-}
-
-// handleAgentRunUpdate synthesizes delegation.run_completed FEP events when
-// an AgentRun transitions to a terminal phase (Succeeded/Failed). This ensures
-// delegation progress reaches the browser via the global SSE multiplexer even
-// when the parent agent's per-prompt stream has already closed and the runtime's
-// DelegationWatcher.emitFEP silently drops events (emitter is nil).
-func (m *Multiplexer) handleAgentRunUpdate(event k8s.ResourceEvent) {
-	run, ok := event.Resource.(*agentsv1alpha1.AgentRun)
-	if !ok || run == nil {
-		return
-	}
-
-	// Only care about agent-sourced runs (delegations) in terminal phases
-	if run.Spec.Source != agentsv1alpha1.AgentRunSourceAgent {
-		return
-	}
-	phase := run.Status.Phase
-	if phase != agentsv1alpha1.AgentRunPhaseSucceeded && phase != agentsv1alpha1.AgentRunPhaseFailed {
-		return
-	}
-
-	// Calculate duration from start to completion
-	duration := ""
-	if run.Status.StartTime != nil && run.Status.CompletionTime != nil {
-		duration = run.Status.CompletionTime.Time.Sub(run.Status.StartTime.Time).String()
-	}
-
-	// Build a delegation.run_completed event as raw JSON so all fields survive
-	delegationEvt := map[string]any{
-		"type":       fep.EventDelegationRunCompleted,
-		"timestamp":  time.Now().UTC().Format(time.RFC3339),
-		"runName":    run.Name,
-		"childAgent": run.Spec.AgentRef,
-		"phase":      string(phase),
-		"duration":   duration,
-		// groupId is not available from K8s — the frontend matches by runName too
-		"groupId": "",
-	}
-	raw, err := json.Marshal(delegationEvt)
-	if err != nil {
-		slog.Error("failed to marshal delegation event", "error", err)
-		return
-	}
-
-	// Emit to the parent agent's SSE clients
-	parentAgent := run.Spec.SourceRef
-	if parentAgent == "" {
-		return
-	}
-	agentKey := AgentKey{Namespace: event.Namespace, Name: parentAgent}
-
-	slog.Info("synthesizing delegation.run_completed from AgentRun status",
-		"run", run.Name,
-		"childAgent", run.Spec.AgentRef,
-		"parentAgent", parentAgent,
-		"phase", string(phase),
-	)
-
-	select {
-	case m.eventC <- EnvelopedEvent{
-		Agent:     agentKey,
-		EventType: "agent.event",
-		Event:     fep.Event{Type: fep.EventDelegationRunCompleted},
-		RawEvent:  json.RawMessage(raw),
-	}:
-	default:
-		slog.Warn("event channel full, dropping synthesized delegation event",
-			"run", run.Name)
-	}
 }
 
 func (m *Multiplexer) ensureAgentConn(ctx context.Context, namespace, name string) {

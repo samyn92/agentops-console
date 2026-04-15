@@ -421,15 +421,6 @@ export function resourceContextKey(ctx: ResourceContext): string {
 
 // ---- Session (runtime token usage tracking) ----
 
-export interface SessionUsage {
-  input_tokens: number
-  output_tokens: number
-  total_tokens: number
-  reasoning_tokens: number
-  cache_creation_tokens: number
-  cache_read_tokens: number
-}
-
 // ---- Runtime Messages ----
 // Mirrors the Go serializableMessage / serializablePartOK / serializableToolOutput types.
 
@@ -646,11 +637,6 @@ export type K8sResourceKind =
   | 'configmaps'
   | 'secrets'
   | 'events';
-
-/** Unique key for a K8s resource context item */
-export function k8sResourceContextKey(ns: string, kind: string, name: string): string {
-  return `k8s:${ns}:${kind}:${name}`;
-}
 
 // ---- Runtime Status ----
 

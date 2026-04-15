@@ -32,11 +32,6 @@ export interface ToolPart {
   duration?: number
 }
 
-export interface StepStartPart {
-  type: "step-start"
-  stepNumber: number
-}
-
 export interface StepFinishPart {
   type: "step-finish"
   stepNumber: number
@@ -63,7 +58,6 @@ export type MessagePart =
   | TextPart
   | ReasoningPart
   | ToolPart
-  | StepStartPart
   | StepFinishPart
   | SourcePart
   | ErrorPart

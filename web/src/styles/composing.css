@@ -1,5 +1,0 @@
-/* ===== Composing — Legacy =====
-   The composing-agent and composing-default classes were used by
-   ToolInputPreview.tsx which has been replaced by the unified
-   ToolCallCard composing state. These styles are no longer used
-   but kept as an empty file to avoid import errors. */

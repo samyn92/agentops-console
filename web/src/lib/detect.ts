@@ -87,7 +87,7 @@ export function getToolIcon(toolName: string): string {
   }
 }
 
-/** Try to extract meaningful preview from partial JSON args (for ToolInputPreview) */
+/** Try to extract meaningful preview from partial JSON args (for ToolCallCard composing state) */
 export function parsePartialArgs(
   toolName: string,
   args: string,
@@ -133,12 +133,5 @@ export function parsePartialArgs(
 export function parseAgentName(args: string): string | null {
   if (!args) return null;
   const match = args.match(/"agent"\s*:\s*"([^"]*)/);
-  return match ? match[1] : null;
-}
-
-/** Extract prompt from partial run_agent args */
-export function parseAgentPrompt(args: string): string | null {
-  if (!args) return null;
-  const match = args.match(/"prompt"\s*:\s*"([^"]*)/);
   return match ? match[1] : null;
 }
