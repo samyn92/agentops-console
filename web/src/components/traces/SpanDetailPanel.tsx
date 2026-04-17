@@ -137,6 +137,12 @@ export default function SpanDetailPanel(props: SpanDetailPanelProps) {
       provider: get('gen_ai.provider.name'),
       inputTokens: get('gen_ai.usage.input_tokens') as number | undefined,
       outputTokens: get('gen_ai.usage.output_tokens') as number | undefined,
+      reasoningTokens: get('gen_ai.usage.reasoning_tokens') as number | undefined,
+      cacheWriteTokens: get('gen_ai.usage.cache_creation_tokens') as number | undefined,
+      cacheReadTokens: get('gen_ai.usage.cache_read_tokens') as number | undefined,
+      ttft: get('gen_ai.server.time_to_first_token') as number | undefined,
+      serverAddress: get('server.address') as string | undefined,
+      serverPort: get('server.port') as string | undefined,
       finishReasons: get('gen_ai.response.finish_reasons') as string | undefined,
       toolName: get('tool.name'),
       agentName: get('agent.name'),
@@ -244,6 +250,13 @@ export default function SpanDetailPanel(props: SpanDetailPanelProps) {
           </div>
         </Show>
 
+        {/* Server info */}
+        <Show when={quickInfo().serverAddress}>
+          <div class="flex flex-wrap gap-2 px-4 py-2 border-b border-border-subtle">
+            <MiniStat label="Server" value={`${quickInfo().serverAddress}${quickInfo().serverPort ? ':' + quickInfo().serverPort : ''}`} />
+          </div>
+        </Show>
+
         {/* Quick token/model info for gen_ai spans */}
         <Show when={quickInfo().inputTokens || quickInfo().outputTokens}>
           <div class="flex flex-wrap gap-2 px-4 py-2 border-b border-border-subtle">
@@ -253,6 +266,22 @@ export default function SpanDetailPanel(props: SpanDetailPanelProps) {
             <Show when={quickInfo().outputTokens}>
               <MiniStat label="Output" value={`${Number(quickInfo().outputTokens).toLocaleString()} tok`} />
             </Show>
+            <Show when={quickInfo().reasoningTokens}>
+              <MiniStat label="Reasoning" value={`${Number(quickInfo().reasoningTokens).toLocaleString()} tok`} />
+            </Show>
+            <Show when={quickInfo().cacheWriteTokens}>
+              <MiniStat label="Cache Write" value={`${Number(quickInfo().cacheWriteTokens).toLocaleString()} tok`} />
+            </Show>
+            <Show when={quickInfo().cacheReadTokens}>
+              <MiniStat label="Cache Read" value={`${Number(quickInfo().cacheReadTokens).toLocaleString()} tok`} />
+            </Show>
+          </div>
+        </Show>
+
+        {/* Time to first token */}
+        <Show when={quickInfo().ttft}>
+          <div class="flex flex-wrap gap-2 px-4 py-2 border-b border-border-subtle">
+            <MiniStat label="TTFT" value={`${Number(quickInfo().ttft).toLocaleString()}ms`} />
           </div>
         </Show>
 
@@ -373,7 +402,14 @@ export default function SpanDetailPanel(props: SpanDetailPanelProps) {
                     eventName === 'gen_ai.content.prompt' ||
                     eventName === 'gen_ai.content.completion' ||
                     eventName === 'gen_ai.tool.input' ||
-                    eventName === 'gen_ai.tool.output';
+                    eventName === 'gen_ai.tool.output' ||
+                    eventName === 'gen_ai.user.message' ||
+                    eventName === 'gen_ai.choice' ||
+                    eventName === 'gen_ai.system.message' ||
+                    eventName === 'gen_ai.assistant.message';
+
+                  const isSystemPrompt = () => eventName === 'gen_ai.system.message';
+                  const isFirstToken = () => eventName === 'gen_ai.first_token';
 
                   const contentLabel = () => {
                     switch (eventName) {
@@ -381,18 +417,36 @@ export default function SpanDetailPanel(props: SpanDetailPanelProps) {
                       case 'gen_ai.content.completion': return 'Response';
                       case 'gen_ai.tool.input': return 'Tool Input';
                       case 'gen_ai.tool.output': return 'Tool Output';
+                      case 'gen_ai.user.message': return 'Prompt';
+                      case 'gen_ai.choice': return 'Response';
+                      case 'gen_ai.system.message': return 'System Prompt';
+                      case 'gen_ai.assistant.message': return 'Assistant';
+                      case 'gen_ai.first_token': return 'First Token';
                       default: return eventName || 'event';
                     }
                   };
 
                   const contentText = () => {
+                    if (isFirstToken()) {
+                      const ttftField = otherFields.find((f) => f.key === 'gen_ai.server.time_to_first_token');
+                      return ttftField ? `TTFT: ${ttftField.value}ms` : null;
+                    }
                     if (!isContentEvent()) return null;
-                    const contentKeys = ['gen_ai.prompt', 'gen_ai.completion', 'tool.input', 'tool.output'];
+                    const contentKeys = [
+                      'gen_ai.prompt', 'gen_ai.completion', 'tool.input', 'tool.output',
+                      'gen_ai.message.content', 'gen_ai.choice.message.content',
+                    ];
                     for (const key of contentKeys) {
                       const field = otherFields.find((f) => f.key === key);
                       if (field) return String(field.value);
                     }
                     return null;
+                  };
+
+                  const stepNumber = () => {
+                    if (eventName !== 'gen_ai.assistant.message') return null;
+                    const field = otherFields.find((f) => f.key === 'gen_ai.message.step');
+                    return field ? String(field.value) : null;
                   };
 
                   const isErrorOutput = () =>
@@ -402,28 +456,42 @@ export default function SpanDetailPanel(props: SpanDetailPanelProps) {
                   // Skip tool.call events in the Events section — they're already shown as waterfall rows
                   if (eventName === 'tool.call') return null;
 
+                  // Skip HTTP noise events (streaming chunk metadata from net/http)
+                  if (eventName === 'write' || eventName === 'http.write') {
+                    if (otherFields.some(f => f.key === 'http.wrote_bytes')) return null;
+                  }
+
                   return (
                     <div class={`rounded-lg px-3 py-2 border ${
                       isErrorOutput()
                         ? 'bg-error/5 border-error/20'
-                        : isContentEvent()
-                          ? 'bg-surface-2 border-border'
-                          : 'bg-surface-2 border-border-subtle'
+                        : isSystemPrompt()
+                          ? 'bg-purple-500/5 border-purple-500/20'
+                          : isFirstToken()
+                            ? 'bg-info/5 border-info/20'
+                            : isContentEvent()
+                              ? 'bg-surface-2 border-border'
+                              : 'bg-surface-2 border-border-subtle'
                     }`}>
                       <div class="flex items-center gap-2">
                         <span class={`text-[10px] font-mono font-medium ${
                           isErrorOutput() ? 'text-error' :
+                          isSystemPrompt() ? 'text-purple-400' :
+                          isFirstToken() ? 'text-info' :
                           isContentEvent() ? 'text-accent' : 'text-warning'
                         }`}>
                           {contentLabel()}
                         </span>
+                        <Show when={stepNumber()}>
+                          <span class="text-[9px] text-text-muted font-mono">step {stepNumber()}</span>
+                        </Show>
                         <Show when={!isContentEvent()}>
                           <span class="text-[9px] text-text-muted font-mono">
                             {log.timestamp > 0 ? new Date(log.timestamp / 1000).toISOString().slice(11, 23) : ''}
                           </span>
                         </Show>
                       </div>
-                      <Show when={isContentEvent() && contentText()}>
+                      <Show when={(isContentEvent() || isFirstToken()) && contentText()}>
                         <div class="mt-1.5 text-[11px] font-mono text-text-secondary whitespace-pre-wrap break-words max-h-40 overflow-y-auto">
                           {contentText()}
                         </div>
@@ -444,7 +512,9 @@ export default function SpanDetailPanel(props: SpanDetailPanelProps) {
                       <Show when={isContentEvent()}>
                         {(() => {
                           const metaFields = otherFields.filter(
-                            (f) => !['gen_ai.prompt', 'gen_ai.completion', 'tool.input', 'tool.output'].includes(f.key)
+                            (f) => !['gen_ai.prompt', 'gen_ai.completion', 'tool.input', 'tool.output',
+                              'gen_ai.message.content', 'gen_ai.choice.message.content',
+                              'gen_ai.server.time_to_first_token', 'gen_ai.message.step'].includes(f.key)
                           );
                           return (
                             <Show when={metaFields.length > 0}>

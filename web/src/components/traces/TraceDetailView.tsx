@@ -238,34 +238,6 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
     return ticks;
   });
 
-  // Group spans into swimlanes by category for structured display
-  type Swimlane = { label: string; kind: 'agent' | 'tools' | 'steps'; spans: SpanNode[] };
-  const swimlanes = createMemo((): Swimlane[] => {
-    const spans = flatSpans();
-    const agent: SpanNode[] = [];
-    const tools: SpanNode[] = [];
-    const steps: SpanNode[] = [];
-
-    for (const node of spans) {
-      const op = node.span.operationName;
-      if (op === 'agent.step') {
-        steps.push(node);
-      } else if (
-        op.startsWith('tool.') || op.startsWith('mcp.') || node.isVirtualToolCall
-      ) {
-        tools.push(node);
-      } else {
-        agent.push(node);
-      }
-    }
-
-    const lanes: Swimlane[] = [];
-    if (agent.length > 0) lanes.push({ label: 'Agent Flow', kind: 'agent', spans: agent });
-    if (tools.length > 0) lanes.push({ label: 'Tools', kind: 'tools', spans: tools });
-    if (steps.length > 0) lanes.push({ label: 'Steps', kind: 'steps', spans: steps });
-    return lanes;
-  });
-
   // Selected span data — reads from shared view store
   const selectedSpanNode = createMemo(() => {
     const id = selectedSpanID();
@@ -285,26 +257,66 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
     }
   }));
 
-  // Root span summary info
+  // Trace-level summary — aggregate tokens across ALL chat/gen_ai spans, extract TTFT
   const rootSummary = createMemo(() => {
     const spans = flatSpans();
     if (spans.length === 0) return null;
     const root = spans[0]?.span;
     if (!root) return null;
     const range = timeRange();
+
+    // Aggregate tokens across all gen_ai (chat) spans
+    let totalIn = 0, totalOut = 0, totalReasoning = 0, totalCacheRead = 0, totalCacheWrite = 0;
+    for (const node of spans) {
+      const s = node.span;
+      const inTok = Number(getTag(s, 'gen_ai.usage.input_tokens') ?? 0);
+      const outTok = Number(getTag(s, 'gen_ai.usage.output_tokens') ?? 0);
+      const reasonTok = Number(getTag(s, 'gen_ai.usage.reasoning_tokens') ?? 0);
+      const cacheR = Number(getTag(s, 'gen_ai.usage.cache_read_tokens') ?? 0);
+      const cacheW = Number(getTag(s, 'gen_ai.usage.cache_creation_tokens') ?? 0);
+      if (inTok || outTok) {
+        totalIn += inTok;
+        totalOut += outTok;
+        totalReasoning += reasonTok;
+        totalCacheRead += cacheR;
+        totalCacheWrite += cacheW;
+      }
+    }
+
+    // Find TTFT from gen_ai.first_token event or tag
+    let ttft: number | undefined;
+    for (const node of spans) {
+      const t = getTag(node.span, 'gen_ai.server.time_to_first_token');
+      if (t) { ttft = Number(t); break; }
+      if (node.span.logs) {
+        for (const log of node.span.logs) {
+          const ev = log.fields?.find(f => f.key === 'event');
+          if (ev?.value === 'gen_ai.first_token') {
+            const f = log.fields?.find(f => f.key === 'gen_ai.server.time_to_first_token');
+            if (f) { ttft = Number(f.value); break; }
+          }
+        }
+        if (ttft) break;
+      }
+    }
+
     return {
-      totalDuration: (range.max - range.min) / 1000, // microseconds to ms
+      totalDuration: (range.max - range.min) / 1000,
       spanCount: spans.filter((n) => !n.isVirtualToolCall).length,
       model: getTag(root, 'gen_ai.request.model') || getTag(root, 'gen_ai.response.model'),
       provider: getTag(root, 'gen_ai.provider.name'),
-      inputTokens: getTag(root, 'gen_ai.usage.input_tokens'),
-      outputTokens: getTag(root, 'gen_ai.usage.output_tokens'),
+      inputTokens: totalIn || undefined,
+      outputTokens: totalOut || undefined,
+      reasoningTokens: totalReasoning || undefined,
+      cacheReadTokens: totalCacheRead || undefined,
+      cacheWriteTokens: totalCacheWrite || undefined,
+      ttft,
       steps: getTag(root, 'agent.steps'),
       agentName: getTag(root, 'agent.name'),
     };
   });
 
-  // Extract user prompt from the root span's gen_ai.content.prompt event
+  // Extract user prompt from the root span's gen_ai.content.prompt or gen_ai.user.message event
   const userPrompt = createMemo(() => {
     const spans = flatSpans();
     if (spans.length === 0) return null;
@@ -316,11 +328,15 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
         const promptField = log.fields?.find((f) => f.key === 'gen_ai.prompt');
         if (promptField) return String(promptField.value);
       }
+      if (eventField?.value === 'gen_ai.user.message') {
+        const contentField = log.fields?.find((f) => f.key === 'gen_ai.message.content');
+        if (contentField) return String(contentField.value);
+      }
     }
     return null;
   });
 
-  // Extract assistant response from the root span's gen_ai.content.completion event
+  // Extract assistant response from the root span's gen_ai.content.completion or gen_ai.choice event
   const assistantResponse = createMemo(() => {
     const spans = flatSpans();
     if (spans.length === 0) return null;
@@ -331,6 +347,10 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
       if (eventField?.value === 'gen_ai.content.completion') {
         const completionField = log.fields?.find((f) => f.key === 'gen_ai.completion');
         if (completionField) return String(completionField.value);
+      }
+      if (eventField?.value === 'gen_ai.choice') {
+        const contentField = log.fields?.find((f) => f.key === 'gen_ai.choice.message.content');
+        if (contentField) return String(contentField.value);
       }
     }
     return null;
@@ -403,6 +423,18 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
                 </Show>
                 <Show when={summary().outputTokens}>
                   <StatPill label="Out" value={`${Number(summary().outputTokens).toLocaleString()} tok`} />
+                </Show>
+                <Show when={Number(summary().reasoningTokens) > 0}>
+                  <StatPill label="Reasoning" value={`${Number(summary().reasoningTokens).toLocaleString()} tok`} />
+                </Show>
+                <Show when={Number(summary().cacheReadTokens) > 0}>
+                  <StatPill label="Cache Hit" value={`${Number(summary().cacheReadTokens).toLocaleString()} tok`} />
+                </Show>
+                <Show when={Number(summary().cacheWriteTokens) > 0}>
+                  <StatPill label="Cache Write" value={`${Number(summary().cacheWriteTokens).toLocaleString()} tok`} />
+                </Show>
+                <Show when={summary().ttft}>
+                  <StatPill label="TTFT" value={`${summary().ttft}ms`} />
                 </Show>
                 <Show when={summary().steps}>
                   <StatPill label="Steps" value={String(summary().steps)} />
@@ -481,136 +513,128 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
                   </div>
                 </div>
 
-                {/* Swimlane groups */}
-                <For each={swimlanes()}>
-                  {(lane) => (
-                    <div class="border-b border-border-subtle/50 last:border-b-0">
-                      {/* Swimlane header */}
-                      <div class="flex items-center gap-2 px-4 py-1.5 bg-surface/20">
-                        <div class={`w-1 h-3 rounded-full ${
-                          lane.kind === 'agent' ? 'bg-accent/60' :
-                          lane.kind === 'tools' ? 'bg-warning/60' :
-                          'bg-accent/30'
-                        }`} />
-                        <span class="text-[9px] font-semibold text-text-muted/70 uppercase tracking-widest">
-                          {lane.label}
-                        </span>
-                        <span class="text-[9px] text-text-muted/40 font-mono">{lane.spans.length}</span>
-                      </div>
+                {/* Single indented timeline */}
+                <For each={flatSpans()}>
+                  {(node) => {
+                    const range = timeRange();
+                    const totalDuration = range.max - range.min;
+                    const leftPct = () => ((node.span.startTime - range.min) / totalDuration) * 100;
+                    const widthPct = () => Math.max(0.3, (node.span.duration / totalDuration) * 100);
+                    const durationMs = () => node.span.duration / 1000;
+                    const isError = () => node.span.status?.code === 2;
+                    const isSelected = () => selectedSpanID() === node.span.spanID;
+                    const isVirtual = () => !!node.isVirtualToolCall;
+                    const isTiny = () => widthPct() < 5;
+                    const barColor = () => {
+                      if (isError()) return 'bg-red-500';
+                      const op = node.span.operationName;
+                      if (op.startsWith('chat ') || op.startsWith('gen_ai.')) return 'bg-purple-500';
+                      if (op.startsWith('tool.') || op.startsWith('mcp.')) return 'bg-amber-500';
+                      if (op.startsWith('memory.')) return 'bg-emerald-500';
+                      if (op === 'agent.step') return 'bg-sky-400';
+                      return 'bg-blue-500';
+                    };
 
-                      {/* Spans within this swimlane */}
-                      <For each={lane.spans}>
-                        {(node) => {
-                          const range = timeRange();
-                          const totalDuration = range.max - range.min;
-                          const leftPct = () => ((node.span.startTime - range.min) / totalDuration) * 100;
-                          const widthPct = () => Math.max(0.3, (node.span.duration / totalDuration) * 100);
-                          const durationMs = () => node.span.duration / 1000;
-                          const isError = () => node.span.status?.code === 2;
-                          const isSelected = () => selectedSpanID() === node.span.spanID;
-                          const isVirtual = () => !!node.isVirtualToolCall;
-                          const isTiny = () => widthPct() < 5;
-                          const barColor = () => {
-                            if (isError()) return 'bg-error';
-                            const op = node.span.operationName;
-                            if (op.startsWith('gen_ai.')) return 'bg-info';
-                            if (op.startsWith('tool.') || op.startsWith('mcp.')) return 'bg-warning';
-                            if (op.startsWith('memory.')) return 'bg-success/70';
-                            if (op === 'agent.step') return 'bg-accent/40';
-                            return 'bg-accent';
-                          };
+                    const toolName = () => getTag(node.span, 'tool.name') || getTag(node.span, 'gen_ai.tool.name');
+                    const model = () => getTag(node.span, 'gen_ai.request.model');
 
-                          const toolName = () => getTag(node.span, 'tool.name') || getTag(node.span, 'gen_ai.tool.name');
-                          const model = () => getTag(node.span, 'gen_ai.request.model');
+                    // Compute step label from children
+                    const stepLabel = createMemo(() => {
+                      if (node.span.operationName !== 'agent.step') return undefined;
+                      const childOps = node.children.map(c => c.span.operationName);
+                      const hasTool = childOps.some(o => o.startsWith('tool.') || o.startsWith('mcp.'));
+                      const hasGenAI = childOps.some(o => o.startsWith('chat ') || o.startsWith('gen_ai.'));
+                      if (hasGenAI && hasTool) return 'think + tool';
+                      if (hasTool) return 'tool';
+                      if (hasGenAI) return 'think + respond';
+                      return undefined;
+                    });
 
-                          // Compute indent relative to lane (tools and steps are flat, agent flow keeps tree depth)
-                          const indent = () => lane.kind === 'agent' ? node.depth * 14 : 0;
+                    const indent = () => node.depth * 14;
 
-                          return (
-                            <button
-                              class={`w-full flex items-center gap-2 px-4 py-1.5 transition-all duration-100 cursor-pointer border-l-2 rounded-none ${
-                                isSelected()
-                                  ? 'bg-accent/8 border-l-accent'
-                                  : 'border-l-transparent hover:bg-surface-hover/40'
-                              }`}
-                              onClick={() => {
-                                const isCurrentlySelected = selectedSpanID() === node.span.spanID;
-                                if (isCurrentlySelected) {
-                                  clearSelectedSpan();
-                                } else {
-                                  selectSpan(node.span.spanID, node.span, processes());
-                                }
-                              }}
-                            >
-                              {/* Operation name */}
-                              <div
-                                class="flex-shrink-0 text-[11px] font-mono truncate text-left"
-                                style={{ width: '200px', 'padding-left': `${indent()}px` }}
-                              >
-                                <span class={`${isError() ? 'text-error' : isSelected() ? 'text-text' : 'text-text-secondary'}`}>
-                                  {spanDisplayName(node.span.operationName, toolName(), model())}
-                                </span>
-                              </div>
-
-                              {/* Waterfall bar with time ruler grid lines */}
-                              <div class="flex-1 h-5 relative min-w-0">
-                                {/* Grid lines aligned with time ruler ticks */}
-                                <For each={timeRulerTicks()}>
-                                  {(tick) => (
-                                    <div
-                                      class="absolute top-0 bottom-0 border-l border-border-subtle/20"
-                                      style={{ left: `${tick.pct}%` }}
-                                    />
-                                  )}
-                                </For>
-                                {/* The bar */}
-                                <div
-                                  class={`absolute top-1 h-3 rounded-[3px] transition-all duration-100 ${barColor()} ${
-                                    isVirtual()
-                                      ? 'opacity-40'
-                                      : isSelected()
-                                        ? 'opacity-100 shadow-sm'
-                                        : 'opacity-75 hover:opacity-95'
-                                  }`}
-                                  style={{
-                                    left: `${leftPct()}%`,
-                                    width: `${widthPct()}%`,
-                                    'min-width': '3px',
-                                    ...(isVirtual() ? { 'background-image': 'repeating-linear-gradient(90deg, transparent, transparent 3px, rgba(0,0,0,0.12) 3px, rgba(0,0,0,0.12) 6px)' } : {}),
-                                  }}
-                                />
-                                {/* Duration label next to tiny bars */}
-                                <Show when={isTiny()}>
-                                  <span
-                                    class="absolute top-[3px] text-[9px] font-mono text-text-muted/60 tabular-nums whitespace-nowrap"
-                                    style={{ left: `${Math.min(leftPct() + widthPct() + 0.5, 95)}%` }}
-                                  >
-                                    {formatDuration(durationMs())}
-                                  </span>
-                                </Show>
-                              </div>
-
-                              {/* Duration */}
-                              <span class={`flex-shrink-0 text-[10px] font-mono w-16 text-right tabular-nums ${
-                                isSelected() ? 'text-text-secondary' : 'text-text-muted'
-                              }`}>
-                                {formatDuration(durationMs())}
-                              </span>
-                            </button>
-                          );
+                    return (
+                      <button
+                        class={`w-full flex items-center gap-2 px-4 py-1.5 transition-all duration-100 cursor-pointer border-l-2 rounded-none ${
+                          isSelected()
+                            ? 'bg-accent/8 border-l-accent'
+                            : 'border-l-transparent hover:bg-surface-hover/40'
+                        }`}
+                        onClick={() => {
+                          const isCurrentlySelected = selectedSpanID() === node.span.spanID;
+                          if (isCurrentlySelected) {
+                            clearSelectedSpan();
+                          } else {
+                            selectSpan(node.span.spanID, node.span, processes());
+                          }
                         }}
-                      </For>
-                    </div>
-                  )}
+                      >
+                        {/* Operation name */}
+                        <div
+                          class="flex-shrink-0 text-[11px] font-mono truncate text-left"
+                          style={{ width: '200px', 'padding-left': `${indent()}px` }}
+                        >
+                          <span class={`${isError() ? 'text-error' : isSelected() ? 'text-text' : 'text-text-secondary'}`}>
+                            {spanDisplayName(node.span.operationName, toolName(), model(), stepLabel())}
+                          </span>
+                        </div>
+
+                        {/* Waterfall bar with time ruler grid lines */}
+                        <div class="flex-1 h-5 relative min-w-0">
+                          {/* Grid lines */}
+                          <For each={timeRulerTicks()}>
+                            {(tick) => (
+                              <div
+                                class="absolute top-0 bottom-0 border-l border-border-subtle/20"
+                                style={{ left: `${tick.pct}%` }}
+                              />
+                            )}
+                          </For>
+                          {/* The bar */}
+                          <div
+                            class={`absolute top-1 h-3 rounded-[3px] transition-all duration-100 ${barColor()} ${
+                              isVirtual()
+                                ? 'opacity-40'
+                                : isSelected()
+                                  ? 'opacity-100 shadow-sm'
+                                  : 'opacity-75 hover:opacity-95'
+                            }`}
+                            style={{
+                              left: `${leftPct()}%`,
+                              width: `${widthPct()}%`,
+                              'min-width': '3px',
+                              ...(isVirtual() ? { 'background-image': 'repeating-linear-gradient(90deg, transparent, transparent 3px, rgba(0,0,0,0.12) 3px, rgba(0,0,0,0.12) 6px)' } : {}),
+                            }}
+                          />
+                          {/* Duration label next to tiny bars */}
+                          <Show when={isTiny()}>
+                            <span
+                              class="absolute top-[3px] text-[9px] font-mono text-text-muted/60 tabular-nums whitespace-nowrap"
+                              style={{ left: `${Math.min(leftPct() + widthPct() + 0.5, 95)}%` }}
+                            >
+                              {formatDuration(durationMs())}
+                            </span>
+                          </Show>
+                        </div>
+
+                        {/* Duration */}
+                        <span class={`flex-shrink-0 text-[10px] font-mono w-16 text-right tabular-nums ${
+                          isSelected() ? 'text-text-secondary' : 'text-text-muted'
+                        }`}>
+                          {formatDuration(durationMs())}
+                        </span>
+                      </button>
+                    );
+                  }}
                 </For>
 
                 {/* Legend */}
                 <div class="flex flex-wrap gap-4 px-4 py-3 mt-1 border-t border-border-subtle">
-                  <LegendDot color="bg-accent" label="agent" />
-                  <LegendDot color="bg-info" label="gen_ai" />
-                  <LegendDot color="bg-warning" label="tool / mcp" />
-                  <LegendDot color="bg-success/70" label="memory" />
-                  <LegendDot color="bg-error" label="error" />
+                  <LegendDot color="bg-blue-500" label="agent" />
+                  <LegendDot color="bg-purple-500" label="gen_ai" />
+                  <LegendDot color="bg-amber-500" label="tool / mcp" />
+                  <LegendDot color="bg-emerald-500" label="memory" />
+                  <LegendDot color="bg-sky-400" label="step" />
+                  <LegendDot color="bg-red-500" label="error" />
                 </div>
               </Show>
             </div>
@@ -709,9 +733,13 @@ function shortModelName(model: string): string {
 }
 
 /** Build a human-readable span name with context */
-function spanDisplayName(operation: string, toolName?: string, model?: string): string {
-  if (operation === 'agent.prompt') return 'prompt';
-  if (operation === 'agent.step') return 'step';
+function spanDisplayName(operation: string, toolName?: string, model?: string, stepLabel?: string): string {
+  if (operation === 'agent.prompt' || operation === 'agent.prompt.internal') return 'prompt';
+  if (operation === 'agent.step') return stepLabel ? `step: ${stepLabel}` : 'step';
+  // New semconv naming: "chat {model}"
+  if (operation.startsWith('chat ')) {
+    return operation; // already "chat moonshot-v1-auto" etc.
+  }
   if (operation.startsWith('gen_ai.')) {
     const shortOp = operation.slice(7);
     if (model) return `${shortOp} ${shortModelName(model)}`;
