@@ -279,6 +279,32 @@ export interface DelegationTimeoutEvent extends FEPEventBase {
   timedOut: number
 }
 
+/** Structured result of a completed delegation — carries full RunResult data for rich UI cards. */
+export interface DelegationResultRunInfo {
+  agentName: string
+  phase: string
+  output: string
+  toolCalls: number
+  model: string
+  traceID?: string
+  duration: string
+  pullRequestURL?: string
+  commits?: number
+  branch?: string
+  failureReason?: string
+}
+
+export interface DelegationResultEvent extends FEPEventBase {
+  type: "delegation.result"
+  groupId: string
+  single: boolean
+  timedOut: boolean
+  totalDuration: string
+  succeeded: number
+  failed: number
+  runs: Record<string, DelegationResultRunInfo>
+}
+
 // ---- Union ----
 
 export type FEPEvent =
@@ -311,6 +337,7 @@ export type FEPEvent =
   | DelegationRunCompletedEvent
   | DelegationAllCompletedEvent
   | DelegationTimeoutEvent
+  | DelegationResultEvent
 
 // ---- Global SSE Envelope ----
 

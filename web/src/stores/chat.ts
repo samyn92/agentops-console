@@ -19,6 +19,7 @@ import type {
   DelegationRunCompletedEvent,
   DelegationAllCompletedEvent,
   DelegationTimeoutEvent,
+  DelegationResultEvent,
 } from '../types';
 import type {
   ChatMessage,
@@ -27,6 +28,7 @@ import type {
   ReasoningPart,
   ToolPart,
   StepFinishPart,
+  DelegationResultPart,
 } from '../types';
 
 // ── Thinking phase — derived from FEP event flow ──
@@ -664,6 +666,10 @@ function handleFEPEvent(state: AgentChatState, key: string, event: FEPEvent) {
     case 'delegation.timeout':
       updateDelegationTimeout(state, event as DelegationTimeoutEvent);
       break;
+
+    case 'delegation.result':
+      insertDelegationResult(state, event as DelegationResultEvent);
+      break;
   }
 }
 
@@ -804,6 +810,23 @@ function updateDelegationTimeout(state: AgentChatState, event: DelegationTimeout
     meta._completedCount = event.completed;
     meta._timedOutCount = event.timedOut;
   });
+}
+
+/** Insert a structured delegation result card into the chat. */
+function insertDelegationResult(state: AgentChatState, event: DelegationResultEvent) {
+  const part: DelegationResultPart = {
+    type: 'delegation-result',
+    groupId: event.groupId,
+    single: event.single,
+    timedOut: event.timedOut,
+    totalDuration: event.totalDuration,
+    succeeded: event.succeeded,
+    failed: event.failed,
+    runs: event.runs,
+  };
+  // Finalize any in-progress text so the card appears after it
+  finalizeActiveText(state);
+  appendPart(state, part);
 }
 
 // ── Working memory hydration ──

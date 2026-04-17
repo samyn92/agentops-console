@@ -54,6 +54,30 @@ export interface ErrorPart {
   retryable?: boolean
 }
 
+/** Structured delegation result — rendered as a rich card in the chat. */
+export interface DelegationResultPart {
+  type: "delegation-result"
+  groupId: string
+  single: boolean
+  timedOut: boolean
+  totalDuration: string
+  succeeded: number
+  failed: number
+  runs: Record<string, {
+    agentName: string
+    phase: string
+    output: string
+    toolCalls: number
+    model: string
+    traceID?: string
+    duration: string
+    pullRequestURL?: string
+    commits?: number
+    branch?: string
+    failureReason?: string
+  }>
+}
+
 export type MessagePart =
   | TextPart
   | ReasoningPart
@@ -61,6 +85,7 @@ export type MessagePart =
   | StepFinishPart
   | SourcePart
   | ErrorPart
+  | DelegationResultPart
 
 // ---- Messages ----
 

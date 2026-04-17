@@ -4,12 +4,13 @@
 import { For, Show, createMemo } from 'solid-js';
 import type {
   ChatMessage, MessagePart, TextPart, ReasoningPart, ToolPart,
-  SourcePart, ErrorPart,
+  SourcePart, ErrorPart, DelegationResultPart,
 } from '../../types';
 import StreamingText from './StreamingText';
 import ReasoningBlock from './ReasoningBlock';
 import ToolCallCard from './ToolCallCard';
 import SourceReference from './SourceReference';
+import DelegationResultCard from './DelegationResultCard';
 import { showThinkingBlocks } from '../../stores/settings';
 
 
@@ -149,6 +150,9 @@ export default function MessageBubble(props: MessageBubbleProps) {
                           title={(part as SourcePart).title}
                         />
                       );
+                    }
+                    if (part.type === 'delegation-result') {
+                      return <DelegationResultCard part={part as DelegationResultPart} />;
                     }
                     return null;
                   }}
