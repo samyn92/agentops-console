@@ -1,15 +1,18 @@
 // OrchestratorDetailView — center panel for daemon (orchestrator) agents.
-// Three tabs:
-//   1. Chat — the conversation stream
-//   2. Ops  — fleet overview, delegation tree, delegation history
-//   3. Agent — unified metadata panel (discovery, delegation, memory, config, tools, etc.)
+// Two tabs:
+//   1. Chat  — the conversation stream
+//   2. Agent — unified metadata panel (discovery, delegation, memory, config, tools, etc.)
+//
+// The old "Ops" tab was removed: its Delegation Team roster duplicated the
+// sidebar's orchestrator → workers tree (now enriched with sparkline + success%
+// + last-run time per worker). Its Fleet Overview stats collapse into a thin
+// inline strip below the orchestrator header, always visible on both tabs.
 import { Show, createSignal, createMemo } from 'solid-js';
 import { Tabs } from '@ark-ui/solid/tabs';
 import { selectedAgent, getAgentStatus } from '../../stores/agents';
 import { getRunsDelegatedBy } from '../../stores/runs';
-import { phaseVariant } from '../../lib/format';
+import { phaseVariant, formatTokens, formatCost } from '../../lib/format';
 import ChatView from '../chat/ChatView';
-import OpsPanel from './OpsPanel';
 import AgentPanel from './AgentPanel';
 import Badge from '../shared/Badge';
 
@@ -17,7 +20,7 @@ interface OrchestratorDetailViewProps {
   class?: string;
 }
 
-export type OrchestratorTab = 'chat' | 'ops' | 'agent';
+export type OrchestratorTab = 'chat' | 'agent';
 
 // Right-panel pill tab style
 const TAB_CLASS = "relative px-2.5 py-1 text-[11px] rounded-lg transition-colors data-[selected]:bg-surface-hover data-[selected]:text-text data-[selected]:font-medium text-text-muted hover:text-text-secondary hover:bg-surface-hover/50";
@@ -34,13 +37,32 @@ export default function OrchestratorDetailView(props: OrchestratorDetailViewProp
     return getAgentStatus(a.namespace, a.name);
   };
 
-  // Active delegation count for badge on Ops tab
-  const activeDelegatedCount = createMemo(() =>
-    getRunsDelegatedBy(agentName()).filter((r) => {
-      const phase = r.status?.phase;
-      return phase === 'Running' || phase === 'Pending' || phase === 'Queued';
-    }).length
+  // Fleet stats derived from delegated runs
+  const delegatedRuns = createMemo(() => getRunsDelegatedBy(agentName()));
+  const activeCount = createMemo(() =>
+    delegatedRuns().filter((r) => {
+      const p = r.status?.phase;
+      return p === 'Running' || p === 'Pending' || p === 'Queued';
+    }).length,
   );
+  const succeededCount = createMemo(() =>
+    delegatedRuns().filter((r) => r.status?.phase === 'Succeeded').length,
+  );
+  const failedCount = createMemo(() =>
+    delegatedRuns().filter((r) => r.status?.phase === 'Failed').length,
+  );
+
+  const aggregateStats = createMemo(() => {
+    let totalTokens = 0;
+    let totalCost = 0;
+    for (const r of delegatedRuns()) {
+      if (r.status?.tokensUsed) totalTokens += r.status.tokensUsed;
+      if (r.status?.cost) totalCost += parseFloat(r.status.cost);
+    }
+    return { totalTokens, totalCost };
+  });
+
+  const hasFleetSignal = () => delegatedRuns().length > 0;
 
   return (
     <div class={`flex flex-col h-full ${props.class || ''}`}>
@@ -64,14 +86,11 @@ export default function OrchestratorDetailView(props: OrchestratorDetailViewProp
 
           {/* Tabs (right-aligned) */}
           <Tabs.List class="flex gap-0.5">
-            <Tabs.Trigger value="chat" class={TAB_CLASS}>
+            <Tabs.Trigger value="chat" class={`${TAB_CLASS} inline-flex items-center gap-1`}>
               Chat
-            </Tabs.Trigger>
-            <Tabs.Trigger value="ops" class={`${TAB_CLASS} inline-flex items-center gap-1`}>
-              Ops
-              <Show when={activeDelegatedCount() > 0}>
+              <Show when={activeCount() > 0}>
                 <span class="px-1 py-px text-[9px] font-bold bg-accent text-primary-foreground rounded-full animate-pulse">
-                  {activeDelegatedCount()}
+                  {activeCount()}
                 </span>
               </Show>
             </Tabs.Trigger>
@@ -81,12 +100,24 @@ export default function OrchestratorDetailView(props: OrchestratorDetailViewProp
           </Tabs.List>
         </div>
 
+        {/* Inline fleet strip — always visible, shared across tabs */}
+        <Show when={hasFleetSignal()}>
+          <div class="flex items-center gap-4 px-4 py-1.5 border-b border-border-subtle bg-surface-2/30 flex-shrink-0 text-[10px]">
+            <FleetPill label="Delegations" value={delegatedRuns().length} />
+            <FleetPill label="Active" value={activeCount()} tone={activeCount() > 0 ? 'accent' : undefined} />
+            <FleetPill label="Succeeded" value={succeededCount()} tone={succeededCount() > 0 ? 'success' : undefined} />
+            <FleetPill label="Failed" value={failedCount()} tone={failedCount() > 0 ? 'error' : undefined} />
+            <Show when={aggregateStats().totalTokens > 0}>
+              <FleetPill label="Tokens" value={formatTokens(aggregateStats().totalTokens)} />
+            </Show>
+            <Show when={aggregateStats().totalCost > 0}>
+              <FleetPill label="Cost" value={formatCost(aggregateStats().totalCost)} />
+            </Show>
+          </div>
+        </Show>
+
         <Tabs.Content value="chat" class="flex-1 min-h-0 flex flex-col">
           <ChatView class="flex-1 min-h-0" />
-        </Tabs.Content>
-
-        <Tabs.Content value="ops" class="flex-1 min-h-0 overflow-hidden">
-          <OpsPanel />
         </Tabs.Content>
 
         <Tabs.Content value="agent" class="flex-1 min-h-0 overflow-hidden">
@@ -94,5 +125,23 @@ export default function OrchestratorDetailView(props: OrchestratorDetailViewProp
         </Tabs.Content>
       </Tabs.Root>
     </div>
+  );
+}
+
+// ── Fleet Pill (compact inline metric) ──
+function FleetPill(props: { label: string; value: string | number; tone?: 'accent' | 'success' | 'error' }) {
+  const valueColor = () => {
+    switch (props.tone) {
+      case 'accent': return 'text-accent';
+      case 'success': return 'text-success';
+      case 'error': return 'text-error';
+      default: return 'text-text';
+    }
+  };
+  return (
+    <span class="inline-flex items-center gap-1">
+      <span class="text-text-muted uppercase tracking-wider text-[9px]">{props.label}</span>
+      <span class={`font-mono font-semibold tabular-nums ${valueColor()}`}>{props.value}</span>
+    </span>
   );
 }

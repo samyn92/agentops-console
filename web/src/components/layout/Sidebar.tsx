@@ -11,7 +11,7 @@ import { A } from '@solidjs/router';
 import { agentList, selectedAgent, selectAgent, getDelegationTargetsFor, agentHealth } from '../../stores/agents';
 import { leftPanelState, toggleLeftPanel, leftPanelTab, setLeftPanelTab, showRunDetail, clearCenterOverlay } from '../../stores/view';
 import type { LeftPanelTab } from '../../stores/view';
-import { contextualRuns, selectedRunKey, selectRun, clearRunSelection, getRunSource, getRunsDelegatedBy, delegationGroups, getRunDelegationGroup, getAgentConcurrency, type RunSource } from '../../stores/runs';
+import { contextualRuns, selectedRunKey, selectRun, clearRunSelection, getRunSource, getRunsDelegatedBy, delegationGroups, getRunDelegationGroup, getAgentConcurrency, getAgentRuns, type RunSource } from '../../stores/runs';
 import { getChannelsForAgent, channelBoundAgents } from '../../stores/channels';
 import { getResourceForge } from '../../stores/resources';
 import { streamingAgentKeys } from '../../stores/chat';
@@ -557,7 +557,9 @@ export default function Sidebar(props: SidebarProps) {
 }
 
 // ── Worker row (nested under selected orchestrator) ──
-// Compact inline row showing delegation target status in the sidebar.
+// Compact inline row showing delegation target status + run-history signal.
+// Includes a tiny phase sparkline (last 8 runs) and success rate so users
+// get at-a-glance health without opening the worker's detail view.
 function WorkerRow(props: { agent: AgentResponse }) {
   const a = () => props.agent;
   const concurrency = () => getAgentConcurrency(a().name);
@@ -568,6 +570,22 @@ function WorkerRow(props: { agent: AgentResponse }) {
     return agentHealth()[key];
   };
   const isOnline = () => health()?.reachable ?? false;
+
+  const recentRuns = createMemo(() => getAgentRuns(a().name, 10));
+  const sparkline = createMemo(() =>
+    recentRuns().slice(0, 8).reverse().map(r => r.status?.phase ?? 'Unknown'),
+  );
+
+  const successRate = createMemo(() => {
+    const runs = recentRuns();
+    const ok = runs.filter(r => r.status?.phase === 'Succeeded').length;
+    const fail = runs.filter(r => r.status?.phase === 'Failed').length;
+    const total = ok + fail;
+    if (total === 0) return null;
+    return Math.round((ok / total) * 100);
+  });
+
+  const latestRun = () => recentRuns()[0] ?? null;
 
   const statusDotClass = () => {
     if (isActive()) return 'bg-accent animate-pulse';
@@ -587,12 +605,50 @@ function WorkerRow(props: { agent: AgentResponse }) {
     return 'text-text-muted';
   };
 
+  const successColor = () => {
+    const r = successRate();
+    if (r === null) return 'text-text-muted';
+    if (r >= 80) return 'text-success';
+    if (r >= 50) return 'text-warning';
+    return 'text-error';
+  };
+
   return (
-    <div class="flex items-center gap-1.5 px-1.5 py-1 rounded-md hover:bg-surface-hover/50 transition-colors">
+    <div
+      class="flex items-center gap-1.5 px-1.5 py-1 rounded-md hover:bg-surface-hover/50 transition-colors cursor-pointer"
+      onClick={() => { clearRunSelection(); selectAgent(a().namespace, a().name); }}
+    >
       <span class="text-text-muted flex-shrink-0">↳</span>
       <div class={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${statusDotClass()}`} />
-      <span class="text-[11px] text-text-secondary font-medium truncate flex-1">{a().name}</span>
+      <span class="text-[11px] text-text-secondary font-medium truncate">{a().name}</span>
       <span class={`text-[9px] font-mono flex-shrink-0 ${statusLabelClass()}`}>{statusLabel()}</span>
+
+      {/* Sparkline + success rate + last-run, right-aligned */}
+      <span class="flex-1" />
+      <Show when={sparkline().length > 0}>
+        <div class="flex items-center gap-[1px] flex-shrink-0" title={`${recentRuns().length} recent runs`}>
+          <For each={sparkline()}>
+            {(phase) => (
+              <div class={`w-[3px] h-3 rounded-sm ${
+                phase === 'Succeeded' ? 'bg-success/70'
+                : phase === 'Failed' ? 'bg-error/70'
+                : phase === 'Running' ? 'bg-accent/70'
+                : 'bg-text-muted/20'
+              }`} />
+            )}
+          </For>
+        </div>
+      </Show>
+      <Show when={successRate() !== null}>
+        <span class={`text-[9px] font-mono font-medium flex-shrink-0 tabular-nums ${successColor()}`}>
+          {successRate()}%
+        </span>
+      </Show>
+      <Show when={latestRun()}>
+        <span class="text-[9px] text-text-muted flex-shrink-0 tabular-nums">
+          {relativeTime(latestRun()!.metadata.creationTimestamp)}
+        </span>
+      </Show>
     </div>
   );
 }
