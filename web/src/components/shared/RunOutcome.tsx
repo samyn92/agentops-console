@@ -221,12 +221,23 @@ function ArtifactChip(props: ArtifactChipProps) {
 // Intent chip
 // ────────────────────────────────────────────────────────────────────────────
 
-function IntentChip(props: { intent: AgentRunIntent; muted?: boolean }) {
+interface IntentChipProps {
+  intent: AgentRunIntent
+  muted?: boolean
+  /** "sm" = ultra-compact pill for inline use next to titles (sidebar run cards). */
+  size?: 'sm' | 'md'
+}
+
+export function IntentChip(props: IntentChipProps) {
   const cls = INTENT_STYLE[props.intent]
+  const size = props.size ?? 'md'
+  const sizeCls = size === 'sm'
+    ? 'px-1.5 py-px text-[8.5px] tracking-[0.06em]'
+    : 'px-2 py-0.5 text-[10px] tracking-wide'
   return (
     <span
-      class={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-medium uppercase tracking-wide ${cls} ${props.muted ? 'opacity-60' : ''}`}
-      title={props.muted ? 'Caller hint (status not yet finalized)' : 'Run intent'}
+      class={`inline-flex items-center rounded-full border font-semibold uppercase ${sizeCls} ${cls} ${props.muted ? 'opacity-60' : ''}`}
+      title={props.muted ? `${INTENT_LABEL[props.intent]} (caller hint, not yet finalized)` : `Run intent: ${INTENT_LABEL[props.intent]}`}
     >
       {INTENT_LABEL[props.intent]}
     </span>
@@ -252,7 +263,7 @@ export default function RunOutcome(props: RunOutcomeProps) {
   if (!hasAnything()) return null
 
   return (
-    <div class={variant() === 'compact' ? 'flex flex-wrap items-center gap-1.5' : 'space-y-2'}>
+    <div class={variant() === 'compact' ? 'flex flex-wrap items-center gap-2' : 'space-y-2'}>
       {/* Intent + artifacts row */}
       <div class="flex flex-wrap items-center gap-2">
         <Show when={showIntent() && effectiveIntent()}>

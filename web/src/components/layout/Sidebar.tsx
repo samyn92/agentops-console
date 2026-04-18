@@ -25,7 +25,7 @@ import RunPhaseIcon from '../shared/RunPhaseIcon';
 import type { AgentResponse, AgentRunResponse } from '../../types';
 import { Tabs } from '@ark-ui/solid/tabs';
 import { ForgeWatermark, SourceIcon, ChannelTypeIcon, HamburgerIcon, SettingsGearIcon, DelegationIcon } from '../shared/Icons';
-import RunOutcome from '../shared/RunOutcome';
+import RunOutcome, { IntentChip } from '../shared/RunOutcome';
 
 interface SidebarProps {
   class?: string;
@@ -606,7 +606,9 @@ function RunCardButton(props: { run: AgentRunResponse }) {
   const isRunning = () => run().status?.phase === 'Running';
   const isFailed = () => run().status?.phase === 'Failed';
   const forge = () => getResourceForge(run().spec.git?.resourceRef);
-  const hasOutcome = () => !!run().status?.outcome || !!run().spec.outcome?.intent;
+  const intent = () => run().status?.outcome?.intent ?? run().spec.outcome?.intent;
+  const intentIsHint = () => !run().status?.outcome?.intent && !!run().spec.outcome?.intent;
+  const hasArtifacts = () => !!run().status?.outcome?.artifacts?.length;
 
   const cardClass = () => {
     const classes = ['run-card'];
@@ -634,21 +636,25 @@ function RunCardButton(props: { run: AgentRunResponse }) {
         <ForgeWatermark forge={forge()!} />
       </Show>
 
-      {/* Row 1: Source icon + run name + phase icon */}
+      {/* Row 1: Source icon + run name + tiny intent chip + phase icon */}
       <div class="flex items-center gap-1.5">
         <SourceIcon source={source()} />
         <span class="run-card__title truncate flex-1">{run().metadata.name}</span>
+        <Show when={intent()}>
+          <IntentChip intent={intent()!} muted={intentIsHint()} size="sm" />
+        </Show>
         <RunPhaseIcon phase={run().status?.phase} />
       </div>
 
-      {/* Row 2: Outcome chips */}
-      <Show when={hasOutcome()}>
-        <div class="mt-1.5" onClick={(e) => e.stopPropagation()}>
+      {/* Row 2: Outcome artifact chips (intent rendered inline above) */}
+      <Show when={hasArtifacts()}>
+        <div class="mt-2" onClick={(e) => e.stopPropagation()}>
           <RunOutcome
             outcome={run().status?.outcome}
             intentHint={run().spec.outcome?.intent}
             variant="compact"
             showSummary={false}
+            showIntent={false}
           />
         </div>
       </Show>
