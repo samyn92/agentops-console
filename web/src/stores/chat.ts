@@ -81,6 +81,12 @@ interface AgentChatState {
   thinkingState: ReturnType<typeof createSignal<ThinkingState>>;
   // Non-reactive
   abortController: AbortController | null;
+  // True while a per-prompt SSE handler is actively driving this agent's state
+  // machine (set by sendMessage, cleared on stream end). The global async/NATS
+  // listener uses this to avoid duplicate processing of events that the
+  // dedicated SSE handler is already consuming. NOT used for delegation
+  // callback bookkeeping — those flow exclusively through the global listener.
+  ssePromptActive: boolean;
   // RAF batching for tool_input_delta
   _deltaBuffer: Map<string, string>; // toolId → accumulated delta text
   _deltaRafId: number | null;
@@ -138,6 +144,7 @@ function getOrCreateState(key: string): AgentChatState {
         toolCallCount: 0,
       }),
       abortController: null,
+      ssePromptActive: false,
       _deltaBuffer: new Map(),
       _deltaRafId: null,
     };
@@ -280,6 +287,7 @@ export async function sendMessage(prompt: string) {
 
   markStreaming(key, true);
   state.abortController = new AbortController();
+  state.ssePromptActive = true;
 
   // Capture for the closure — even if user switches agents mid-stream,
   // events continue writing to the correct agent's state.
@@ -311,6 +319,7 @@ export async function sendMessage(prompt: string) {
       capturedState.thinkingState[1]((prev) => ({ ...prev, phase: 'idle' }));
     });
     capturedState.abortController = null;
+    capturedState.ssePromptActive = false;
     markStreaming(capturedKey, false);
     // Refresh agent health after stream completes (updates context usage)
     refreshAgentHealth();
@@ -1080,8 +1089,11 @@ export function startDelegationEventListener() {
 
     // If this agent is already streaming via a user-initiated prompt, the
     // per-prompt SSE handler is driving the state machine — skip the global
-    // handler to avoid duplicate processing.
-    if (state.streaming[0]()) return;
+    // handler to avoid duplicate processing. Note: we check ssePromptActive
+    // (set only by sendMessage), NOT state.streaming — async delegation
+    // callbacks set streaming=true themselves and need their own subsequent
+    // events (text_delta, agent_finish, etc.) to flow through this handler.
+    if (state.ssePromptActive) return;
 
     // agent_start from an async source (delegation callback): set up message
     // bubbles and mark as streaming so subsequent events have a target.
