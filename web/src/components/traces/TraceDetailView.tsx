@@ -7,6 +7,7 @@ import { traces as tracesAPI } from '../../lib/api';
 import type { TraceSpan, TempoTraceResponse, TraceProcess } from '../../types';
 import Spinner from '../shared/Spinner';
 import Markdown from '../shared/Markdown';
+import SpanDetailDrawer from './SpanDetailDrawer';
 
 interface TraceDetailViewProps {
   class?: string;
@@ -228,6 +229,7 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
 
   // Filter mode state — controls which spans render in the waterfall
   const [filterMode, setFilterMode] = createSignal<WaterfallFilter>('all');
+  const [scrollContainer, setScrollContainer] = createSignal<HTMLDivElement | undefined>();
 
   // Apply filter then collapse adjacent identical failed tool calls
   // (e.g. coder retrying the same `git push` 3 times → "git push ×3 (failed)").
@@ -506,12 +508,21 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
             )}
           </Show>
 
-          {/* Scrollable content: prompt, tools, waterfall, response */}
-          <div class="flex-1 overflow-y-auto min-h-0">
-            {/* Prompt */}
-            <Show when={userPrompt()}>
-              <div class="px-5 py-3 border-b border-border">
-                <ExpandableContent label="Prompt" content={userPrompt()!} defaultMaxH="max-h-[20vh]" />
+          {/* Scrollable content: prompt+response side-by-side, tools, waterfall */}
+          <div ref={setScrollContainer} class="flex-1 overflow-y-auto min-h-0">
+            {/* Prompt + Response side-by-side (stacks below ~900px) */}
+            <Show when={userPrompt() || assistantResponse()}>
+              <div class="flex flex-col min-[900px]:flex-row border-b border-border">
+                <Show when={userPrompt()}>
+                  <div class="flex-1 min-w-0 px-5 py-3 min-[900px]:border-r border-border min-[900px]:w-1/2">
+                    <ExpandableContent label="Prompt" content={userPrompt()!} defaultMaxH="max-h-[20vh]" />
+                  </div>
+                </Show>
+                <Show when={assistantResponse()}>
+                  <div class="flex-1 min-w-0 px-5 py-3 border-t min-[900px]:border-t-0 border-border min-[900px]:w-1/2">
+                    <ExpandableContent label="Response" content={assistantResponse()!} muted defaultMaxH="max-h-[20vh]" />
+                  </div>
+                </Show>
               </div>
             </Show>
 
@@ -650,12 +661,28 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
                             ? 'bg-accent/8 border-l-accent'
                             : 'border-l-transparent hover:bg-surface-hover/40'
                         }`}
-                        onClick={() => {
+                        onClick={(e) => {
                           const isCurrentlySelected = selectedSpanID() === node.span.spanID;
                           if (isCurrentlySelected) {
                             clearSelectedSpan();
                           } else {
+                            const btn = e.currentTarget as HTMLElement;
                             selectSpan(node.span.spanID, node.span, processes());
+                            // After the drawer opens and the scroll area shrinks,
+                            // scroll the clicked row into the upper third of the
+                            // remaining visible area so it stays in view.
+                            const container = scrollContainer();
+                            if (container) {
+                              requestAnimationFrame(() => {
+                                requestAnimationFrame(() => {
+                                  const cRect = container.getBoundingClientRect();
+                                  const bRect = btn.getBoundingClientRect();
+                                  const targetOffset = cRect.height * 0.33;
+                                  const delta = (bRect.top - cRect.top) - targetOffset;
+                                  container.scrollBy({ top: delta, behavior: 'smooth' });
+                                });
+                              });
+                            }
                           }
                         }}
                       >
@@ -730,13 +757,11 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
               </Show>
             </div>
 
-            {/* Response — directly after waterfall */}
-            <Show when={assistantResponse()}>
-              <div class="px-5 py-3 border-t border-border">
-                <ExpandableContent label="Response" content={assistantResponse()!} muted defaultMaxH="max-h-[25vh]" />
-              </div>
-            </Show>
+            {/* Response is now rendered above, side-by-side with the prompt */}
           </div>
+
+          {/* Bottom drawer — takes real layout space so waterfall above shrinks */}
+          <SpanDetailDrawer />
         </div>
       </Show>
     </div>
