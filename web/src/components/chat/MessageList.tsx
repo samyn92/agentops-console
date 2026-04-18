@@ -7,6 +7,7 @@ import {
   activeText,
   activeReasoning,
   thinkingState,
+  isHydrating,
 } from '../../stores/chat';
 import MessageBubble from './MessageBubble';
 import AgentThinking from './AgentThinking';
@@ -67,9 +68,13 @@ export default function MessageList(props: MessageListProps) {
   const msgs = () => messages();
   const lastIndex = () => msgs().length - 1;
 
-  // Show thinking indicator when streaming but assistant has no visible output yet
+  // Show thinking indicator when streaming but assistant has no visible output yet,
+  // or during connecting/generating phases (bridging gaps in visual feedback).
   const showThinking = () => {
     if (!streaming()) return false;
+    const phase = thinkingState().phase;
+    // Always show during connecting (pre-SSE) and generating (text_start → first delta)
+    if (phase === 'connecting' || phase === 'generating') return true;
     const m = msgs();
     if (m.length === 0) return true; // streaming started, no messages yet
     const last = m[m.length - 1];
@@ -89,15 +94,30 @@ export default function MessageList(props: MessageListProps) {
       <Show
         when={msgs().length > 0}
         fallback={
-          <EmptyState
-            title="Start a conversation"
-            description="Select an agent and type a message to begin."
-            icon={
-              <svg class="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-              </svg>
+          <Show
+            when={isHydrating()}
+            fallback={
+              <EmptyState
+                title="Start a conversation"
+                description="Select an agent and type a message to begin."
+                icon={
+                  <svg class="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                  </svg>
+                }
+              />
             }
-          />
+          >
+            {/* Skeleton loader during working memory hydration */}
+            <div class="max-w-3xl mx-auto chat-skeleton">
+              <div class="chat-skeleton__line w-2/5 ml-auto" />
+              <div class="chat-skeleton__line w-4/5" />
+              <div class="chat-skeleton__line w-3/5" />
+              <div class="chat-skeleton__line w-1/3 ml-auto" />
+              <div class="chat-skeleton__line w-3/4" />
+              <div class="chat-skeleton__line w-2/5" />
+            </div>
+          </Show>
         }
       >
         <div class="max-w-3xl mx-auto">
@@ -111,6 +131,7 @@ export default function MessageList(props: MessageListProps) {
                   message={msg}
                   prevSameRole={prevSameRole()}
                   isLastAssistant={msg.role === 'assistant' && i() === lastIndex()}
+                  isStreaming={msg.role === 'assistant' && i() === lastIndex() && streaming()}
                   activeText={i() === lastIndex() ? activeText() : null}
                   activeReasoning={i() === lastIndex() ? activeReasoning() : null}
                 />

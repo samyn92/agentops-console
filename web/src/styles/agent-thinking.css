@@ -147,6 +147,42 @@
    Each phase adjusts animation speed, glow, and ring behavior.
    ═══════════════════════════════════════════════════════════ */
 
+/* ── Connecting: very slow, tentative — establishing SSE connection ── */
+
+.agent-thinking--phase-connecting .agent-thinking__ring--outer {
+  animation-duration: 5s;
+  opacity: 0.35;
+}
+
+.agent-thinking--phase-connecting .agent-thinking__ring--inner {
+  animation-duration: 3.5s;
+  opacity: 0.2;
+}
+
+.agent-thinking--phase-connecting .agent-thinking__core {
+  animation-duration: 3s;
+  opacity: 0.6;
+}
+
+/* ── Generating: quick, expectant pulse — text about to appear ── */
+
+.agent-thinking--phase-generating .agent-thinking__ring--outer {
+  animation-duration: 1.8s;
+  opacity: 0.8;
+  border-top-color: var(--accent);
+  border-right-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.agent-thinking--phase-generating .agent-thinking__ring--inner {
+  animation-duration: 1.2s;
+  opacity: 0.6;
+}
+
+.agent-thinking--phase-generating .agent-thinking__core {
+  animation-duration: 1s;
+  box-shadow: 0 0 6px 1px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
 /* ── Analyzing: slow orbit, gentle pulse — processing the prompt ── */
 
 .agent-thinking--phase-analyzing .agent-thinking__ring--outer {
@@ -271,6 +307,10 @@
 
 :root.dark .agent-thinking__core {
   box-shadow: 0 0 6px 1px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+:root.dark .agent-thinking--phase-generating .agent-thinking__core {
+  box-shadow: 0 0 10px 2px color-mix(in srgb, var(--accent) 35%, transparent);
 }
 
 :root.dark .agent-thinking--phase-reasoning .agent-thinking__core {

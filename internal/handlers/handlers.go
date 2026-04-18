@@ -14,7 +14,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/samyn92/agentops-console/internal/k8s"
 	"github.com/samyn92/agentops-console/internal/multiplexer"
@@ -25,6 +27,11 @@ type Handlers struct {
 	k8s *k8s.Client
 	mux *multiplexer.Multiplexer
 }
+
+// tracer is used to emit per-SSE-event child spans so delegation results and
+// other FEP events show up in Tempo live — without waiting for the long-lived
+// parent stream span to close (which only happens at client disconnect).
+var tracer = otel.Tracer("agentops-console/handlers")
 
 // sanitizePathParam rejects path parameters that contain path traversal characters.
 // This prevents URL path injection when the param is interpolated into upstream URLs.
@@ -189,6 +196,19 @@ func (h *Handlers) AgentPromptStream(w http.ResponseWriter, r *http.Request) {
 	ns := chi.URLParam(r, "ns")
 	name := chi.URLParam(r, "name")
 
+	// Parent span for the whole SSE relay. This closes when the client
+	// disconnects — don't rely on it for live visibility; we emit short
+	// child spans per FEP event below so they flush through the batcher
+	// while the long-lived parent is still open.
+	ctx, parentSpan := tracer.Start(r.Context(), "agent.prompt.stream",
+		trace.WithAttributes(
+			attribute.String("agent.namespace", ns),
+			attribute.String("agent.name", name),
+		),
+	)
+	defer parentSpan.End()
+	r = r.WithContext(ctx)
+
 	agent, err := h.k8s.GetAgent(r.Context(), ns, name)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "agent not found: %s", err)
@@ -245,17 +265,51 @@ func (h *Handlers) AgentPromptStream(w http.ResponseWriter, r *http.Request) {
 	// Global delivery to other browser tabs is handled by the NATS subscriber
 	// in the multiplexer — no need to inject into eventC here.
 	scanner := newSSEScanner(resp.Body)
+	eventCount := 0
 	for scanner.Scan() {
 		data := scanner.Data()
 		if data == "" {
 			continue
 		}
 
+		// Peek at the event type to emit a short-lived child span. These
+		// close immediately and are exported by the SDK batcher even while
+		// the parent SSE span is still open, giving live visibility in
+		// Tempo for delegation results, tool calls, stream finish, etc.
+		// Deltas are high-frequency — we skip them to avoid span spam.
+		var peek struct {
+			Type string `json:"type"`
+		}
+		_ = json.Unmarshal([]byte(data), &peek)
+		if peek.Type != "" && !isHighFrequencyFEPEvent(peek.Type) {
+			_, evSpan := tracer.Start(ctx, "fep.event."+peek.Type,
+				trace.WithAttributes(
+					attribute.String("fep.event.type", peek.Type),
+					attribute.Int("fep.event.index", eventCount),
+				),
+			)
+			evSpan.End()
+		}
+		eventCount++
+
 		fmt.Fprintf(w, "data: %s\n\n", data)
 		flusher.Flush()
 	}
 
+	parentSpan.SetAttributes(attribute.Int("fep.event.count", eventCount))
 	resp.Body.Close()
+}
+
+// isHighFrequencyFEPEvent returns true for FEP event types that fire many
+// times per prompt (e.g. per-token streaming). We skip span emission for
+// these to keep trace volume sane; their presence is still reflected in
+// the parent span's fep.event.count attribute.
+func isHighFrequencyFEPEvent(t string) bool {
+	switch t {
+	case "text_delta", "reasoning_delta", "tool_input_delta":
+		return true
+	}
+	return false
 }
 
 // ── Interactive control ──

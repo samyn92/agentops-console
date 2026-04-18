@@ -54,6 +54,12 @@ export interface ErrorPart {
   retryable?: boolean
 }
 
+/** Runtime warning surfaced via the FEP `warnings` event. */
+export interface WarningPart {
+  type: "warning"
+  message: string
+}
+
 /** Structured delegation result — rendered as a rich card in the chat. */
 export interface DelegationResultPart {
   type: "delegation-result"
@@ -85,6 +91,7 @@ export type MessagePart =
   | StepFinishPart
   | SourcePart
   | ErrorPart
+  | WarningPart
   | DelegationResultPart
 
 // ---- Messages ----

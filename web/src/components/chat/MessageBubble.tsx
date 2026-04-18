@@ -4,7 +4,7 @@
 import { For, Show, createMemo } from 'solid-js';
 import type {
   ChatMessage, MessagePart, TextPart, ReasoningPart, ToolPart,
-  SourcePart, ErrorPart, DelegationResultPart,
+  SourcePart, ErrorPart, WarningPart, DelegationResultPart,
 } from '../../types';
 import StreamingText from './StreamingText';
 import ReasoningBlock from './ReasoningBlock';
@@ -19,6 +19,8 @@ interface MessageBubbleProps {
   activeText?: { id: string; content: string } | null;
   activeReasoning?: { id: string; content: string } | null;
   isLastAssistant?: boolean;
+  /** Whether this assistant bubble is actively streaming */
+  isStreaming?: boolean;
   /** Whether the previous message is the same role (for tighter grouping) */
   prevSameRole?: boolean;
   class?: string;
@@ -104,7 +106,14 @@ export default function MessageBubble(props: MessageBubbleProps) {
   return (
     <Show when={hasVisibleContent()}>
       <div class={`group ${topSpacing()} ${props.class || ''}`}>
-        <div class="max-w-[92%] md:max-w-[80%] space-y-4">
+        <div class={`max-w-[92%] md:max-w-[80%] space-y-4 relative ${
+          props.isStreaming ? 'streaming-bubble' : ''
+        }`}>
+          {/* Streaming accent bar — subtle left edge indicator during active streaming */}
+          <Show when={props.isStreaming}>
+            <div class="streaming-bubble__accent" />
+          </Show>
+
           {/* Render grouped parts */}
           <For each={groups()}>
             {(group) => {
@@ -125,7 +134,7 @@ export default function MessageBubble(props: MessageBubbleProps) {
                   </div>
                 );
               }
-              // Standalone parts (tool, error, source)
+              // Standalone parts (tool, error, warning, source)
               return (
                 <For each={group.parts}>
                   {(part) => {
@@ -139,6 +148,16 @@ export default function MessageBubble(props: MessageBubbleProps) {
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
                           </svg>
                           <span class="text-[13px] leading-[18px] text-error">{(part as ErrorPart).error}</span>
+                        </div>
+                      );
+                    }
+                    if (part.type === 'warning') {
+                      return (
+                        <div class="flex items-start gap-2 border border-warning/30 bg-warning/5 rounded-xl px-3 py-2 fade-slide-in">
+                          <svg class="w-4 h-4 text-warning shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                          </svg>
+                          <span class="text-[13px] leading-[18px] text-warning">{(part as WarningPart).message}</span>
                         </div>
                       );
                     }

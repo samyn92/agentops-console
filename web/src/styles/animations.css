@@ -1,3 +1,89 @@
+/* ===== Streaming Bubble — ambient left accent bar ===== */
+/* Applied to the active assistant message during streaming.
+   Gives continuous visual feedback that the agent is alive,
+   even during phase transitions (text_start→delta gap, between steps). */
+
+.streaming-bubble {
+  padding-left: 12px;
+}
+
+.streaming-bubble__accent {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  border-radius: 3px;
+  background: var(--accent);
+  animation: streaming-accent-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes streaming-accent-pulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.8; }
+}
+
+:root.dark .streaming-bubble__accent {
+  box-shadow: 0 0 8px 1px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+/* ===== Composer Processing — animated gradient border ===== */
+/* Subtle ambient glow on the composer container during streaming. */
+
+.composer-processing {
+  position: relative;
+}
+
+.composer-processing::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--accent) 40%, transparent) 30%,
+    var(--accent) 50%,
+    color-mix(in srgb, var(--accent) 40%, transparent) 70%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: composer-shimmer 2.5s ease-in-out infinite;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  pointer-events: none;
+  z-index: 1;
+}
+
+@keyframes composer-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ===== Hydration skeleton ===== */
+
+.chat-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 24px 0;
+}
+
+.chat-skeleton__line {
+  height: 12px;
+  border-radius: 6px;
+  background: var(--bg-tertiary, rgba(128, 128, 128, 0.08));
+  animation: skeleton-shimmer 1.8s ease-in-out infinite;
+}
+
+@keyframes skeleton-shimmer {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.7; }
+}
+
 /* ===== Smooth content transitions ===== */
 .fade-in {
   animation: fadeIn 0.15s ease-out;
@@ -139,4 +225,11 @@
 @keyframes collapsible-close {
   from { height: var(--height); opacity: 1; }
   to { height: 0; opacity: 0; }
+}
+
+/* ===== Reduced motion — disable ambient animations ===== */
+@media (prefers-reduced-motion: reduce) {
+  .streaming-bubble__accent { animation: none !important; opacity: 0.5; }
+  .composer-processing::before { animation: none !important; background-position: 50% 0; }
+  .chat-skeleton__line { animation: none !important; opacity: 0.5; }
 }

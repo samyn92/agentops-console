@@ -36,10 +36,12 @@ import type {
 // Each phase maps to a distinct label + animation character.
 
 export type ThinkingPhase =
+  | 'connecting'  // user submitted, waiting for SSE connection + agent_start
   | 'analyzing'   // agent_start received, waiting for first LLM response
   | 'thinking'    // step_start received, LLM processing
   | 'reasoning'   // reasoning_start received, deep chain-of-thought
   | 'planning'    // reasoning_end received, transitioning to action
+  | 'generating'  // text_start received, waiting for first text_delta
   | 'executing'   // step_finish with tool-calls finish_reason
   | 'delegating'  // delegation.fan_out received
   | 'idle';       // not actively processing
@@ -220,6 +222,10 @@ createEffect(() => {
 const [streamingAgentKeys, setStreamingAgentKeys] = createSignal<Set<string>>(new Set());
 export { streamingAgentKeys };
 
+// ── Hydration state (for skeleton loader) ──
+const [isHydrating, setIsHydrating] = createSignal(false);
+export { isHydrating };
+
 function markStreaming(key: string, isStreaming: boolean) {
   setStreamingAgentKeys((prev) => {
     const next = new Set(prev);
@@ -265,7 +271,7 @@ export async function sendMessage(prompt: string) {
     setStr(true);
     setStep(0);
     setUsage(null);
-    setThinkingSt({ phase: 'analyzing', stepNumber: 0, stepCount: 0, finishReason: '', toolCallCount: 0 });
+    setThinkingSt({ phase: 'connecting', stepNumber: 0, stepCount: 0, finishReason: '', toolCallCount: 0 });
     setATxt(null);
     setAReason(null);
     setAToolIn(null);
@@ -488,15 +494,24 @@ function handleFEPEvent(state: AgentChatState, key: string, event: FEPEvent) {
       break;
 
     case 'text_start':
-      setThinking((prev) => ({ ...prev, phase: 'idle' }));
+      // Phase: generating — waiting for first text_delta to produce visible content.
+      // AgentThinking hides but the bubble shows a mini inline indicator.
+      // Once text_delta arrives, the StreamingText cursor takes over seamlessly.
+      setThinking((prev) => ({ ...prev, phase: 'generating' }));
       setATxt({ id: event.id || '', content: '' });
       break;
 
-    case 'text_delta':
+    case 'text_delta': {
+      // Transition from 'generating' → idle on first actual delta
+      const [getThinkSt] = state.thinkingState;
+      if (getThinkSt().phase === 'generating') {
+        setThinking((prev) => ({ ...prev, phase: 'idle' }));
+      }
       setATxt((prev) =>
         prev ? { ...prev, content: prev.content + (event.delta || '') } : null,
       );
       break;
+    }
 
     case 'text_end':
       finalizeActiveText(state);
@@ -642,6 +657,28 @@ function handleFEPEvent(state: AgentChatState, key: string, event: FEPEvent) {
         url: event.url || '',
         title: event.title || '',
       });
+      break;
+
+    case 'warnings': {
+      // Runtime warnings (context pressure, deprecated tools, etc.)
+      const warnings = (event as any).warnings as string[] | undefined;
+      if (warnings && warnings.length > 0) {
+        for (const warning of warnings) {
+          appendPart(state, { type: 'warning', message: warning });
+        }
+      }
+      break;
+    }
+
+    case 'session_status':
+      // Update phase based on runtime-reported session status
+      if ((event as any).status === 'waiting') {
+        // Agent is blocked (e.g., waiting for permission/question)
+        // Don't override if we already have a permission/question pending
+        if (!state.pendingPermission[0]() && !state.pendingQuestion[0]()) {
+          setThinking((prev) => ({ ...prev, phase: 'analyzing' }));
+        }
+      }
       break;
 
     case 'session_idle':
@@ -943,6 +980,7 @@ async function hydrateFromWorkingMemory(ns: string, name: string) {
   if (state?.streaming[0]()) return;
   if (state && getMsgs(state).length > 0) return;
 
+  setIsHydrating(true);
   try {
     const runtimeMsgs = await conversationAPI.getWorkingMemory(ns, name);
     if (!runtimeMsgs || runtimeMsgs.length === 0) return;
@@ -958,6 +996,8 @@ async function hydrateFromWorkingMemory(ns: string, name: string) {
     freshState.msgStore[1]('list', reconcile(chatMsgs));
   } catch {
     // Silently fail — agent might be unreachable or BFF not ready
+  } finally {
+    setIsHydrating(false);
   }
 }
 

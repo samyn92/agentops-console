@@ -13,10 +13,12 @@ interface AgentThinkingProps {
 
 /** Phase display configuration */
 const PHASE_CONFIG: Record<ThinkingPhase, { label: string; animClass: string }> = {
+  connecting: { label: 'Connecting',  animClass: 'agent-thinking--phase-connecting' },
   analyzing:  { label: 'Analyzing',  animClass: 'agent-thinking--phase-analyzing' },
   thinking:   { label: 'Thinking',   animClass: 'agent-thinking--phase-thinking' },
   reasoning:  { label: 'Reasoning',  animClass: 'agent-thinking--phase-reasoning' },
   planning:   { label: 'Planning',   animClass: 'agent-thinking--phase-planning' },
+  generating: { label: 'Writing',    animClass: 'agent-thinking--phase-generating' },
   executing:  { label: 'Executing',  animClass: 'agent-thinking--phase-executing' },
   delegating: { label: 'Delegating', animClass: 'agent-thinking--phase-delegating' },
   idle:       { label: 'Thinking',   animClass: 'agent-thinking--phase-thinking' },
@@ -127,9 +129,6 @@ export default function AgentThinking(props: AgentThinkingProps) {
         <Show when={stepLabel()}>
           <span class="agent-thinking__step">
             {stepLabel()}
-            <Show when={reasonHint()}>
-              <span class="agent-thinking__reason">{reasonHint()}</span>
-            </Show>
           </span>
         </Show>
 
