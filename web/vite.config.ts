@@ -86,6 +86,12 @@ export default defineConfig({
     }),
   ],
   server: {
+    // hostPath mounts on k3s don't reliably emit inotify events; force polling
+    // so file edits inside the dev pod's mounted /workspace are picked up by HMR.
+    watch: {
+      usePolling: true,
+      interval: 300,
+    },
     proxy: {
       // SSE / streaming endpoints — disable proxy buffering
       '/api/v1/events': {

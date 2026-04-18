@@ -164,6 +164,11 @@ export interface AgentRunResponse {
       branch: string
       baseBranch?: string
     }
+    /** Optional caller hint for the run-level outcome. The executing agent
+     *  finalizes the authoritative value into status.outcome.intent. */
+    outcome?: {
+      intent?: AgentRunIntent
+    }
   }
   status?: {
     phase: string
@@ -176,11 +181,34 @@ export interface AgentRunResponse {
     startTime?: string
     completionTime?: string
     error?: string
-    // Git workspace fields (populated when spec.git is set)
-    pullRequestURL?: string
-    commits?: number
-    branch?: string
+    /** Structured outcome written by the executing runtime at end-of-task.
+     *  Replaces the legacy flat pullRequestURL/commits/branch fields. */
+    outcome?: AgentRunOutcome
   }
+}
+
+/** Run-level intent classifier — keep in sync with agentops-core
+ *  api/v1alpha1.AgentRunIntent. */
+export type AgentRunIntent = 'change' | 'plan' | 'incident' | 'discovery' | 'noop'
+
+/** Concrete artifact produced by a run. */
+export interface AgentRunArtifact {
+  kind: 'pr' | 'mr' | 'issue' | 'memory' | 'commit'
+  /** Forge provider hint (github, gitlab, gitea, codeberg, bitbucket). */
+  provider?: string
+  /** Full URL when the artifact has one (PR/MR/Issue link). */
+  url?: string
+  /** Git ref (branch / commit sha) or memory note ID. */
+  ref?: string
+  /** Short human-readable title. */
+  title?: string
+}
+
+/** status.outcome on AgentRun: intent + artifacts + summary. */
+export interface AgentRunOutcome {
+  intent?: AgentRunIntent
+  artifacts?: AgentRunArtifact[]
+  summary?: string
 }
 
 // ---- Channel CR ----

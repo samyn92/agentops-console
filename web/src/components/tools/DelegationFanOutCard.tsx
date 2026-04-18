@@ -4,10 +4,10 @@
 import { Show, For, createMemo } from 'solid-js';
 import Badge from '../shared/Badge';
 import RunPhaseIcon from '../shared/RunPhaseIcon';
-import { allRuns, selectRun, getRunSource } from '../../stores/runs';
+import RunOutcome from '../shared/RunOutcome';
+import { allRuns, selectRun } from '../../stores/runs';
 import { selectAgent } from '../../stores/agents';
 import { showRunDetail } from '../../stores/view';
-import { getResourceForge, getResourceRepoName } from '../../stores/resources';
 import { relativeTime } from '../../lib/format';
 import type { ToolMetadata, AgentRunResponse } from '../../types';
 
@@ -117,13 +117,9 @@ export default function DelegationFanOutCard(props: DelegationFanOutCardProps) {
     const phase = () => getRunPhase(rowProps.run.runName);
     const resolved = () => resolvedRun(rowProps.run.runName);
     const completed = () => completedRuns()[rowProps.run.runName];
-    const forge = createMemo(() => {
-      const r = resolved();
-      if (!r?.spec.git?.resourceRef) return null;
-      return getResourceForge(r.spec.git.resourceRef);
-    });
-    const branch = () => resolved()?.status?.branch;
-    const hasGit = () => !!(branch() || resolved()?.spec.git);
+    const outcome = () => resolved()?.status?.outcome;
+    const intentHint = () => resolved()?.spec.outcome?.intent;
+    const hasOutcome = () => !!(outcome() || intentHint());
     const isClickable = () => !!resolved();
 
     return (
@@ -140,19 +136,6 @@ export default function DelegationFanOutCard(props: DelegationFanOutCardProps) {
             {rowProps.run.agentName}
           </span>
 
-          {/* Git branch if available */}
-          <Show when={hasGit() && branch()}>
-            <span class={`run-card__branch-tag text-[10px] ${
-              forge() === 'gitlab' ? 'run-card__branch-tag--gitlab' :
-              forge() === 'github' ? 'run-card__branch-tag--github' : ''
-            }`}>
-              <svg class="run-card__branch-tag-icon w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 3v12m0 0a3 3 0 103 3H15a3 3 0 100-3H9m-3 0a3 3 0 01-3-3V6a3 3 0 013-3h0" />
-              </svg>
-              <span class="run-card__branch-tag-branch">{branch()}</span>
-            </span>
-          </Show>
-
           <span class="flex-1" />
 
           {/* Duration (from FEP completion event) */}
@@ -163,6 +146,18 @@ export default function DelegationFanOutCard(props: DelegationFanOutCardProps) {
           {/* Phase icon */}
           <RunPhaseIcon phase={phase()} />
         </div>
+
+        {/* Outcome chips */}
+        <Show when={hasOutcome()}>
+          <div class="mt-1" onClick={(e) => e.stopPropagation()}>
+            <RunOutcome
+              outcome={outcome()}
+              intentHint={intentHint()}
+              variant="compact"
+              showSummary={false}
+            />
+          </div>
+        </Show>
 
         {/* Run name + time */}
         <div class="flex items-center gap-2 mt-0.5 text-[10px] text-text-muted">

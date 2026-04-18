@@ -1,6 +1,7 @@
 // Chat types — UI-side message representations
 
 import type { Usage, ToolMetadata } from "./fep"
+import type { AgentRunOutcome } from "./api"
 
 // ---- Message Parts ----
 
@@ -77,9 +78,9 @@ export interface DelegationResultPart {
     model: string
     traceID?: string
     duration: string
-    pullRequestURL?: string
-    commits?: number
-    branch?: string
+    /** Structured run outcome (intent + artifacts + summary). Replaces
+     *  legacy pullRequestURL/commits/branch flat fields. */
+    outcome?: AgentRunOutcome
     failureReason?: string
   }>
 }

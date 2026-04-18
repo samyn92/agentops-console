@@ -18,12 +18,13 @@ import {
   type RunSource,
 } from '../../stores/runs';
 import { selectAgent } from '../../stores/agents';
-import { getResourceForge, getResourceRepoName } from '../../stores/resources';
+import { getResourceForge } from '../../stores/resources';
 import { showRunDetail, clearCenterOverlay } from '../../stores/view';
 import { relativeTime } from '../../lib/format';
 import RunPhaseIcon from '../shared/RunPhaseIcon';
+import RunOutcome from '../shared/RunOutcome';
 import { Tabs } from '@ark-ui/solid/tabs';
-import { ForgeIcon, ForgeWatermark, SourceIcon, PlayIcon, GitBranchIcon, HamburgerIcon } from '../shared/Icons';
+import { ForgeWatermark, SourceIcon, PlayIcon, HamburgerIcon } from '../shared/Icons';
 
 export default function RunsPanelContent() {
   return (
@@ -68,12 +69,11 @@ export default function RunsPanelContent() {
                 const key = () => `${run.metadata.namespace}/${run.metadata.name}`;
                 const isSelected = () => selectedRunKey() === key();
                 const source = () => getRunSource(run);
-                const hasGit = () => !!run.status?.branch || !!run.spec.git;
                 const isRunning = () => run.status?.phase === 'Running';
                 const isFailed = () => run.status?.phase === 'Failed';
                 const forge = () => getResourceForge(run.spec.git?.resourceRef);
-                const repoName = () => getResourceRepoName(run.spec.git?.resourceRef);
                 const groupId = () => getRunDelegationGroup(run);
+                const hasOutcome = () => !!run.status?.outcome || !!run.spec.outcome?.intent;
 
                 const cardClass = () => {
                   const classes = ['run-card'];
@@ -102,52 +102,39 @@ export default function RunsPanelContent() {
                       <ForgeWatermark forge={forge()!} />
                     </Show>
 
-                    {/* Row 1 (Header): Source/forge icon + Git branch tag (or run name) + commits + phase icon */}
+                    {/* Row 1 (Header): Source icon + run name + phase icon */}
                     <div class="flex items-center gap-1.5">
-                      <Show
-                        when={hasGit() && forge()}
-                        fallback={<SourceIcon source={source()} />}
-                      >
-                        <ForgeIcon forge={forge()!} />
-                      </Show>
-                      <Show
-                        when={hasGit() && run.status?.branch}
-                        fallback={
-                          <span class="run-card__title truncate flex-1">{run.metadata.name}</span>
-                        }
-                      >
-                        <span class={`run-card__branch-tag ${forge() === 'gitlab' ? 'run-card__branch-tag--gitlab' : forge() === 'github' ? 'run-card__branch-tag--github' : ''}`}>
-                          <GitBranchIcon class="run-card__branch-tag-icon" />
-                          <span class="run-card__branch-tag-text">
-                            <Show when={repoName()}>
-                              <span class="run-card__branch-tag-repo">{repoName()}</span>
-                            </Show>
-                            <span class="run-card__branch-tag-branch">{run.status!.branch}</span>
-                          </span>
-                        </span>
-                        <span class="flex-1" />
-                      </Show>
-                      <Show when={run.status?.commits}>
-                        <span class="run-card__commits-inline">{run.status!.commits}</span>
-                      </Show>
+                      <SourceIcon source={source()} />
+                      <span class="run-card__title truncate flex-1">{run.metadata.name}</span>
                       <RunPhaseIcon phase={run.status?.phase} />
                     </div>
 
-                    {/* Row 2 (Description): Prompt preview — main content area */}
+                    {/* Row 2: Outcome chips */}
+                    <Show when={hasOutcome()}>
+                      <div class="mt-1.5" onClick={(e) => e.stopPropagation()}>
+                        <RunOutcome
+                          outcome={run.status?.outcome}
+                          intentHint={run.spec.outcome?.intent}
+                          variant="compact"
+                          showSummary={false}
+                        />
+                      </div>
+                    </Show>
+
+                    {/* Row 3 (Description): Prompt preview */}
                     <Show when={run.spec.prompt}>
                       <p class="run-card__prompt">{run.spec.prompt}</p>
                     </Show>
 
-                    {/* Row 3 (Footer): Run name + delegation group badge + timestamp */}
+                    {/* Row 4 (Footer): delegation group badge + timestamp */}
                     <div class="run-card__meta">
-                      <span class="truncate">{run.metadata.name}</span>
                       <Show when={groupId()}>
                         <span class="inline-flex items-center gap-0.5 px-1 py-0 text-[9px] font-mono rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 shrink-0" title={`Delegation group ${groupId()}`}>
                           <HamburgerIcon class="w-2 h-2" />
                           {groupId()}
                         </span>
                       </Show>
-                      <span class="run-card__time">{relativeTime(run.metadata.creationTimestamp)}</span>
+                      <span class="run-card__time ml-auto">{relativeTime(run.metadata.creationTimestamp)}</span>
                     </div>
                   </button>
                 );

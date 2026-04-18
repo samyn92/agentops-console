@@ -1,5 +1,7 @@
 // TaskAgentView — central view for task agents.
-// Shows a rich run timeline with git workspace details, replacing the empty ChatView.
+// Shows a rich run timeline with structured outcome (intent + artifacts),
+// replacing the empty ChatView. PR/MR/branch/commit chips are rendered by
+// the shared <RunOutcome> component.
 import { For, Show, createSignal, createMemo, createResource } from 'solid-js';
 import { Collapsible } from '@ark-ui/solid/collapsible';
 import { selectedAgent, agentList } from '../../stores/agents';
@@ -7,6 +9,7 @@ import { contextualRuns, getRunSource, type RunSource } from '../../stores/runs'
 import { agents as agentsAPI } from '../../lib/api';
 import Badge from '../shared/Badge';
 import NeuralTrace from '../shared/NeuralTrace';
+import RunOutcome from '../shared/RunOutcome';
 import { relativeTime, phaseVariant, formatTokens, formatCost, formatDateTime } from '../../lib/format';
 import type { AgentRunResponse, AgentCRD } from '../../types';
 
@@ -128,7 +131,8 @@ function RunCard(props: { run: AgentRunResponse }) {
     const phase = run().status?.phase;
     return phase === 'Running' || phase === 'Pending' || phase === 'Queued';
   };
-  const hasGit = () => !!run().status?.branch || !!run().spec.git;
+  const hasGit = () => !!run().spec.git;
+  const hasOutcome = () => !!run().status?.outcome || !!run().spec.outcome?.intent;
 
   return (
     <Collapsible.Root
@@ -154,43 +158,15 @@ function RunCard(props: { run: AgentRunResponse }) {
           </Badge>
         </div>
 
-        {/* Git branch badge row */}
-        <Show when={hasGit()}>
-          <div class="flex items-center gap-2 mb-1.5">
-            <Show when={run().status?.branch}>
-              <span class="git-branch-badge">
-                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 3v12m0 0a3 3 0 103 3H15a3 3 0 100-3H9m-3 0a3 3 0 01-3-3V6a3 3 0 013-3h0" />
-                </svg>
-                <span class="truncate">{run().status!.branch}</span>
-              </span>
-            </Show>
-            <Show when={run().status?.pullRequestURL}>
-              <a
-                href={run().status!.pullRequestURL}
-                target="_blank"
-                rel="noopener noreferrer"
-                class="git-pr-badge"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
-                </svg>
-                <span>MR</span>
-                <svg class="w-2.5 h-2.5 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4.5 19.5l15-15m0 0H8.25m11.25 0v11.25" />
-                </svg>
-              </a>
-            </Show>
-            <Show when={run().status?.commits}>
-              <span class="git-commits-badge">
-                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <circle cx="12" cy="12" r="4" stroke-width="2" />
-                  <path stroke-linecap="round" stroke-width="2" d="M12 2v6m0 8v6" />
-                </svg>
-                <span>{run().status!.commits} commit{run().status!.commits! > 1 ? 's' : ''}</span>
-              </span>
-            </Show>
+        {/* Outcome badge row (intent + artifacts) */}
+        <Show when={hasOutcome()}>
+          <div class="mb-1.5" onClick={(e) => e.stopPropagation()}>
+            <RunOutcome
+              outcome={run().status?.outcome}
+              intentHint={run().spec.outcome?.intent}
+              variant="compact"
+              showSummary={false}
+            />
           </div>
         </Show>
 
@@ -266,28 +242,23 @@ function RunCard(props: { run: AgentRunResponse }) {
                 <Show when={run().spec.git?.resourceRef}>
                   <DetailRow label="Resource" value={run().spec.git!.resourceRef} />
                 </Show>
-                <Show when={run().status?.branch}>
-                  <DetailRow label="Branch" value={run().status!.branch!} mono />
-                </Show>
                 <Show when={run().spec.git?.baseBranch}>
                   <DetailRow label="Base" value={run().spec.git!.baseBranch!} mono />
                 </Show>
-                <Show when={run().status?.commits !== undefined && run().status?.commits !== 0}>
-                  <DetailRow label="Commits" value={String(run().status!.commits)} />
-                </Show>
-                <Show when={run().status?.pullRequestURL}>
-                  <div class="flex items-center gap-2 text-xs">
-                    <span class="text-text-muted w-20 flex-shrink-0">PR / MR</span>
-                    <a
-                      href={run().status!.pullRequestURL}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      class="text-accent hover:underline font-mono truncate"
-                    >
-                      {run().status!.pullRequestURL}
-                    </a>
-                  </div>
-                </Show>
+              </div>
+            </div>
+          </Show>
+
+          {/* Outcome (full) */}
+          <Show when={hasOutcome()}>
+            <div>
+              <span class="text-[10px] text-text-muted uppercase tracking-wider font-medium">Outcome</span>
+              <div class="mt-1.5">
+                <RunOutcome
+                  outcome={run().status?.outcome}
+                  intentHint={run().spec.outcome?.intent}
+                  variant="full"
+                />
               </div>
             </div>
           </Show>

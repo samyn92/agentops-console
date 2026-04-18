@@ -9,6 +9,7 @@ import Badge from '../shared/Badge';
 import NeuralTrace from '../shared/NeuralTrace';
 import Spinner from '../shared/Spinner';
 import Markdown from '../shared/Markdown';
+import RunOutcome from '../shared/RunOutcome';
 import { phaseVariant, formatDateTime, relativeTime, formatTokens, formatCost } from '../../lib/format';
 import type { AgentCRD, AgentResourceBinding, AgentRunResponse, AgentMemoryConfig, AgentResourceRef, AgentResourceRequirements, AgentStorageConfig } from '../../types';
 
@@ -467,38 +468,15 @@ function LastRunCard(props: { run: AgentRunResponse }) {
           </Show>
         </div>
 
-        {/* Git info */}
-        <Show when={run().status?.branch}>
-          <div class="flex items-center gap-2">
-            <span class="git-branch-badge git-branch-badge--sm">
-              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 3v12m0 0a3 3 0 103 3H15a3 3 0 100-3H9m-3 0a3 3 0 01-3-3V6a3 3 0 013-3h0" />
-              </svg>
-              <span class="truncate">{run().status!.branch}</span>
-            </span>
-            <Show when={run().status?.pullRequestURL}>
-              <a
-                href={run().status!.pullRequestURL}
-                target="_blank"
-                rel="noopener noreferrer"
-                class="git-pr-badge git-pr-badge--sm"
-              >
-                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
-                </svg>
-                <span>PR</span>
-              </a>
-            </Show>
-            <Show when={run().status?.commits}>
-              <span class="git-commits-badge git-commits-badge--sm">
-                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <circle cx="12" cy="12" r="4" stroke-width="2" />
-                  <path stroke-linecap="round" stroke-width="2" d="M12 2v6m0 8v6" />
-                </svg>
-                <span>{run().status!.commits}</span>
-              </span>
-            </Show>
-          </div>
+        {/* Run outcome (intent + artifacts: PR/MR/Issue/branch/commit/memory).
+            Falls back to spec.outcome.intent when status not yet finalized. */}
+        <Show when={run().status?.outcome || run().spec.outcome?.intent}>
+          <RunOutcome
+            outcome={run().status?.outcome}
+            intentHint={run().spec.outcome?.intent}
+            variant="full"
+            showSummary={false}
+          />
         </Show>
 
         {/* Error preview */}

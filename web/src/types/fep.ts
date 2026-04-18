@@ -1,5 +1,7 @@
 // FEP TypeScript types — mirrors the Go types in internal/fep/types.go
 
+import type { AgentRunOutcome } from "./api"
+
 // ---- Usage & Metadata ----
 
 export interface Usage {
@@ -295,9 +297,9 @@ export interface DelegationResultRunInfo {
   model: string
   traceID?: string
   duration: string
-  pullRequestURL?: string
-  commits?: number
-  branch?: string
+  /** Structured run outcome (intent + artifacts + summary). Replaces legacy
+   *  pullRequestURL/commits/branch flat fields. */
+  outcome?: AgentRunOutcome
   failureReason?: string
 }
 

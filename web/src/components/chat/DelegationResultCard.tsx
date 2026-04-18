@@ -1,9 +1,12 @@
 // DelegationResultCard — renders a structured delegation result as a rich card.
 // Replaces the raw [DELEGATION RESULT] text dump with a scannable card showing
-// agent name, status, duration, PR link, branch, tool calls, and collapsible output.
+// agent name, status, duration, run outcome (intent + artifacts), tool calls,
+// and collapsible output. Per-run outcome (PR/MR/Issue links, branch/commit
+// chips, intent badge) is rendered by the shared <RunOutcome> component.
 import { Show, For, createSignal, createMemo } from 'solid-js';
 import { showTraceDetail } from '../../stores/view';
 import Markdown from '../shared/Markdown';
+import RunOutcome from '../shared/RunOutcome';
 import type { DelegationResultPart } from '../../types';
 
 interface DelegationResultCardProps {
@@ -74,9 +77,7 @@ function RunResultRow(props: {
 }) {
   const [expanded, setExpanded] = createSignal(false);
   const r = () => props.run;
-  const hasPR = () => !!r().pullRequestURL;
   const hasOutput = () => !!r().output;
-  const forge = () => r().pullRequestURL ? forgeFromURL(r().pullRequestURL!) : null;
 
   return (
     <div class={`rounded-lg border overflow-hidden ${phaseBg(r().phase)}`}>
@@ -101,48 +102,8 @@ function RunResultRow(props: {
 
       {/* Body */}
       <div class="px-3 py-2 space-y-2">
-        {/* PR + Branch row */}
-        <Show when={hasPR() || r().branch}>
-          <div class="flex flex-wrap items-center gap-2">
-            <Show when={hasPR()}>
-              <a
-                href={r().pullRequestURL}
-                target="_blank"
-                rel="noopener noreferrer"
-                class="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-accent/8 border border-accent/20 hover:bg-accent/15 transition-colors text-xs font-mono text-accent"
-                onClick={(e) => e.stopPropagation()}
-              >
-                {/* Forge icon */}
-                <Show when={forge() === 'github'}>
-                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/>
-                  </svg>
-                </Show>
-                <Show when={forge() === 'gitlab'}>
-                  <svg class="w-3.5 h-3.5 text-[#FC6D26]" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M22.65 14.39L12 22.13 1.35 14.39a.84.84 0 01-.3-.94l1.22-3.78 2.44-7.51A.42.42 0 014.82 2a.43.43 0 01.58 0 .42.42 0 01.11.18l2.44 7.49h8.1l2.44-7.51A.42.42 0 0118.6 2a.43.43 0 01.58 0 .42.42 0 01.11.18l2.44 7.51L23 13.45a.84.84 0 01-.35.94z"/>
-                  </svg>
-                </Show>
-                <span>{repoFromURL(r().pullRequestURL!) || 'PR'}</span>
-                <span class="font-semibold">{prNumber(r().pullRequestURL!) || ''}</span>
-                <svg class="w-3 h-3 text-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                </svg>
-              </a>
-            </Show>
-            <Show when={r().branch}>
-              <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-surface-2 border border-border-subtle text-[10px] font-mono text-text-secondary">
-                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 3v12m0 0a3 3 0 103 3H15a3 3 0 100-3H9m-3 0a3 3 0 01-3-3V6a3 3 0 013-3h0" />
-                </svg>
-                {r().branch}
-              </span>
-            </Show>
-            <Show when={r().commits && r().commits! > 0}>
-              <span class="text-[10px] text-text-muted">{r().commits} commit{r().commits! > 1 ? 's' : ''}</span>
-            </Show>
-          </div>
-        </Show>
+        {/* Outcome: intent chip + artifacts (PR/MR/Issue/branch/commit/memory) */}
+        <RunOutcome outcome={r().outcome} variant="full" showSummary={false} />
 
         {/* Stats row */}
         <div class="flex flex-wrap items-center gap-3 text-[10px] text-text-muted">

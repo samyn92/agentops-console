@@ -21,13 +21,14 @@ import {
 } from '../../stores/runs';
 import { selectedAgent } from '../../stores/agents';
 import { rightPanelState, toggleRightPanel } from '../../stores/view';
-import { getResourceForge, getResourceRepoName } from '../../stores/resources';
+import { getResourceForge } from '../../stores/resources';
 import Spinner from '../shared/Spinner';
 import RunPhaseIcon from '../shared/RunPhaseIcon';
+import RunOutcome from '../shared/RunOutcome';
 import { relativeTime, formatTokens, formatCost, formatDateTime } from '../../lib/format';
 import type { AgentRunResponse } from '../../types';
 import { Tabs } from '@ark-ui/solid/tabs';
-import { ForgeIcon, ForgeWatermark, SourceIcon, HamburgerIcon, RefreshIcon, PlayIcon, GitBranchIcon } from '../shared/Icons';
+import { ForgeWatermark, SourceIcon, HamburgerIcon, RefreshIcon, PlayIcon } from '../shared/Icons';
 import DetailRow from '../shared/DetailRow';
 import Tip from '../shared/Tip';
 
@@ -216,9 +217,8 @@ export default function RunsPanel(props: RunsPanelProps) {
                   const key = () => `${run.metadata.namespace}/${run.metadata.name}`;
                   const isSelected = () => selectedRunKey() === key();
                   const source = () => getRunSource(run);
-                  const hasGit = () => !!run.status?.branch || !!run.spec.git;
                   const forge = () => getResourceForge(run.spec.git?.resourceRef);
-                  const repoName = () => getResourceRepoName(run.spec.git?.resourceRef);
+                  const hasOutcome = () => !!run.status?.outcome || !!run.spec.outcome?.intent;
 
                   return (
                     <button
@@ -240,44 +240,31 @@ export default function RunsPanel(props: RunsPanelProps) {
                         <ForgeWatermark forge={forge()!} />
                       </Show>
 
-                      {/* Row 1: Source/forge icon + Git branch tag (or run name) + commits + phase icon */}
+                      {/* Row 1: Source icon + run name + phase icon */}
                       <div class="flex items-center gap-1.5">
-                        <Show
-                          when={hasGit() && forge()}
-                          fallback={<SourceIcon source={source()} />}
-                        >
-                          <ForgeIcon forge={forge()!} />
-                        </Show>
-                        <Show
-                          when={hasGit() && run.status?.branch}
-                          fallback={
-                            <span class="run-card__title truncate flex-1">{run.metadata.name}</span>
-                          }
-                        >
-                          <span class={`run-card__branch-tag ${forge() === 'gitlab' ? 'run-card__branch-tag--gitlab' : forge() === 'github' ? 'run-card__branch-tag--github' : ''}`}>
-                            <GitBranchIcon class="run-card__branch-tag-icon" />
-                            <span class="run-card__branch-tag-text">
-                              <Show when={repoName()}>
-                                <span class="run-card__branch-tag-repo">{repoName()}</span>
-                              </Show>
-                              <span class="run-card__branch-tag-branch">{run.status!.branch}</span>
-                            </span>
-                          </span>
-                          <span class="flex-1" />
-                        </Show>
-                        <Show when={run.status?.commits}>
-                          <span class="run-card__commits-inline">{run.status!.commits}</span>
-                        </Show>
+                        <SourceIcon source={source()} />
+                        <span class="run-card__title truncate flex-1">{run.metadata.name}</span>
                         <RunPhaseIcon phase={run.status?.phase} />
                       </div>
 
-                      {/* Row 2: Run name (subtitle) + time */}
+                      {/* Row 2: time */}
                       <div class="run-card__meta">
-                        <span class="truncate">{run.metadata.name}</span>
-                        <span class="run-card__time">{relativeTime(run.metadata.creationTimestamp)}</span>
+                        <span class="run-card__time ml-auto">{relativeTime(run.metadata.creationTimestamp)}</span>
                       </div>
 
-                      {/* Row 3: Prompt preview */}
+                      {/* Row 3: Outcome chips */}
+                      <Show when={hasOutcome()}>
+                        <div class="mt-1.5" onClick={(e) => e.stopPropagation()}>
+                          <RunOutcome
+                            outcome={run.status?.outcome}
+                            intentHint={run.spec.outcome?.intent}
+                            variant="compact"
+                            showSummary={false}
+                          />
+                        </div>
+                      </Show>
+
+                      {/* Row 4: Prompt preview */}
                       <Show when={run.spec.prompt}>
                         <p class="run-card__prompt">{run.spec.prompt}</p>
                       </Show>

@@ -9,6 +9,7 @@ import { showRunDetail } from '../../stores/view';
 import { getResourceForge, getResourceRepoName } from '../../stores/resources';
 import { relativeTime } from '../../lib/format';
 import RunPhaseIcon from '../shared/RunPhaseIcon';
+import RunOutcome from '../shared/RunOutcome';
 import type { ToolMetadata, AgentRunResponse } from '../../types';
 
 interface AgentRunCardProps {
@@ -161,7 +162,11 @@ export default function AgentRunCard(props: AgentRunCardProps) {
   });
   const hasGit = createMemo(() => {
     const r = run();
-    return !!(r?.status?.branch || r?.spec.git);
+    return !!r?.spec.git;
+  });
+  const hasOutcome = createMemo(() => {
+    const r = run();
+    return !!(r?.status?.outcome || r?.spec.outcome?.intent);
   });
   const source = createMemo(() => {
     const r = run();
@@ -193,7 +198,7 @@ export default function AgentRunCard(props: AgentRunCardProps) {
           <ForgeWatermark forge={forge()!} />
         </Show>
 
-        {/* Row 1: Source/forge icon + Git branch tag (or run name) + commits + phase icon */}
+        {/* Row 1: Source/forge icon + run name + phase icon */}
         <div class="flex items-center gap-1.5">
           <Show
             when={hasGit() && forge()}
@@ -201,38 +206,28 @@ export default function AgentRunCard(props: AgentRunCardProps) {
           >
             <ForgeIcon forge={forge()!} />
           </Show>
-          <Show
-            when={hasGit() && r.status?.branch}
-            fallback={
-              <span class="run-card__title truncate flex-1">{r.metadata.name}</span>
-            }
-          >
-            <span class={`run-card__branch-tag ${forge() === 'gitlab' ? 'run-card__branch-tag--gitlab' : forge() === 'github' ? 'run-card__branch-tag--github' : ''}`}>
-              <svg class="run-card__branch-tag-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 3v12m0 0a3 3 0 103 3H15a3 3 0 100-3H9m-3 0a3 3 0 01-3-3V6a3 3 0 013-3h0" />
-              </svg>
-              <span class="run-card__branch-tag-text">
-                <Show when={repoName()}>
-                  <span class="run-card__branch-tag-repo">{repoName()}</span>
-                </Show>
-                <span class="run-card__branch-tag-branch">{r.status!.branch}</span>
-              </span>
-            </span>
-            <span class="flex-1" />
-          </Show>
-          <Show when={r.status?.commits}>
-            <span class="run-card__commits-inline">{r.status!.commits}</span>
-          </Show>
+          <span class="run-card__title truncate flex-1">{r.metadata.name}</span>
           <RunPhaseIcon phase={r.status?.phase} />
         </div>
 
-        {/* Row 2: Run name + time */}
+        {/* Row 2: Outcome chips */}
+        <Show when={hasOutcome()}>
+          <div class="mt-1.5" onClick={(e) => e.stopPropagation()}>
+            <RunOutcome
+              outcome={r.status?.outcome}
+              intentHint={r.spec.outcome?.intent}
+              variant="compact"
+              showSummary={false}
+            />
+          </div>
+        </Show>
+
+        {/* Row 3: time */}
         <div class="run-card__meta">
-          <span class="truncate">{r.metadata.name}</span>
-          <span class="run-card__time">{relativeTime(r.metadata.creationTimestamp)}</span>
+          <span class="run-card__time ml-auto">{relativeTime(r.metadata.creationTimestamp)}</span>
         </div>
 
-        {/* Row 3: Prompt preview */}
+        {/* Row 4: Prompt preview */}
         <Show when={r.spec.prompt}>
           <p class="run-card__prompt">{r.spec.prompt}</p>
         </Show>
