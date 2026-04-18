@@ -19,7 +19,12 @@ interface SpanNode {
   depth: number;
   /** Virtual tool call rows synthesized from tool.call events on the root span */
   isVirtualToolCall?: boolean;
+  /** When >1, this row represents N consecutive identical failed calls collapsed together */
+  duplicateGroupCount?: number;
 }
+
+/** Filter modes for the waterfall */
+type WaterfallFilter = 'all' | 'errors' | 'tools' | 'llm';
 
 /** Parsed tool.call event data from span logs */
 type ToolEventData = {
@@ -30,6 +35,7 @@ type ToolEventData = {
   toolInput?: string;
   toolOutput?: string;
   toolStep?: unknown;
+  toolPreview?: string;
   timestamp: number;
   parentNode: SpanNode;
 };
@@ -125,6 +131,7 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
           toolInput: log.fields?.find((f) => f.key === 'tool.input')?.value as string | undefined,
           toolOutput: log.fields?.find((f) => f.key === 'tool.output')?.value as string | undefined,
           toolStep: log.fields?.find((f) => f.key === 'tool.step')?.value,
+          toolPreview: log.fields?.find((f) => f.key === 'tool.preview')?.value as string | undefined,
           timestamp: log.timestamp,
           parentNode: node,
         };
@@ -152,6 +159,7 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
           toolInput: hook.toolInput ?? postHoc.toolInput,
           toolOutput: hook.toolOutput ?? postHoc.toolOutput,
           toolStep: hook.toolStep ?? postHoc.toolStep,
+          toolPreview: hook.toolPreview ?? postHoc.toolPreview,
         };
       });
     } else {
@@ -170,6 +178,7 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
         ...(data.toolInput ? [{ key: 'tool.input', type: 'string', value: data.toolInput }] : []),
         ...(data.toolOutput ? [{ key: 'tool.output', type: 'string', value: data.toolOutput }] : []),
         ...(data.toolStep != null ? [{ key: 'tool.step', type: 'int64', value: data.toolStep }] : []),
+        ...(data.toolPreview ? [{ key: 'tool.preview', type: 'string', value: data.toolPreview }] : []),
       ];
       const virtualSpan: TraceSpan = {
         traceID: parentNode.span.traceID,
@@ -215,6 +224,57 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
       if (end > max) max = end;
     }
     return { min, max: max === min ? max + 1 : max };
+  });
+
+  // Filter mode state — controls which spans render in the waterfall
+  const [filterMode, setFilterMode] = createSignal<WaterfallFilter>('all');
+
+  // Apply filter then collapse adjacent identical failed tool calls
+  // (e.g. coder retrying the same `git push` 3 times → "git push ×3 (failed)").
+  const visibleSpans = createMemo((): SpanNode[] => {
+    const all = flatSpans();
+    const mode = filterMode();
+
+    // Step 1: filter
+    const filtered = all.filter((node) => {
+      if (mode === 'all') return true;
+      const op = node.span.operationName;
+      const isError = node.span.status?.code === 2 || getTag(node.span, 'tool.error') === 'true';
+      if (mode === 'errors') return isError;
+      if (mode === 'tools') return op.startsWith('tool.') || op.startsWith('mcp.');
+      if (mode === 'llm') return op.startsWith('chat ') || op.startsWith('gen_ai.');
+      return true;
+    });
+
+    // Step 2: collapse adjacent identical failed tool calls (same operation + same error state)
+    const collapsed: SpanNode[] = [];
+    for (const node of filtered) {
+      const prev = collapsed[collapsed.length - 1];
+      const isError = node.span.status?.code === 2 || getTag(node.span, 'tool.error') === 'true';
+      const isToolish = node.span.operationName.startsWith('tool.') || node.span.operationName.startsWith('mcp.');
+      const sameAsPrev =
+        prev &&
+        isError &&
+        isToolish &&
+        prev.span.operationName === node.span.operationName &&
+        (prev.span.status?.code === 2 || getTag(prev.span, 'tool.error') === 'true') &&
+        getTag(prev.span, 'tool.preview') === getTag(node.span, 'tool.preview');
+      if (sameAsPrev) {
+        prev.duplicateGroupCount = (prev.duplicateGroupCount ?? 1) + 1;
+        // Extend the visual bar to cover both spans' time range
+        const newEnd = Math.max(
+          prev.span.startTime + prev.span.duration,
+          node.span.startTime + node.span.duration,
+        );
+        prev.span = {
+          ...prev.span,
+          duration: newEnd - prev.span.startTime,
+        };
+      } else {
+        collapsed.push({ ...node });
+      }
+    }
+    return collapsed;
   });
 
   // Time ruler tick marks (evenly spaced across the trace duration)
@@ -489,9 +549,38 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
                   </div>
                 }
               >
+                {/* Filter toolbar */}
+                <div class="flex items-center gap-1.5 px-4 py-2 border-b border-border-subtle">
+                  <span class="text-[10px] font-semibold text-text-muted uppercase tracking-wider mr-1">
+                    Show
+                  </span>
+                  <For each={[
+                    { id: 'all' as const, label: 'All' },
+                    { id: 'errors' as const, label: 'Errors' },
+                    { id: 'tools' as const, label: 'Tools' },
+                    { id: 'llm' as const, label: 'LLM' },
+                  ]}>
+                    {(opt) => (
+                      <button
+                        class={`text-[10px] px-2 py-0.5 rounded font-medium transition-colors ${
+                          filterMode() === opt.id
+                            ? 'bg-accent/15 text-accent border border-accent/30'
+                            : 'bg-surface-2/40 text-text-muted border border-transparent hover:bg-surface-hover/50'
+                        }`}
+                        onClick={() => setFilterMode(opt.id)}
+                      >
+                        {opt.label}
+                      </button>
+                    )}
+                  </For>
+                  <span class="text-[10px] text-text-muted/50 ml-2 tabular-nums">
+                    {visibleSpans().length} / {flatSpans().length} spans
+                  </span>
+                </div>
+
                 {/* Waterfall header with time ruler */}
                 <div class="flex items-center gap-2 px-4 py-2 border-b border-border-subtle bg-surface/30">
-                  <div class="text-[10px] font-semibold text-text-muted uppercase tracking-wider" style={{ width: '200px' }}>
+                  <div class="text-[10px] font-semibold text-text-muted uppercase tracking-wider" style={{ width: '280px' }}>
                     Operation
                   </div>
                   <div class="flex-1 relative min-w-0" style={{ height: '16px' }}>
@@ -514,7 +603,7 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
                 </div>
 
                 {/* Single indented timeline */}
-                <For each={flatSpans()}>
+                <For each={visibleSpans()}>
                   {(node) => {
                     const range = timeRange();
                     const totalDuration = range.max - range.min;
@@ -536,6 +625,8 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
                     };
 
                     const toolName = () => getTag(node.span, 'tool.name') || getTag(node.span, 'gen_ai.tool.name');
+                    const toolPreview = () => getTag(node.span, 'tool.preview');
+                    const dupCount = () => node.duplicateGroupCount ?? 1;
                     const model = () => getTag(node.span, 'gen_ai.request.model');
 
                     // Compute step label from children
@@ -571,10 +662,10 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
                         {/* Operation name */}
                         <div
                           class="flex-shrink-0 text-[11px] font-mono truncate text-left"
-                          style={{ width: '200px', 'padding-left': `${indent()}px` }}
+                          style={{ width: '280px', 'padding-left': `${indent()}px` }}
                         >
                           <span class={`${isError() ? 'text-error' : isSelected() ? 'text-text' : 'text-text-secondary'}`}>
-                            {spanDisplayName(node.span.operationName, toolName(), model(), stepLabel())}
+                            {spanDisplayName(node.span.operationName, toolName(), model(), stepLabel(), toolPreview(), dupCount())}
                           </span>
                         </div>
 
@@ -733,7 +824,16 @@ function shortModelName(model: string): string {
 }
 
 /** Build a human-readable span name with context */
-function spanDisplayName(operation: string, toolName?: string, model?: string, stepLabel?: string): string {
+function spanDisplayName(
+  operation: string,
+  toolName?: string,
+  model?: string,
+  stepLabel?: string,
+  toolPreview?: string,
+  dupCount?: number,
+): string {
+  const dupSuffix = dupCount && dupCount > 1 ? ` ×${dupCount} (failed)` : '';
+
   if (operation === 'agent.prompt' || operation === 'agent.prompt.internal') return 'prompt';
   if (operation === 'agent.step') return stepLabel ? `step: ${stepLabel}` : 'step';
   // New semconv naming: "chat {model}"
@@ -745,30 +845,32 @@ function spanDisplayName(operation: string, toolName?: string, model?: string, s
     if (model) return `${shortOp} ${shortModelName(model)}`;
     return shortOp;
   }
+  // Helper to format a tool name + optional preview tail
+  const toolLabel = (rawName: string): string => {
+    const cleanName = rawName.startsWith('mcp_')
+      ? (() => {
+          const parts = rawName.slice(4).split('_');
+          return parts.length > 1 ? `${parts[0]}/${parts.slice(1).join('_')}` : rawName.slice(4);
+        })()
+      : rawName;
+    if (toolPreview) {
+      // Trim preview to fit 200px column nicely
+      const trimmed = toolPreview.length > 50 ? toolPreview.slice(0, 50) + '…' : toolPreview;
+      return `${cleanName}: ${trimmed}${dupSuffix}`;
+    }
+    return `${cleanName}${dupSuffix}`;
+  };
   if (operation.startsWith('tool.execute: ')) {
     const name = operation.slice('tool.execute: '.length);
-    if (name.startsWith('mcp_')) {
-      const parts = name.slice(4).split('_');
-      if (parts.length > 1) return `${parts[0]}/${parts.slice(1).join('_')}`;
-      return name.slice(4);
-    }
-    return name;
+    return toolLabel(name);
   }
   if (operation === 'tool.execute') {
-    if (toolName) {
-      if (toolName.startsWith('mcp_')) {
-        const parts = toolName.slice(4).split('_');
-        if (parts.length > 1) return `${parts[0]}/${parts.slice(1).join('_')}`;
-        return toolName.slice(4);
-      }
-      return toolName;
-    }
-    return 'tool';
+    return toolLabel(toolName || 'tool');
   }
-  if (operation.startsWith('mcp.call: ')) return `mcp:${operation.slice('mcp.call: '.length)}`;
+  if (operation.startsWith('mcp.call: ')) return `mcp:${operation.slice('mcp.call: '.length)}${dupSuffix}`;
   if (operation === 'mcp.call') {
-    if (toolName) return `mcp:${toolName}`;
-    return 'mcp';
+    if (toolName) return `mcp:${toolName}${dupSuffix}`;
+    return `mcp${dupSuffix}`;
   }
   if (operation.startsWith('memory.')) return operation.slice(7).replace('_', ' ');
   return operation;
