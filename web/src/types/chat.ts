@@ -101,6 +101,12 @@ export interface ChatMessage {
   content?: string // plain text for user messages
   parts?: MessagePart[] // assembled parts for assistant messages
   timestamp: number
+  /** Marks an assistant message as originating from an internal/synthetic
+   *  prompt (e.g. a delegation callback). The UI renders a "processing
+   *  results" indicator instead of a user bubble echoing the synthetic prompt. */
+  internal?: boolean
+  /** Optional origin tag (e.g. "delegation_callback") for internal messages. */
+  source?: string
 }
 
 

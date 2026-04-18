@@ -79,9 +79,16 @@ interface FEPEventBase {
 export interface AgentStartEvent extends FEPEventBase {
   type: "agent_start"
   session_id: string
-  prompt: string
+  /** The user-authored prompt. Empty/omitted when `internal` is true (synthetic prompt). */
+  prompt?: string
   trace_id?: string
   context_budget?: ContextBudget
+  /** True when the prompt is synthetic (e.g. a delegation callback). The UI
+   *  should NOT render a user bubble for these — just an assistant bubble
+   *  with a processing indicator. */
+  internal?: boolean
+  /** Describes the origin of an internal prompt (e.g. "delegation_callback"). */
+  source?: string
 }
 
 export interface AgentFinishEvent extends FEPEventBase {

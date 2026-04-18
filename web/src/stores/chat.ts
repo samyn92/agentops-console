@@ -38,6 +38,7 @@ import type {
 export type ThinkingPhase =
   | 'connecting'  // user submitted, waiting for SSE connection + agent_start
   | 'analyzing'   // agent_start received, waiting for first LLM response
+  | 'integrating' // agent_start for a delegation callback — integrating child results
   | 'thinking'    // step_start received, LLM processing
   | 'reasoning'   // reasoning_start received, deep chain-of-thought
   | 'planning'    // reasoning_end received, transitioning to action
@@ -876,6 +877,9 @@ function insertDelegationResult(state: AgentChatState, event: DelegationResultEv
 function runtimeToChat(runtimeMessages: RuntimeMessage[]): ChatMessage[] {
   const result: ChatMessage[] = [];
   let currentAssistant: ChatMessage | null = null;
+  // Tracks when the previous user message was a synthetic delegation callback
+  // steer — the next assistant message should be marked as internal.
+  let pendingInternalAssistant = false;
 
   for (const msg of runtimeMessages) {
     if (msg.role === 'user') {
@@ -889,6 +893,16 @@ function runtimeToChat(runtimeMessages: RuntimeMessage[]): ChatMessage[] {
         ?.filter((p) => p.type === 'text')
         .map((p) => p.text || '')
         .join('\n') || '';
+      // Skip synthetic delegation-callback prompts — these are internal
+      // "steer" messages the runtime injects after a child agent completes.
+      // The user never typed them; rendering them as user bubbles is confusing.
+      // The subsequent assistant message (the callback response) is kept and
+      // marked as `internal` so the UI can show a proper indicator on replay.
+      if (text.startsWith('[DELEGATION RESULT]') || text.startsWith('[DELEGATION RESULTS]')) {
+        // Next assistant block should be flagged as internal
+        pendingInternalAssistant = true;
+        continue;
+      }
       result.push({ role: 'user', content: text, timestamp: Date.now() });
 
     } else if (msg.role === 'assistant') {
@@ -896,7 +910,13 @@ function runtimeToChat(runtimeMessages: RuntimeMessage[]): ChatMessage[] {
       if (currentAssistant) {
         result.push(currentAssistant);
       }
-      currentAssistant = { role: 'assistant', parts: [], timestamp: Date.now() };
+      currentAssistant = {
+        role: 'assistant',
+        parts: [],
+        timestamp: Date.now(),
+        ...(pendingInternalAssistant ? { internal: true, source: 'delegation_callback' } : {}),
+      };
+      pendingInternalAssistant = false;
 
       for (const part of msg.content || []) {
         if (part.type === 'text' && part.text) {
@@ -1066,13 +1086,32 @@ export function startDelegationEventListener() {
     // agent_start from an async source (delegation callback): set up message
     // bubbles and mark as streaming so subsequent events have a target.
     if (event.type === 'agent_start') {
-      const prompt = event.prompt || '[Delegation callback]';
-      const userMsg: ChatMessage = { role: 'user', content: prompt, timestamp: Date.now() };
-      const assistantMsg: ChatMessage = { role: 'assistant', parts: [], timestamp: Date.now() };
+      // Internal prompts (delegation callbacks, scheduled nudges, etc.) must
+      // NOT render a user bubble — the synthetic prompt is an implementation
+      // detail, not something the user typed. Just set up the assistant bubble
+      // with a "processing results" indicator.
+      const isInternal = event.internal === true || !event.prompt;
+
+      const assistantMsg: ChatMessage = {
+        role: 'assistant',
+        parts: [],
+        timestamp: Date.now(),
+        internal: isInternal,
+        source: event.source,
+      };
 
       batch(() => {
         setMsgs(state, (s) => {
-          s.list.push(userMsg, assistantMsg);
+          if (isInternal) {
+            s.list.push(assistantMsg);
+          } else {
+            const userMsg: ChatMessage = {
+              role: 'user',
+              content: event.prompt || '',
+              timestamp: Date.now(),
+            };
+            s.list.push(userMsg, assistantMsg);
+          }
         });
         state.streaming[1](true);
         state.currentStep[1](0);
@@ -1080,6 +1119,15 @@ export function startDelegationEventListener() {
         state.activeText[1](null);
         state.activeReasoning[1](null);
         state.activeToolInput[1](null);
+        // Show the thinking indicator immediately — gives the user a visible
+        // "integrating delegation results…" signal before text arrives.
+        state.thinkingState[1]({
+          phase: isInternal ? 'integrating' : 'connecting',
+          stepNumber: 0,
+          stepCount: 0,
+          finishReason: '',
+          toolCallCount: 0,
+        });
       });
       markStreaming(key, true);
     }

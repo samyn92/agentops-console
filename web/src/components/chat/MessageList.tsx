@@ -73,8 +73,9 @@ export default function MessageList(props: MessageListProps) {
   const showThinking = () => {
     if (!streaming()) return false;
     const phase = thinkingState().phase;
-    // Always show during connecting (pre-SSE) and generating (text_start → first delta)
-    if (phase === 'connecting' || phase === 'generating') return true;
+    // Always show during connecting (pre-SSE), generating (text_start → first
+    // delta), and integrating (async delegation callback bootstrapping).
+    if (phase === 'connecting' || phase === 'generating' || phase === 'integrating') return true;
     const m = msgs();
     if (m.length === 0) return true; // streaming started, no messages yet
     const last = m[m.length - 1];
