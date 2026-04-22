@@ -15,9 +15,9 @@ ARG TARGETOS
 ARG TARGETARCH
 WORKDIR /app
 COPY go.mod go.sum ./
-RUN go mod edit -dropreplace github.com/samyn92/agentops-core && go mod tidy
 COPY cmd/ ./cmd/
 COPY internal/ ./internal/
+RUN go mod edit -dropreplace github.com/samyn92/agentops-core && go mod tidy && go mod download
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -ldflags="-s -w" -o console ./cmd/console/
 
 # ── Stage 3: Final image ──
