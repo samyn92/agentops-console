@@ -11,12 +11,14 @@ RUN npm run build
 
 # ── Stage 2: Build Go backend ──
 FROM golang:1.26-alpine AS backend
+ARG TARGETOS
+ARG TARGETARCH
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod edit -dropreplace github.com/samyn92/agentops-core && go mod download
 COPY cmd/ ./cmd/
 COPY internal/ ./internal/
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o console ./cmd/console/
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -ldflags="-s -w" -o console ./cmd/console/
 
 # ── Stage 3: Final image ──
 FROM alpine:3.21
