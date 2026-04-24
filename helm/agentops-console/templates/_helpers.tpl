@@ -58,3 +58,67 @@ Create the name of the service account to use
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}
 {{- end }}
+
+{{/*
+Console RBAC rules — shared between ClusterRole and namespaced Roles.
+*/}}
+{{- define "agentops-console.rbacRules" -}}
+# AgentOps CRDs
+- apiGroups:
+    - "agents.agentops.io"
+  resources:
+    - agents
+    - agentruns
+    - channels
+    - agenttools
+    - agentresources
+  verbs:
+    - get
+    - list
+    - watch
+    - patch
+# Native Kubernetes resources the console browses
+- apiGroups:
+    - ""
+  resources:
+    - pods
+    - services
+    - configmaps
+    - secrets
+    - events
+    - namespaces
+  verbs:
+    - get
+    - list
+    - watch
+- apiGroups:
+    - "apps"
+  resources:
+    - deployments
+    - statefulsets
+    - daemonsets
+  verbs:
+    - get
+    - list
+    - watch
+- apiGroups:
+    - "batch"
+  resources:
+    - jobs
+    - cronjobs
+  verbs:
+    - get
+    - list
+    - watch
+- apiGroups:
+    - "networking.k8s.io"
+  resources:
+    - ingresses
+  verbs:
+    - get
+    - list
+    - watch
+{{- with .Values.rbac.extraRules }}
+{{- toYaml . | nindent 0 }}
+{{- end }}
+{{- end }}

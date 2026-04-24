@@ -48,7 +48,12 @@ rbac:
   # -- Create ClusterRole and ClusterRoleBinding for K8s API access
   # The console needs read access to AgentOps CRDs and native K8s resources
   create: true
-  # -- Additional RBAC rules to append to the ClusterRole
+  # -- Use namespace-scoped Roles instead of ClusterRoles.
+  # Enable this when the deploying service account lacks cluster-admin privileges.
+  namespaced: false
+  # -- Namespaces to create Roles in when rbac.namespaced is true.
+  watchNamespaces: []
+  # -- Additional RBAC rules to append to the ClusterRole/Role
   extraRules: []
   # - apiGroups: [""]
   #   resources: ["persistentvolumeclaims"]
@@ -74,7 +79,10 @@ podLabels: {}
 podSecurityContext:
   runAsNonRoot: true
   runAsUser: 1000
+  runAsGroup: 1000
   fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
 
 # -- Container security context
 securityContext:

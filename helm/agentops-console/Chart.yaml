@@ -2,7 +2,7 @@ apiVersion: v2
 name: agentops-console
 description: Web console for managing and interacting with AI agents on Kubernetes
 type: application
-version: 0.11.1
+version: 0.11.4
 appVersion: "0.11.1"
 keywords:
   - agentops
