@@ -100,9 +100,10 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
     }
     for (const root of spanTree()) flatten(root);
 
-    // Check if we already have real tool.execute spans
+    // Check if we already have real tool.execute or mcp.call spans
     const hasRealToolSpans = result.some(
-      (n) => n.span.operationName.startsWith('tool.execute'),
+      (n) => n.span.operationName.startsWith('tool.execute') ||
+             n.span.operationName.startsWith('mcp.call'),
     );
     if (hasRealToolSpans) return result;
 
@@ -424,11 +425,18 @@ export default function TraceDetailView(props: TraceDetailViewProps) {
     const spans = flatSpans();
     const tools: Array<{ name: string; duration: number; isError: boolean }> = [];
 
-    // First, try real tool.execute spans
+    // First, try real tool.execute or mcp.call spans
     for (const node of spans) {
       const op = node.span.operationName;
       if (op.startsWith('tool.execute') && !node.isVirtualToolCall) {
         const name = getTag(node.span, 'tool.name') || op.replace('tool.execute: ', '') || 'tool';
+        tools.push({
+          name,
+          duration: node.span.duration / 1000,
+          isError: node.span.status?.code === 2 || getTag(node.span, 'tool.error') === 'true',
+        });
+      } else if (op.startsWith('mcp.call')) {
+        const name = getTag(node.span, 'tool.name') || op.replace('mcp.call: ', '').replace('/', '_') || 'tool';
         tools.push({
           name,
           duration: node.span.duration / 1000,
