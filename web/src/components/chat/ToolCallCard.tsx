@@ -564,6 +564,12 @@ export default function ToolCallCard(props: ToolCallCardProps) {
               </span>
             </Show>
 
+            <Show when={part().metadata?.version}>
+              <span class="text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0 bg-emerald-500/15 text-emerald-400">
+                v{part().metadata!.version as string}
+              </span>
+            </Show>
+
             <Show when={part().metadata?.description || part().metadata?.command}>
               <span class="text-xs text-text-muted truncate min-w-0 max-md:w-full max-md:order-last">
                 {(() => {
