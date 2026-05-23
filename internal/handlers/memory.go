@@ -27,8 +27,7 @@ const memoryDefaultPort = 7437
 // resolveMemoryURL determines the agentops-memory HTTP URL for an agent by reading spec.memory.serverRef.
 // Resolution order:
 //  1. MEMORY_URL_OVERRIDE env var (dev mode) — also checks legacy ENGRAM_URL_OVERRIDE
-//  2. Look up AgentTool CR by serverRef name → use status.serviceURL if available
-//  3. Fallback: http://{serverRef}.{ns}.svc:7437 (for manually deployed agentops-memory)
+//  2. Fallback: http://{serverRef}.{ns}.svc:7437
 //
 // Returns ("", "") if the agent has no memory configured.
 func resolveMemoryURL(ctx context.Context, k8sClient *k8s.Client, agent *agentsv1alpha1.Agent) (memoryURL string, project string) {
@@ -52,26 +51,10 @@ func resolveMemoryURL(ctx context.Context, k8sClient *k8s.Client, agent *agentsv
 		return override, project
 	}
 
-	// Try AgentTool CR lookup
-	tool, err := k8sClient.GetAgentTool(ctx, ns, serverRef)
-	if err == nil && tool != nil && tool.Status.ServiceURL != "" {
-		slog.Debug("resolved memory URL from AgentTool CR", "serverRef", serverRef, "url", tool.Status.ServiceURL)
-		return tool.Status.ServiceURL, project
-	}
-
-	// Also try in the agents namespace if the agent is elsewhere
-	if ns != "agents" {
-		tool, err = k8sClient.GetAgentTool(ctx, "agents", serverRef)
-		if err == nil && tool != nil && tool.Status.ServiceURL != "" {
-			slog.Debug("resolved memory URL from AgentTool CR (agents namespace)", "serverRef", serverRef, "url", tool.Status.ServiceURL)
-			return tool.Status.ServiceURL, project
-		}
-	}
-
-	// Fallback: assume manually deployed service
-	url := fmt.Sprintf("http://%s.%s.svc:%d", serverRef, ns, memoryDefaultPort)
-	slog.Debug("resolved memory URL via fallback", "serverRef", serverRef, "url", url)
-	return url, project
+	// Standard K8s service DNS resolution
+	memURL := fmt.Sprintf("http://%s.%s.svc:%d", serverRef, ns, memoryDefaultPort)
+	slog.Debug("resolved memory URL via service DNS", "serverRef", serverRef, "url", memURL)
+	return memURL, project
 }
 
 // memoryClient is a reusable HTTP client for agentops-memory requests.

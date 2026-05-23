@@ -1,4 +1,4 @@
-// AgentResource handlers — list/get resources + proxy to GitHub/GitLab APIs for browsing.
+// Integration handlers — list/get integrations + proxy to GitHub/GitLab APIs for browsing.
 package handlers
 
 import (
@@ -16,31 +16,31 @@ import (
 	agentsv1alpha1 "github.com/samyn92/agentops-core/api/v1alpha1"
 )
 
-// ── AgentResource CRUD ──
+// ── Integration CRUD ──
 
-func (h *Handlers) ListAgentResources(w http.ResponseWriter, r *http.Request) {
-	resources, err := h.k8s.ListAgentResources(r.Context())
+func (h *Handlers) ListIntegrations(w http.ResponseWriter, r *http.Request) {
+	integrations, err := h.k8s.ListIntegrations(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list agent resources: %s", err)
+		writeError(w, http.StatusInternalServerError, "failed to list integrations: %s", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, resources.Items)
+	writeJSON(w, http.StatusOK, integrations.Items)
 }
 
-func (h *Handlers) GetAgentResource(w http.ResponseWriter, r *http.Request) {
+func (h *Handlers) GetIntegration(w http.ResponseWriter, r *http.Request) {
 	ns := chi.URLParam(r, "ns")
 	name := chi.URLParam(r, "name")
 
-	res, err := h.k8s.GetAgentResource(r.Context(), ns, name)
+	res, err := h.k8s.GetIntegration(r.Context(), ns, name)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "agent resource not found: %s", err)
+		writeError(w, http.StatusNotFound, "integration not found: %s", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, res)
 }
 
-// ListAgentResourcesForAgent returns the resources bound to a specific agent.
-func (h *Handlers) ListAgentResourcesForAgent(w http.ResponseWriter, r *http.Request) {
+// ListIntegrationsForAgent returns the integrations bound to a specific agent.
+func (h *Handlers) ListIntegrationsForAgent(w http.ResponseWriter, r *http.Request) {
 	ns := chi.URLParam(r, "ns")
 	name := chi.URLParam(r, "name")
 
@@ -50,14 +50,14 @@ func (h *Handlers) ListAgentResourcesForAgent(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	resources, err := h.k8s.ListAgentResourcesForAgent(r.Context(), agent)
+	integrations, err := h.k8s.ListIntegrationsForAgent(r.Context(), agent)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list resources for agent: %s", err)
+		writeError(w, http.StatusInternalServerError, "failed to list integrations for agent: %s", err)
 		return
 	}
 
 	// Build response with binding metadata
-	type resourceWithBinding struct {
+	type integrationWithBinding struct {
 		Name        string `json:"name"`
 		Namespace   string `json:"namespace"`
 		Kind        string `json:"kind"`
@@ -75,28 +75,28 @@ func (h *Handlers) ListAgentResourcesForAgent(w http.ResponseWriter, r *http.Req
 	}
 
 	// Build binding lookup
-	bindingMap := make(map[string]agentsv1alpha1.AgentResourceBinding, len(agent.Spec.ResourceBindings))
-	for _, b := range agent.Spec.ResourceBindings {
+	bindingMap := make(map[string]agentsv1alpha1.IntegrationBinding, len(agent.Spec.Integrations))
+	for _, b := range agent.Spec.Integrations {
 		bindingMap[b.Name] = b
 	}
 
-	resp := make([]resourceWithBinding, 0, len(resources))
-	for _, res := range resources {
-		binding := bindingMap[res.Name]
-		entry := resourceWithBinding{
-			Name:           res.Name,
-			Namespace:      res.Namespace,
-			Kind:           string(res.Spec.Kind),
-			DisplayName:    res.Spec.DisplayName,
-			Description:    res.Spec.Description,
-			Phase:          string(res.Status.Phase),
+	resp := make([]integrationWithBinding, 0, len(integrations))
+	for _, intg := range integrations {
+		binding := bindingMap[intg.Name]
+		entry := integrationWithBinding{
+			Name:           intg.Name,
+			Namespace:      intg.Namespace,
+			Kind:           string(intg.Spec.Kind),
+			DisplayName:    intg.Spec.DisplayName,
+			Description:    intg.Spec.Description,
+			Phase:          string(intg.Status.Phase),
 			ReadOnly:       binding.ReadOnly,
 			AutoContext:    binding.AutoContext,
-			GitHub:         res.Spec.GitHub,
-			GitHubOrg:      res.Spec.GitHubOrg,
-			GitLab:         res.Spec.GitLab,
-			GitLabGroup:    res.Spec.GitLabGroup,
-			HasCredentials: res.Spec.Credentials != nil,
+			GitHub:         intg.Spec.GitHub,
+			GitHubOrg:      intg.Spec.GitHubOrg,
+			GitLab:         intg.Spec.GitLab,
+			GitLabGroup:    intg.Spec.GitLabGroup,
+			HasCredentials: intg.Spec.Credentials != nil,
 		}
 		resp = append(resp, entry)
 	}
@@ -105,12 +105,12 @@ func (h *Handlers) ListAgentResourcesForAgent(w http.ResponseWriter, r *http.Req
 }
 
 // ── Git Forge Proxy Endpoints ──
-// These proxy requests to GitHub/GitLab APIs using credentials from the AgentResource's secret.
+// These proxy requests to GitHub/GitLab APIs using credentials from the Integration's secret.
 
 // BrowseResourceFiles proxies a file/tree browse request.
-// GET /agents/{ns}/{name}/resources/{resName}/files?path=&ref=
+// GET /agents/{ns}/{name}/integrations/{intgName}/files?path=&ref=
 func (h *Handlers) BrowseResourceFiles(w http.ResponseWriter, r *http.Request) {
-	res, token, err := h.resolveResourceAndToken(r)
+	intg, token, err := h.resolveIntegrationAndToken(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "%s", err)
 		return
@@ -119,28 +119,28 @@ func (h *Handlers) BrowseResourceFiles(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Query().Get("path")
 	ref := r.URL.Query().Get("ref")
 
-	switch res.Spec.Kind {
-	case agentsv1alpha1.AgentResourceKindGitHubRepo:
-		h.proxyGitHubAPI(w, r, token, res.Spec.GitHub, fmt.Sprintf(
+	switch intg.Spec.Kind {
+	case agentsv1alpha1.IntegrationKindGitHubRepo:
+		h.proxyGitHubAPI(w, r, token, intg.Spec.GitHub, fmt.Sprintf(
 			"/repos/%s/%s/contents/%s?ref=%s",
-			res.Spec.GitHub.Owner, res.Spec.GitHub.Repo,
-			url.PathEscape(path), url.QueryEscape(refOrDefault(ref, res.Spec.GitHub.DefaultBranch)),
+			intg.Spec.GitHub.Owner, intg.Spec.GitHub.Repo,
+			url.PathEscape(path), url.QueryEscape(refOrDefault(ref, intg.Spec.GitHub.DefaultBranch)),
 		))
-	case agentsv1alpha1.AgentResourceKindGitLabProject:
-		projectID := url.PathEscape(res.Spec.GitLab.Project)
-		h.proxyGitLabAPI(w, r, token, res.Spec.GitLab.BaseURL, fmt.Sprintf(
+	case agentsv1alpha1.IntegrationKindGitLabProject:
+		projectID := url.PathEscape(intg.Spec.GitLab.Project)
+		h.proxyGitLabAPI(w, r, token, intg.Spec.GitLab.BaseURL, fmt.Sprintf(
 			"/api/v4/projects/%s/repository/tree?path=%s&ref=%s&per_page=100",
-			projectID, url.QueryEscape(path), url.QueryEscape(refOrDefault(ref, res.Spec.GitLab.DefaultBranch)),
+			projectID, url.QueryEscape(path), url.QueryEscape(refOrDefault(ref, intg.Spec.GitLab.DefaultBranch)),
 		))
 	default:
-		writeError(w, http.StatusBadRequest, "file browsing not supported for kind %s", res.Spec.Kind)
+		writeError(w, http.StatusBadRequest, "file browsing not supported for kind %s", intg.Spec.Kind)
 	}
 }
 
 // BrowseResourceFileContent returns the content of a specific file.
-// GET /agents/{ns}/{name}/resources/{resName}/files/content?path=&ref=
+// GET /agents/{ns}/{name}/integrations/{intgName}/files/content?path=&ref=
 func (h *Handlers) BrowseResourceFileContent(w http.ResponseWriter, r *http.Request) {
-	res, token, err := h.resolveResourceAndToken(r)
+	intg, token, err := h.resolveIntegrationAndToken(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "%s", err)
 		return
@@ -149,28 +149,28 @@ func (h *Handlers) BrowseResourceFileContent(w http.ResponseWriter, r *http.Requ
 	path := r.URL.Query().Get("path")
 	ref := r.URL.Query().Get("ref")
 
-	switch res.Spec.Kind {
-	case agentsv1alpha1.AgentResourceKindGitHubRepo:
-		h.proxyGitHubAPI(w, r, token, res.Spec.GitHub, fmt.Sprintf(
+	switch intg.Spec.Kind {
+	case agentsv1alpha1.IntegrationKindGitHubRepo:
+		h.proxyGitHubAPI(w, r, token, intg.Spec.GitHub, fmt.Sprintf(
 			"/repos/%s/%s/contents/%s?ref=%s",
-			res.Spec.GitHub.Owner, res.Spec.GitHub.Repo,
-			url.PathEscape(path), url.QueryEscape(refOrDefault(ref, res.Spec.GitHub.DefaultBranch)),
+			intg.Spec.GitHub.Owner, intg.Spec.GitHub.Repo,
+			url.PathEscape(path), url.QueryEscape(refOrDefault(ref, intg.Spec.GitHub.DefaultBranch)),
 		))
-	case agentsv1alpha1.AgentResourceKindGitLabProject:
-		projectID := url.PathEscape(res.Spec.GitLab.Project)
-		h.proxyGitLabAPI(w, r, token, res.Spec.GitLab.BaseURL, fmt.Sprintf(
+	case agentsv1alpha1.IntegrationKindGitLabProject:
+		projectID := url.PathEscape(intg.Spec.GitLab.Project)
+		h.proxyGitLabAPI(w, r, token, intg.Spec.GitLab.BaseURL, fmt.Sprintf(
 			"/api/v4/projects/%s/repository/files/%s?ref=%s",
-			projectID, url.PathEscape(path), url.QueryEscape(refOrDefault(ref, res.Spec.GitLab.DefaultBranch)),
+			projectID, url.PathEscape(path), url.QueryEscape(refOrDefault(ref, intg.Spec.GitLab.DefaultBranch)),
 		))
 	default:
-		writeError(w, http.StatusBadRequest, "file content not supported for kind %s", res.Spec.Kind)
+		writeError(w, http.StatusBadRequest, "file content not supported for kind %s", intg.Spec.Kind)
 	}
 }
 
 // BrowseResourceCommits proxies commit listing.
-// GET /agents/{ns}/{name}/resources/{resName}/commits?ref=&path=&page=
+// GET /agents/{ns}/{name}/integrations/{intgName}/commits?ref=&path=&page=
 func (h *Handlers) BrowseResourceCommits(w http.ResponseWriter, r *http.Request) {
-	res, token, err := h.resolveResourceAndToken(r)
+	intg, token, err := h.resolveIntegrationAndToken(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "%s", err)
 		return
@@ -183,37 +183,37 @@ func (h *Handlers) BrowseResourceCommits(w http.ResponseWriter, r *http.Request)
 		page = "1"
 	}
 
-	switch res.Spec.Kind {
-	case agentsv1alpha1.AgentResourceKindGitHubRepo:
+	switch intg.Spec.Kind {
+	case agentsv1alpha1.IntegrationKindGitHubRepo:
 		q := fmt.Sprintf("sha=%s&per_page=30&page=%s",
-			url.QueryEscape(refOrDefault(ref, res.Spec.GitHub.DefaultBranch)), page)
+			url.QueryEscape(refOrDefault(ref, intg.Spec.GitHub.DefaultBranch)), page)
 		if path != "" {
 			q += "&path=" + url.QueryEscape(path)
 		}
-		h.proxyGitHubAPI(w, r, token, res.Spec.GitHub, fmt.Sprintf(
+		h.proxyGitHubAPI(w, r, token, intg.Spec.GitHub, fmt.Sprintf(
 			"/repos/%s/%s/commits?%s",
-			res.Spec.GitHub.Owner, res.Spec.GitHub.Repo, q,
+			intg.Spec.GitHub.Owner, intg.Spec.GitHub.Repo, q,
 		))
-	case agentsv1alpha1.AgentResourceKindGitLabProject:
-		projectID := url.PathEscape(res.Spec.GitLab.Project)
+	case agentsv1alpha1.IntegrationKindGitLabProject:
+		projectID := url.PathEscape(intg.Spec.GitLab.Project)
 		q := fmt.Sprintf("ref_name=%s&per_page=30&page=%s",
-			url.QueryEscape(refOrDefault(ref, res.Spec.GitLab.DefaultBranch)), page)
+			url.QueryEscape(refOrDefault(ref, intg.Spec.GitLab.DefaultBranch)), page)
 		if path != "" {
 			q += "&path=" + url.QueryEscape(path)
 		}
-		h.proxyGitLabAPI(w, r, token, res.Spec.GitLab.BaseURL, fmt.Sprintf(
+		h.proxyGitLabAPI(w, r, token, intg.Spec.GitLab.BaseURL, fmt.Sprintf(
 			"/api/v4/projects/%s/repository/commits?%s",
 			projectID, q,
 		))
 	default:
-		writeError(w, http.StatusBadRequest, "commit browsing not supported for kind %s", res.Spec.Kind)
+		writeError(w, http.StatusBadRequest, "commit browsing not supported for kind %s", intg.Spec.Kind)
 	}
 }
 
 // BrowseResourceBranches proxies branch listing.
-// GET /agents/{ns}/{name}/resources/{resName}/branches?page=
+// GET /agents/{ns}/{name}/integrations/{intgName}/branches?page=
 func (h *Handlers) BrowseResourceBranches(w http.ResponseWriter, r *http.Request) {
-	res, token, err := h.resolveResourceAndToken(r)
+	intg, token, err := h.resolveIntegrationAndToken(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "%s", err)
 		return
@@ -224,27 +224,27 @@ func (h *Handlers) BrowseResourceBranches(w http.ResponseWriter, r *http.Request
 		page = "1"
 	}
 
-	switch res.Spec.Kind {
-	case agentsv1alpha1.AgentResourceKindGitHubRepo:
-		h.proxyGitHubAPI(w, r, token, res.Spec.GitHub, fmt.Sprintf(
+	switch intg.Spec.Kind {
+	case agentsv1alpha1.IntegrationKindGitHubRepo:
+		h.proxyGitHubAPI(w, r, token, intg.Spec.GitHub, fmt.Sprintf(
 			"/repos/%s/%s/branches?per_page=30&page=%s",
-			res.Spec.GitHub.Owner, res.Spec.GitHub.Repo, page,
+			intg.Spec.GitHub.Owner, intg.Spec.GitHub.Repo, page,
 		))
-	case agentsv1alpha1.AgentResourceKindGitLabProject:
-		projectID := url.PathEscape(res.Spec.GitLab.Project)
-		h.proxyGitLabAPI(w, r, token, res.Spec.GitLab.BaseURL, fmt.Sprintf(
+	case agentsv1alpha1.IntegrationKindGitLabProject:
+		projectID := url.PathEscape(intg.Spec.GitLab.Project)
+		h.proxyGitLabAPI(w, r, token, intg.Spec.GitLab.BaseURL, fmt.Sprintf(
 			"/api/v4/projects/%s/repository/branches?per_page=30&page=%s",
 			projectID, page,
 		))
 	default:
-		writeError(w, http.StatusBadRequest, "branch browsing not supported for kind %s", res.Spec.Kind)
+		writeError(w, http.StatusBadRequest, "branch browsing not supported for kind %s", intg.Spec.Kind)
 	}
 }
 
 // BrowseResourceMergeRequests proxies MR/PR listing.
-// GET /agents/{ns}/{name}/resources/{resName}/mergerequests?state=&page=
+// GET /agents/{ns}/{name}/integrations/{intgName}/mergerequests?state=&page=
 func (h *Handlers) BrowseResourceMergeRequests(w http.ResponseWriter, r *http.Request) {
-	res, token, err := h.resolveResourceAndToken(r)
+	intg, token, err := h.resolveIntegrationAndToken(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "%s", err)
 		return
@@ -259,37 +259,35 @@ func (h *Handlers) BrowseResourceMergeRequests(w http.ResponseWriter, r *http.Re
 		page = "1"
 	}
 
-	switch res.Spec.Kind {
-	case agentsv1alpha1.AgentResourceKindGitHubRepo:
-		// GitHub uses "open"/"closed"/"all"
+	switch intg.Spec.Kind {
+	case agentsv1alpha1.IntegrationKindGitHubRepo:
 		ghState := state
 		if state == "merged" {
-			ghState = "closed" // GitHub doesn't have "merged" state, we filter client-side
+			ghState = "closed"
 		}
-		h.proxyGitHubAPI(w, r, token, res.Spec.GitHub, fmt.Sprintf(
+		h.proxyGitHubAPI(w, r, token, intg.Spec.GitHub, fmt.Sprintf(
 			"/repos/%s/%s/pulls?state=%s&per_page=30&page=%s&sort=updated&direction=desc",
-			res.Spec.GitHub.Owner, res.Spec.GitHub.Repo, ghState, page,
+			intg.Spec.GitHub.Owner, intg.Spec.GitHub.Repo, ghState, page,
 		))
-	case agentsv1alpha1.AgentResourceKindGitLabProject:
-		projectID := url.PathEscape(res.Spec.GitLab.Project)
-		// GitLab uses "opened"/"closed"/"merged"/"all"
+	case agentsv1alpha1.IntegrationKindGitLabProject:
+		projectID := url.PathEscape(intg.Spec.GitLab.Project)
 		glState := state
 		if state == "open" {
 			glState = "opened"
 		}
-		h.proxyGitLabAPI(w, r, token, res.Spec.GitLab.BaseURL, fmt.Sprintf(
+		h.proxyGitLabAPI(w, r, token, intg.Spec.GitLab.BaseURL, fmt.Sprintf(
 			"/api/v4/projects/%s/merge_requests?state=%s&per_page=30&page=%s&order_by=updated_at",
 			projectID, glState, page,
 		))
 	default:
-		writeError(w, http.StatusBadRequest, "merge request browsing not supported for kind %s", res.Spec.Kind)
+		writeError(w, http.StatusBadRequest, "merge request browsing not supported for kind %s", intg.Spec.Kind)
 	}
 }
 
 // BrowseResourceIssues proxies issue listing.
-// GET /agents/{ns}/{name}/resources/{resName}/issues?state=&page=
+// GET /agents/{ns}/{name}/integrations/{intgName}/issues?state=&page=
 func (h *Handlers) BrowseResourceIssues(w http.ResponseWriter, r *http.Request) {
-	res, token, err := h.resolveResourceAndToken(r)
+	intg, token, err := h.resolveIntegrationAndToken(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "%s", err)
 		return
@@ -304,50 +302,50 @@ func (h *Handlers) BrowseResourceIssues(w http.ResponseWriter, r *http.Request) 
 		page = "1"
 	}
 
-	switch res.Spec.Kind {
-	case agentsv1alpha1.AgentResourceKindGitHubRepo:
-		h.proxyGitHubAPI(w, r, token, res.Spec.GitHub, fmt.Sprintf(
+	switch intg.Spec.Kind {
+	case agentsv1alpha1.IntegrationKindGitHubRepo:
+		h.proxyGitHubAPI(w, r, token, intg.Spec.GitHub, fmt.Sprintf(
 			"/repos/%s/%s/issues?state=%s&per_page=30&page=%s&sort=updated&direction=desc",
-			res.Spec.GitHub.Owner, res.Spec.GitHub.Repo, state, page,
+			intg.Spec.GitHub.Owner, intg.Spec.GitHub.Repo, state, page,
 		))
-	case agentsv1alpha1.AgentResourceKindGitLabProject:
-		projectID := url.PathEscape(res.Spec.GitLab.Project)
+	case agentsv1alpha1.IntegrationKindGitLabProject:
+		projectID := url.PathEscape(intg.Spec.GitLab.Project)
 		glState := state
 		if state == "open" {
 			glState = "opened"
 		}
-		h.proxyGitLabAPI(w, r, token, res.Spec.GitLab.BaseURL, fmt.Sprintf(
+		h.proxyGitLabAPI(w, r, token, intg.Spec.GitLab.BaseURL, fmt.Sprintf(
 			"/api/v4/projects/%s/issues?state=%s&per_page=30&page=%s&order_by=updated_at",
 			projectID, glState, page,
 		))
 	default:
-		writeError(w, http.StatusBadRequest, "issue browsing not supported for kind %s", res.Spec.Kind)
+		writeError(w, http.StatusBadRequest, "issue browsing not supported for kind %s", intg.Spec.Kind)
 	}
 }
 
 // ── Helpers ──
 
-// resolveResourceAndToken gets the AgentResource and its API token from the K8s secret.
-func (h *Handlers) resolveResourceAndToken(r *http.Request) (*agentsv1alpha1.AgentResource, string, error) {
+// resolveIntegrationAndToken gets the Integration and its API token from the K8s secret.
+func (h *Handlers) resolveIntegrationAndToken(r *http.Request) (*agentsv1alpha1.Integration, string, error) {
 	ns := chi.URLParam(r, "ns")
-	resName := chi.URLParam(r, "resName")
+	intgName := chi.URLParam(r, "intgName")
 
-	res, err := h.k8s.GetAgentResource(r.Context(), ns, resName)
+	intg, err := h.k8s.GetIntegration(r.Context(), ns, intgName)
 	if err != nil {
-		return nil, "", fmt.Errorf("resource not found: %w", err)
+		return nil, "", fmt.Errorf("integration not found: %w", err)
 	}
 
-	if res.Status.Phase != agentsv1alpha1.AgentResourcePhaseReady {
-		return nil, "", fmt.Errorf("resource %s is not ready (phase: %s)", resName, res.Status.Phase)
+	if intg.Status.Phase != agentsv1alpha1.IntegrationPhaseReady {
+		return nil, "", fmt.Errorf("integration %s is not ready (phase: %s)", intgName, intg.Status.Phase)
 	}
 
-	token, err := h.k8s.GetAgentResourceCredentials(r.Context(), ns, res)
+	token, err := h.k8s.GetIntegrationCredentials(r.Context(), ns, intg)
 	if err != nil {
-		slog.Warn("no credentials for resource, proceeding without auth", "resource", resName, "error", err)
+		slog.Warn("no credentials for integration, proceeding without auth", "integration", intgName, "error", err)
 		token = ""
 	}
 
-	return res, token, nil
+	return intg, token, nil
 }
 
 func (h *Handlers) proxyGitHubAPI(w http.ResponseWriter, r *http.Request, token string, cfg *agentsv1alpha1.GitHubResourceConfig, path string) {
@@ -377,7 +375,6 @@ func (h *Handlers) proxyGitHubAPI(w http.ResponseWriter, r *http.Request, token 
 	}
 	defer resp.Body.Close()
 
-	// Forward the response as-is
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(resp.StatusCode)
 	io.Copy(w, resp.Body)
@@ -403,7 +400,6 @@ func (h *Handlers) proxyGitLabAPI(w http.ResponseWriter, r *http.Request, token 
 	}
 	defer resp.Body.Close()
 
-	// Forward the response as-is
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(resp.StatusCode)
 	io.Copy(w, resp.Body)

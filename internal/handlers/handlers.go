@@ -370,29 +370,6 @@ func (h *Handlers) GetChannel(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, ch)
 }
 
-// ── AgentTool endpoints ──
-
-func (h *Handlers) ListAgentTools(w http.ResponseWriter, r *http.Request) {
-	tools, err := h.k8s.ListAgentTools(r.Context())
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list agent tools: %s", err)
-		return
-	}
-	writeJSON(w, http.StatusOK, tools.Items)
-}
-
-func (h *Handlers) GetAgentTool(w http.ResponseWriter, r *http.Request) {
-	ns := chi.URLParam(r, "ns")
-	name := chi.URLParam(r, "name")
-
-	tool, err := h.k8s.GetAgentTool(r.Context(), ns, name)
-	if err != nil {
-		writeError(w, http.StatusNotFound, "agent tool not found: %s", err)
-		return
-	}
-	writeJSON(w, http.StatusOK, tool)
-}
-
 // ── Kubernetes resource endpoints ──
 
 func (h *Handlers) ListNamespaces(w http.ResponseWriter, r *http.Request) {

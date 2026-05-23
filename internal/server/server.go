@@ -110,22 +110,18 @@ func New(cfg Config, k8sClient *k8s.Client, mux *multiplexer.Multiplexer) *Serve
 			r.Get("/channels", h.ListChannels)
 			r.Get("/channels/{ns}/{name}", h.GetChannel)
 
-			// Agent Tools
-			r.Get("/agenttools", h.ListAgentTools)
-			r.Get("/agenttools/{ns}/{name}", h.GetAgentTool)
+			// Integrations
+			r.Get("/integrations", h.ListIntegrations)
+			r.Get("/integrations/{ns}/{name}", h.GetIntegration)
+			r.Get("/agents/{ns}/{name}/integrations", h.ListIntegrationsForAgent)
 
-			// Agent Resources
-			r.Get("/agentresources", h.ListAgentResources)
-			r.Get("/agentresources/{ns}/{name}", h.GetAgentResource)
-			r.Get("/agents/{ns}/{name}/resources", h.ListAgentResourcesForAgent)
-
-			// Resource browsing (proxy to GitHub/GitLab APIs)
-			r.Get("/agents/{ns}/{name}/resources/{resName}/files", h.BrowseResourceFiles)
-			r.Get("/agents/{ns}/{name}/resources/{resName}/files/content", h.BrowseResourceFileContent)
-			r.Get("/agents/{ns}/{name}/resources/{resName}/commits", h.BrowseResourceCommits)
-			r.Get("/agents/{ns}/{name}/resources/{resName}/branches", h.BrowseResourceBranches)
-			r.Get("/agents/{ns}/{name}/resources/{resName}/mergerequests", h.BrowseResourceMergeRequests)
-			r.Get("/agents/{ns}/{name}/resources/{resName}/issues", h.BrowseResourceIssues)
+			// Integration browsing (proxy to GitHub/GitLab APIs)
+			r.Get("/agents/{ns}/{name}/integrations/{intgName}/files", h.BrowseResourceFiles)
+			r.Get("/agents/{ns}/{name}/integrations/{intgName}/files/content", h.BrowseResourceFileContent)
+			r.Get("/agents/{ns}/{name}/integrations/{intgName}/commits", h.BrowseResourceCommits)
+			r.Get("/agents/{ns}/{name}/integrations/{intgName}/branches", h.BrowseResourceBranches)
+			r.Get("/agents/{ns}/{name}/integrations/{intgName}/mergerequests", h.BrowseResourceMergeRequests)
+			r.Get("/agents/{ns}/{name}/integrations/{intgName}/issues", h.BrowseResourceIssues)
 
 			// Traces (proxy to Tempo)
 			r.Get("/traces", h.SearchTraces)

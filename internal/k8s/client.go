@@ -128,8 +128,7 @@ func (c *Client) registerWatchers(ctx context.Context) {
 	registerInformerHandler[*agentsv1alpha1.Agent](c, ctx, "Agent")
 	registerInformerHandler[*agentsv1alpha1.AgentRun](c, ctx, "AgentRun")
 	registerInformerHandler[*agentsv1alpha1.Channel](c, ctx, "Channel")
-	registerInformerHandler[*agentsv1alpha1.AgentTool](c, ctx, "AgentTool")
-	registerInformerHandler[*agentsv1alpha1.AgentResource](c, ctx, "AgentResource")
+	registerInformerHandler[*agentsv1alpha1.Integration](c, ctx, "Integration")
 }
 
 func registerInformerHandler[T client.Object](c *Client, ctx context.Context, kind string) {
@@ -265,10 +264,10 @@ func (c *Client) GetChannel(ctx context.Context, namespace, name string) (*agent
 	return ch, nil
 }
 
-// ── AgentTool operations ──
+// ── Integration operations ──
 
-func (c *Client) ListAgentTools(ctx context.Context) (*agentsv1alpha1.AgentToolList, error) {
-	list := &agentsv1alpha1.AgentToolList{}
+func (c *Client) ListIntegrations(ctx context.Context) (*agentsv1alpha1.IntegrationList, error) {
+	list := &agentsv1alpha1.IntegrationList{}
 	opts := &client.ListOptions{}
 	if c.namespace != "" {
 		opts.Namespace = c.namespace
@@ -279,73 +278,51 @@ func (c *Client) ListAgentTools(ctx context.Context) (*agentsv1alpha1.AgentToolL
 	return list, nil
 }
 
-func (c *Client) GetAgentTool(ctx context.Context, namespace, name string) (*agentsv1alpha1.AgentTool, error) {
-	tool := &agentsv1alpha1.AgentTool{}
-	if err := c.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, tool); err != nil {
+func (c *Client) GetIntegration(ctx context.Context, namespace, name string) (*agentsv1alpha1.Integration, error) {
+	intg := &agentsv1alpha1.Integration{}
+	if err := c.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, intg); err != nil {
 		return nil, err
 	}
-	return tool, nil
+	return intg, nil
 }
 
-// ── AgentResource operations ──
-
-func (c *Client) ListAgentResources(ctx context.Context) (*agentsv1alpha1.AgentResourceList, error) {
-	list := &agentsv1alpha1.AgentResourceList{}
-	opts := &client.ListOptions{}
-	if c.namespace != "" {
-		opts.Namespace = c.namespace
-	}
-	if err := c.client.List(ctx, list, opts); err != nil {
-		return nil, err
-	}
-	return list, nil
-}
-
-func (c *Client) GetAgentResource(ctx context.Context, namespace, name string) (*agentsv1alpha1.AgentResource, error) {
-	res := &agentsv1alpha1.AgentResource{}
-	if err := c.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, res); err != nil {
-		return nil, err
-	}
-	return res, nil
-}
-
-// ListAgentResourcesForAgent returns the AgentResource CRs bound to a specific agent.
-func (c *Client) ListAgentResourcesForAgent(ctx context.Context, agent *agentsv1alpha1.Agent) ([]agentsv1alpha1.AgentResource, error) {
-	all, err := c.ListAgentResources(ctx)
+// ListIntegrationsForAgent returns the Integration CRs bound to a specific agent.
+func (c *Client) ListIntegrationsForAgent(ctx context.Context, agent *agentsv1alpha1.Agent) ([]agentsv1alpha1.Integration, error) {
+	all, err := c.ListIntegrations(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	// Build a set of bound resource names from the agent's resourceBindings
-	boundNames := make(map[string]bool, len(agent.Spec.ResourceBindings))
-	for _, binding := range agent.Spec.ResourceBindings {
+	// Build a set of bound integration names from the agent's integrations
+	boundNames := make(map[string]bool, len(agent.Spec.Integrations))
+	for _, binding := range agent.Spec.Integrations {
 		boundNames[binding.Name] = true
 	}
 
-	var matched []agentsv1alpha1.AgentResource
-	for _, res := range all.Items {
-		if boundNames[res.Name] && res.Namespace == agent.Namespace {
-			matched = append(matched, res)
+	var matched []agentsv1alpha1.Integration
+	for _, intg := range all.Items {
+		if boundNames[intg.Name] && intg.Namespace == agent.Namespace {
+			matched = append(matched, intg)
 		}
 	}
 	return matched, nil
 }
 
-// GetAgentResourceCredentials reads the secret referenced by an AgentResource's credentials field.
-func (c *Client) GetAgentResourceCredentials(ctx context.Context, namespace string, res *agentsv1alpha1.AgentResource) (string, error) {
-	if res.Spec.Credentials == nil {
-		return "", fmt.Errorf("resource %s has no credentials configured", res.Name)
+// GetIntegrationCredentials reads the secret referenced by an Integration's credentials field.
+func (c *Client) GetIntegrationCredentials(ctx context.Context, namespace string, intg *agentsv1alpha1.Integration) (string, error) {
+	if intg.Spec.Credentials == nil {
+		return "", fmt.Errorf("integration %s has no credentials configured", intg.Name)
 	}
 	secret := &corev1.Secret{}
 	if err := c.client.Get(ctx, client.ObjectKey{
 		Namespace: namespace,
-		Name:      res.Spec.Credentials.Name,
+		Name:      intg.Spec.Credentials.Name,
 	}, secret); err != nil {
-		return "", fmt.Errorf("secret %s not found: %w", res.Spec.Credentials.Name, err)
+		return "", fmt.Errorf("secret %s not found: %w", intg.Spec.Credentials.Name, err)
 	}
-	val, ok := secret.Data[res.Spec.Credentials.Key]
+	val, ok := secret.Data[intg.Spec.Credentials.Key]
 	if !ok {
-		return "", fmt.Errorf("key %s not found in secret %s", res.Spec.Credentials.Key, res.Spec.Credentials.Name)
+		return "", fmt.Errorf("key %s not found in secret %s", intg.Spec.Credentials.Key, intg.Spec.Credentials.Name)
 	}
 	return string(val), nil
 }
